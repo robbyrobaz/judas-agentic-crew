@@ -5,7 +5,6 @@ import logging
 
 from crewai import Crew, Process
 
-from src.agents.research_agents import make_research_manager
 from src.tasks.research_tasks import make_research_tasks
 
 log = logging.getLogger(__name__)
@@ -18,7 +17,6 @@ class ResearchCrew:
         self.symbol = symbol.upper()
         self.verbose = verbose
         self._tasks, self._agents = make_research_tasks(symbol=self.symbol)
-        self._manager = make_research_manager()
 
     def kickoff(self, inputs: dict | None = None) -> object:
         if inputs is None:
@@ -31,8 +29,7 @@ class ResearchCrew:
         crew = Crew(
             agents=list(self._agents.values()),
             tasks=self._tasks,
-            manager_agent=self._manager,
-            process=Process.hierarchical,
+            process=Process.sequential,
             verbose=self.verbose,
         )
         result = crew.kickoff(inputs=inputs)

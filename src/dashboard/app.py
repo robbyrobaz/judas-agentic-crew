@@ -48,6 +48,16 @@ def _json_loads(raw: str | None, default: Any) -> Any:
         return default
 
 
+def _format_scalar(value: Any) -> str:
+    if value is None or value == "":
+        return "—"
+    if isinstance(value, (int, float)):
+        if abs(float(value)) >= 1000:
+            return f"{float(value):,.2f}".rstrip("0").rstrip(".")
+        return f"{float(value):,.3f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
 def _fetch_recent_signals(limit: int = 10) -> list[dict[str, Any]]:
     with get_conn(_db_path()) as conn:
         rows = conn.execute(
@@ -331,6 +341,59 @@ def _run_subprocess(args: list[str]) -> tuple[int, str]:
     return proc.returncode, output[-12000:]
 
 
+def _extract_last_json_block(output: str) -> dict[str, Any] | None:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    for index in range(len(lines) - 1, -1, -1):
+        candidate = "\n".join(lines[index:])
+        try:
+            parsed = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _format_doctor_output(symbol: str, ok: bool, output: str) -> str:
+    payload = _extract_last_json_block(output) or {}
+    checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
+    llm = checks.get("llm") if isinstance(checks.get("llm"), dict) else {}
+    ibkr = checks.get("ibkr_data") if isinstance(checks.get("ibkr_data"), dict) else {}
+    session = checks.get("session_status") if isinstance(checks.get("session_status"), dict) else {}
+    status = "passed" if ok else "failed"
+    lines = [
+        f"### Doctor {status}",
+        f"- Symbol: `{symbol}`",
+        f"- LLM: {'OK' if llm.get('ok') else 'FAIL'}",
+        f"- IBKR data: {'OK' if ibkr.get('ok') else 'FAIL'}",
+        f"- Session: {'tradeable' if session.get('can_trade_now') else 'closed'}",
+    ]
+    if ibkr:
+        lines.append(
+            f"- Bars: `{_format_scalar(ibkr.get('bar_count'))}` | Prior high: `{_format_scalar(ibkr.get('prior_high'))}` | Prior low: `{_format_scalar(ibkr.get('prior_low'))}`"
+        )
+    if session:
+        lines.append(f"- Session note: {session.get('reason', '—')}")
+    if not payload:
+        tail = output.strip().splitlines()[-8:]
+        if tail:
+            lines.extend(["", "```text", *tail, "```"])
+    return "\n".join(lines)
+
+
+def _format_research_output(symbol: str, ok: bool, output: str) -> str:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    status = "started" if ok else "failed"
+    summary = [
+        f"### Research {status}",
+        f"- Symbol: `{symbol}`",
+    ]
+    tail = lines[-6:]
+    if tail:
+        summary.extend(["", "```text", *tail, "```"])
+    return "\n".join(summary)
+
+
 def create_app() -> Flask:
     app = Flask(__name__, static_folder=str(DASHBOARD_DIST), static_url_path="/")
     _db_path()
@@ -359,11 +422,13 @@ def create_app() -> Flask:
             return jsonify({"error": "message is required"}), 400
         lower = message.lower()
         if any(text in lower for text in ["run doctor", "doctor now", "health check now"]):
-            code, output = _run_subprocess([str(REPO_ROOT / ".venv" / "bin" / "python"), "main.py", "--doctor", "--symbol", "MGC"])
-            response = f"Doctor run {'completed' if code == 0 else 'failed'}.\n\n{output}"
+            symbol = "MGC"
+            code, output = _run_subprocess([str(REPO_ROOT / ".venv" / "bin" / "python"), "main.py", "--doctor", "--symbol", symbol])
+            response = _format_doctor_output(symbol, code == 0, output)
         elif any(text in lower for text in ["run research", "start research", "kick off research"]):
-            code, output = _run_subprocess([str(REPO_ROOT / ".venv" / "bin" / "python"), "scripts/research_tick.py", "--symbol", "MGC", "--reason", "operator-manager"])
-            response = f"Research tick {'completed' if code == 0 else 'failed'}.\n\n{output}"
+            symbol = "MGC"
+            code, output = _run_subprocess([str(REPO_ROOT / ".venv" / "bin" / "python"), "scripts/research_tick.py", "--symbol", symbol, "--reason", "operator-manager"])
+            response = _format_research_output(symbol, code == 0, output)
         else:
             CHAT_HISTORY.append({"role": "user", "content": message})
             prompt = _build_chat_prompt(message)
@@ -376,13 +441,13 @@ def create_app() -> Flask:
     def run_doctor() -> Any:
         symbol = str((request.get_json(silent=True) or {}).get("symbol", "MGC")).upper()
         code, output = _run_subprocess([str(REPO_ROOT / ".venv" / "bin" / "python"), "main.py", "--doctor", "--symbol", symbol])
-        return jsonify({"ok": code == 0, "output": output})
+        return jsonify({"ok": code == 0, "output": _format_doctor_output(symbol, code == 0, output), "raw_output": output})
 
     @app.post("/api/run/research")
     def run_research() -> Any:
         symbol = str((request.get_json(silent=True) or {}).get("symbol", "MGC")).upper()
         code, output = _run_subprocess([str(REPO_ROOT / ".venv" / "bin" / "python"), "scripts/run_research.py", "--symbol", symbol, "--log-level", "INFO"])
-        return jsonify({"ok": code == 0, "output": output})
+        return jsonify({"ok": code == 0, "output": _format_research_output(symbol, code == 0, output), "raw_output": output})
 
     @app.get("/", defaults={"path": ""})
     @app.get("/<path:path>")

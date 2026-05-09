@@ -65,6 +65,47 @@ main.py --symbol MGC (or MNQ)
 - IBKR data fetching and order placement are deterministic tools (no LLM hallucination in order routing)
 - Judas sweep+CHoCH detection is a deterministic tool — agents interpret the output, not re-derive it
 
+### judas_detector Output Format (rich JSON)
+
+```json
+{
+  "pattern_found": true,
+  "direction": "short",
+  "sweep": {
+    "type": "wick",           // "wick" | "body" — wick sweeps are cleaner Judas setups
+    "bar_idx": 94,
+    "extreme_price": 3225.40,
+    "prior_level_swept": "high",
+    "prior_level_price": 3224.80
+  },
+  "choch": {
+    "bar_idx": 97,
+    "broken_pivot": 3218.60,
+    "entry_price": 3218.20    // CHoCH bar close
+  },
+  "displacement": {
+    "strength": 1.8,          // ratio vs 20-bar avg candle size; ≥1.5 = valid
+    "atr_ratio": 0.94         // CHoCH bar range / 20-bar ATR
+  },
+  "fvg": {
+    "present": true,          // Fair Value Gap in displacement move?
+    "gap_high": 3221.50,
+    "gap_low": 3220.10
+  },
+  "atr_context": {
+    "current_atr": 4.20,
+    "avg_atr_20": 5.10,
+    "contracted": false       // true if current < 0.5× avg → RiskGuardian skips
+  },
+  "stop_price": 3225.80,     // sweep_extreme + 2 ticks buffer
+  "target_price": 3211.60,   // entry - 2.0R
+  "risk_dollars": 76.00      // based on MGC $10/point
+}
+```
+
+SetupEvaluator uses `sweep.type`, `displacement.strength`, `fvg.present` as scoring inputs.
+RiskGuardian uses `atr_context.contracted` as a hard gate.
+
 ---
 
 ## Folder Structure
@@ -94,7 +135,7 @@ judas-agentic-crew/
 │   ├── tools/
 │   │   ├── ibkr_data.py             ← fetch 1H bars (clientId=150)
 │   │   ├── ibkr_executor.py         ← place paper orders (clientId=151)
-│   │   ├── judas_detector.py        ← sweep+CHoCH detection (standalone port)
+│   │   ├── judas_detector.py        ← sweep+CHoCH detection; rich JSON output (see below)
 │   │   └── db_tools.py              ← CrewAI tool wrappers around SQLite
 │   │
 │   ├── crews/
@@ -164,6 +205,7 @@ Every setup the crew evaluates (whether traded or skipped).
 | target | REAL | |
 | rationale | TEXT | LLM reasoning |
 | agent_notes | TEXT | full agent output JSON |
+| raw_llm_output | TEXT | raw CrewAI task outputs (for debugging/replay) |
 | created_at | TEXT | row insert time |
 
 ### `trades` table
@@ -194,15 +236,20 @@ Every order actually placed.
 from crewai import LLM
 
 llm = LLM(
-    model="openai/MiniMax-M2.1",        # openai/ prefix = OpenAI-compatible provider
-    base_url="https://api.minimax.io/v1",
+    model="minimax/MiniMax-M2.1",       # minimax/ prefix → LiteLLM native MiniMax support
     api_key=os.environ["MINIMAX_API_KEY"],
+    api_base="https://api.minimax.io/v1",
+    temperature=0.0,
+    max_tokens=4096,
 )
 ```
 
+**CONFIRMED WORKING** (2026-05-08 probe): `finish_reason=tool_calls`, proper `function.name`
++ `function.arguments` emitted. LiteLLM strips `<think>` blocks automatically.
+
 Available on this plan: `MiniMax-M2`, `MiniMax-M2.1`, `MiniMax-M2.7`  
 Highspeed variants not on this plan.  
-Note: these models produce `<think>...</think>` reasoning blocks — strip before passing outputs to next task.
+Use `minimax/` prefix (not `openai/`) — LiteLLM has native MiniMax tool-call normalization.
 
 ---
 
@@ -230,9 +277,13 @@ Note: these models produce `<think>...</think>` reasoning blocks — strip befor
 - **Role**: Strict risk gatekeeper
 - **Goal**: Output TRADE or SKIP. Never approve a marginal setup.
 - **Backstory**: Extremely disciplined. Checks: daily loss limit ($300), max open positions
-  (2), session validity (NY or London only), setup quality score (≥ 6 required). Patient
-  — would rather miss 10 real setups than take 1 bad one. If in doubt: SKIP.
+  (2), session validity (NY or London only), setup quality score (≥ 6 required), ATR
+  contraction filter (rejects setups when current ATR < 0.5× 20-bar average — no edge in
+  compressed ranges). Patient — would rather miss 10 real setups than take 1 bad one.
+  If in doubt: SKIP.
 - **Tools**: db_daily_pnl_tool, db_open_positions_tool
+- **Note**: No NY-open lockout. NY 9:30–10:30 ET IS the prime Judas window — the sweep
+  often happens in the first 30 minutes. A lockout here would skip the best setups.
 
 ### 4. TradeExecutor
 - **Role**: IBKR paper order executor and trade recorder
@@ -285,8 +336,9 @@ On each fire: crew runs once for each configured symbol, evaluates current bar.
 | Daily loss limit | -$300 |
 | Max open positions | 2 |
 | Max contracts per trade | 1 |
-| Session gate | NY or London only |
+| Session gate | NY or London only (no NY-open lockout — 9:30–10:30 ET is prime Judas time) |
 | Min quality score | 6/10 |
+| ATR contraction filter | Skip if current ATR < 0.5× 20-bar average ATR |
 | Patience rule | If any doubt → SKIP |
 
 ---
@@ -310,8 +362,28 @@ On each fire: crew runs once for each configured symbol, evaluates current bar.
 
 ---
 
-## Open Questions (resolve before or during build)
+## Phase 1 vs Phase 2
 
-- [ ] Which symbols to run by default — MGC only, or MGC + MNQ in parallel?
-- [ ] Should the timer run both symbols in one service invocation, or separate services?
-- [ ] Fill tracking: the workshop has a fill_sync service for closing positions. Does this crew need equivalent, or manually track via IBKR position reconcile?
+### Phase 1 (this build) — Score + Execute
+The crew is a disciplined scorer and executor. It reads structured tool output,
+reasons about setup quality, and places paper orders. It does NOT self-modify
+or discover new parameters. This is the honest description of what Phase 1 does.
+
+### Phase 2 (deferred — needs real trade data)
+- **IterationAgent**: reviews closed trade history, identifies systematic patterns
+  in what RiskGuardian skipped vs what would have been profitable. Suggests parameter
+  adjustments (quality thresholds, ATR filter multiplier). Requires ≥30 closed trades.
+- **MNQ support**: second symbol, once MGC is validated. Separate clientId range.
+- **Self-tuning**: IterationAgent adjusts RiskGuardian thresholds based on live results.
+
+---
+
+## Resolved Design Decisions
+
+| Question | Decision |
+|---|---|
+| Phase 1 symbols | **MGC only** — validate the stack before adding MNQ |
+| Multi-symbol dispatch | One service call per symbol; systemd `ExecStart` loops over symbols list |
+| Fill tracking | **Phase 1**: mark trade `status=open`, reconcile manually via IBKR TWS. A dedicated `judas-crew-fill-sync.service` (mirrors workshop pattern) is Phase 2 work. |
+| "2 parallel candidates" | **Rejected** — sweep is one direction per bar (high OR low). Two candidates would be theater. |
+| NY open lockout | **Rejected** — NY 9:30–10:30 ET is the prime Judas window. No lockout. |

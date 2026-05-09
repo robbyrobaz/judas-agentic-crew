@@ -32,8 +32,10 @@ risk:
   max_open_positions: 2
 
 crew:
-  llm_model: "minimax/MiniMax-M2.1"
+  llm_model: "MiniMax-M2.7"
   llm_base_url: "https://api.minimax.io/v1"
+  llm_provider: "openai"
+  llm_reasoning_split: true
   verbose: true
   min_quality_score: 6          # SetupEvaluator must score >= this to proceed
 

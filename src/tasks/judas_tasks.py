@@ -129,13 +129,15 @@ def make_tasks(symbol: str = "MGC") -> tuple[list[Task], dict]:
             f"Steps:\n"
             f"1. Call db_daily_pnl_tool to get today's P&L and trade count.\n"
             f"2. Call db_open_positions_tool to get open position count.\n"
-            f"3. Apply risk rules:\n"
+            f"3. Call session_status_tool to confirm the run is inside an allowed trading window.\n"
+            f"4. Apply risk rules:\n"
             f"   - If daily_pnl <= -300: SKIP (daily loss limit reached)\n"
             f"   - If open_count >= 2: SKIP (max positions reached)\n"
             f"   - If SetupEvaluator score < 6: SKIP (quality gate failed)\n"
             f"   - If atr_context.contracted=true: SKIP (ATR too compressed)\n"
+            f"   - If can_trade_now=false: SKIP (weekend or out of session)\n"
             f"   - If any condition is marginal or unclear: SKIP\n"
-            f"4. Output your decision with full reasoning.\n\n"
+            f"5. Output your decision with full reasoning.\n\n"
             f"Remember: patience rule — when in doubt, SKIP. Missing a setup costs "
             f"nothing; taking a bad setup costs real money."
         ),
@@ -149,6 +151,7 @@ def make_tasks(symbol: str = "MGC") -> tuple[list[Task], dict]:
             '    "daily_loss_limit_ok": bool,\n'
             '    "open_count": int,\n'
             '    "positions_ok": bool,\n'
+            '    "session_ok": bool,\n'
             '    "quality_score": int,\n'
             '    "quality_ok": bool,\n'
             '    "atr_ok": bool\n'
@@ -164,7 +167,7 @@ def make_tasks(symbol: str = "MGC") -> tuple[list[Task], dict]:
             "}"
         ),
         agent=risk_guardian,
-        context=[task_evaluate],
+        context=[task_market, task_evaluate],
     )
 
     # ------------------------------------------------------------------
@@ -201,7 +204,7 @@ def make_tasks(symbol: str = "MGC") -> tuple[list[Task], dict]:
             "}"
         ),
         agent=trade_executor,
-        context=[task_risk],
+        context=[task_market, task_evaluate, task_risk],
     )
 
     tasks = [task_market, task_evaluate, task_risk, task_execute]

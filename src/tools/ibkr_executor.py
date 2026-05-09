@@ -18,16 +18,12 @@ log = logging.getLogger(__name__)
 # Contract specs (same as ibkr_data.py — no shared imports)
 _CONTRACT_SPECS: dict[str, dict] = {
     "MGC": {
-        "secType": "FUT",
         "exchange": "COMEX",
         "currency": "USD",
-        "lastTradeDateOrContractMonth": "",
     },
     "MNQ": {
-        "secType": "FUT",
         "exchange": "CME",
         "currency": "USD",
-        "lastTradeDateOrContractMonth": "",
     },
 }
 
@@ -86,7 +82,7 @@ def ibkr_executor_tool(input_json: str) -> str:
     _assert_paper_mode()
 
     try:
-        from ib_async import IB, Future, MarketOrder, util
+        from ib_async import IB, ContFuture, Future, MarketOrder, util
     except ImportError:
         return json.dumps({
             "ibkr_order_id": -1,
@@ -116,11 +112,11 @@ def ibkr_executor_tool(input_json: str) -> str:
             "message": f"direction must be 'long' or 'short', got '{direction}'",
         })
 
-    if qty < 1 or qty > 4:
+    if qty != 1:
         return json.dumps({
             "ibkr_order_id": -1,
             "status": "error",
-            "message": f"qty={qty} out of valid range [1, 4]",
+            "message": f"qty={qty} out of valid range [1, 1] for Phase 1",
         })
 
     spec = _CONTRACT_SPECS.get(symbol, _CONTRACT_SPECS["MGC"])
@@ -139,16 +135,29 @@ def ibkr_executor_tool(input_json: str) -> str:
         async def _place() -> dict:
             await ib.connectAsync(host, port, clientId=client_id, timeout=15)
             try:
+                cont = ContFuture(
+                    symbol=symbol,
+                    exchange=spec["exchange"],
+                )
+                qualified = await ib.qualifyContractsAsync(cont)
+                if not qualified:
+                    raise ValueError(f"Could not qualify continuous contract for {symbol}")
+                cont = qualified[0]
+
+                month = getattr(cont, "lastTradeDateOrContractMonth", "")
+                if not month:
+                    raise ValueError(f"Could not resolve front-month expiry for {symbol}")
+
                 contract = Future(
                     symbol=symbol,
                     exchange=spec["exchange"],
                     currency=spec["currency"],
-                    lastTradeDateOrContractMonth=spec["lastTradeDateOrContractMonth"],
+                    lastTradeDateOrContractMonth=month,
                 )
-                qualified = await ib.qualifyContractsAsync(contract)
-                if not qualified:
-                    raise ValueError(f"Could not qualify contract for {symbol}")
-                contract = qualified[0]
+                front = await ib.qualifyContractsAsync(contract)
+                if not front:
+                    raise ValueError(f"Could not qualify front-month contract for {symbol}")
+                contract = front[0]
 
                 order = MarketOrder(action=ibkr_action, totalQuantity=qty)
                 trade = ib.placeOrder(contract, order)

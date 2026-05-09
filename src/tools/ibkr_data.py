@@ -9,40 +9,23 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Any
 
 from crewai.tools import tool
 
 log = logging.getLogger(__name__)
 
-# MGC contract spec
 _CONTRACT_SPECS: dict[str, dict[str, Any]] = {
     "MGC": {
-        "secType": "FUT",
         "exchange": "COMEX",
         "currency": "USD",
-        "lastTradeDateOrContractMonth": "",
     },
     "MNQ": {
-        "secType": "FUT",
         "exchange": "CME",
         "currency": "USD",
-        "lastTradeDateOrContractMonth": "",
     },
 }
-
-
-def _get_nearest_contract_month() -> str:
-    """Return nearest active contract month in YYYYMM format.
-
-    For micro gold (MGC): quarterly contracts (Feb, Apr, Jun, Aug, Oct, Dec).
-    Roll roughly 2 weeks before expiry. This is a best-effort helper;
-    the actual nearest active is resolved by IBKR when lastTradeDateOrContractMonth=''.
-    """
-    now = datetime.now(tz=timezone.utc)
-    # Return empty string to let IBKR resolve the nearest active contract
-    return ""
 
 
 @tool("ibkr_data_tool")
@@ -59,11 +42,11 @@ def ibkr_data_tool(input_json: str) -> str:
       "error": null | "error message"
     }
 
-    prior_high and prior_low are the prior trading day's high and low,
-    computed from bars where the date portion matches yesterday's date.
+    prior_high and prior_low are the most recent completed trading day's high
+    and low relative to the latest fetched bar date.
     """
     try:
-        from ib_async import IB, Future, util
+        from ib_async import IB, ContFuture, util
     except ImportError:
         return json.dumps({"bars": [], "prior_high": 0.0, "prior_low": 0.0,
                            "error": "ib_async not installed"})
@@ -90,21 +73,19 @@ def ibkr_data_tool(input_json: str) -> str:
         async def _fetch() -> list[dict]:
             await ib.connectAsync(host, port, clientId=client_id, timeout=15)
             try:
-                contract = Future(
+                contract = ContFuture(
                     symbol=symbol.upper(),
                     exchange=spec["exchange"],
-                    currency=spec["currency"],
-                    lastTradeDateOrContractMonth=spec["lastTradeDateOrContractMonth"],
                 )
                 qualified = await ib.qualifyContractsAsync(contract)
                 if not qualified:
-                    raise ValueError(f"Could not qualify contract for {symbol}")
+                    raise ValueError(f"Could not qualify continuous contract for {symbol}")
                 contract = qualified[0]
 
                 bars = await ib.reqHistoricalDataAsync(
                     contract,
                     endDateTime="",
-                    durationStr="100 H",
+                    durationStr="8 D",
                     barSizeSetting="1 hour",
                     whatToShow="TRADES",
                     useRTH=False,
@@ -144,17 +125,20 @@ def ibkr_data_tool(input_json: str) -> str:
 
         # Compute prior day high/low
         if bars_list:
-            today = datetime.now(tz=timezone.utc).date()
-            yesterday = today - timedelta(days=1)
-            # Walk back to find the most recent trading day before today
-            prior_bars = [b for b in bars_list if b["_date"] < str(today)]
-            if prior_bars:
-                max_prior_date = max(b["_date"] for b in prior_bars)
-                prior_day_bars = [b for b in prior_bars if b["_date"] == max_prior_date]
-                prior_high = max(b["high"] for b in prior_day_bars)
-                prior_low = min(b["low"] for b in prior_day_bars)
+            bars_list = bars_list[-100:]
+            dated_bars = [b for b in bars_list if b["_date"] != "None"]
+            if dated_bars:
+                latest_bar_date = max(b["_date"] for b in dated_bars)
+                prior_bars = [b for b in dated_bars if b["_date"] < latest_bar_date]
+                if prior_bars:
+                    max_prior_date = max(b["_date"] for b in prior_bars)
+                    prior_day_bars = [b for b in prior_bars if b["_date"] == max_prior_date]
+                    prior_high = max(b["high"] for b in prior_day_bars)
+                    prior_low = min(b["low"] for b in prior_day_bars)
+                else:
+                    prior_high = max(b["high"] for b in bars_list[:-1]) if len(bars_list) > 1 else 0.0
+                    prior_low = min(b["low"] for b in bars_list[:-1]) if len(bars_list) > 1 else 0.0
             else:
-                # Fallback: use all bars except last
                 prior_high = max(b["high"] for b in bars_list[:-1]) if len(bars_list) > 1 else 0.0
                 prior_low = min(b["low"] for b in bars_list[:-1]) if len(bars_list) > 1 else 0.0
         else:

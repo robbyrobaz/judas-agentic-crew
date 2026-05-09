@@ -9,6 +9,7 @@ Systemd oneshot: fires once per hour during London and NY sessions.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -34,12 +35,74 @@ def parse_args() -> argparse.Namespace:
         help="Futures symbol to analyze (default: MGC)",
     )
     p.add_argument(
+        "--all-symbols",
+        action="store_true",
+        help="Run once for every symbol enabled in config.yaml",
+    )
+    p.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Run connectivity checks for config, DB, LLM, and IBKR historical data",
+    )
+    p.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Log level (default: INFO)",
     )
     return p.parse_args()
+
+
+def _run_doctor(symbol: str) -> int:
+    log = logging.getLogger("doctor")
+    summary: dict[str, object] = {"symbol": symbol, "checks": {}}
+
+    from src.agents.judas_agents import build_llm
+    from src.tools.ibkr_data import ibkr_data_tool
+    from src.tools.session_tools import session_status_tool
+
+    try:
+        llm = build_llm()
+        response = llm.call("Reply with exactly OK.")
+        summary["checks"]["llm"] = {"ok": True, "response": str(response).strip()}
+    except Exception as e:
+        log.error("doctor.llm_failed", extra={"error": str(e)}, exc_info=True)
+        summary["checks"]["llm"] = {"ok": False, "error": str(e)}
+
+    try:
+        payload = json.loads(ibkr_data_tool.run(input_json=json.dumps({"symbol": symbol})))
+        ok = bool(payload.get("bars")) and not payload.get("error")
+        summary["checks"]["ibkr_data"] = {
+            "ok": ok,
+            "bar_count": len(payload.get("bars", [])),
+            "prior_high": payload.get("prior_high"),
+            "prior_low": payload.get("prior_low"),
+            "error": payload.get("error"),
+        }
+    except Exception as e:
+        log.error("doctor.ibkr_failed", extra={"error": str(e)}, exc_info=True)
+        summary["checks"]["ibkr_data"] = {"ok": False, "error": str(e)}
+
+    try:
+        payload = json.loads(session_status_tool.run(input_json="{}"))
+        summary["checks"]["session_status"] = {
+            "ok": True,
+            "can_trade_now": payload.get("can_trade_now"),
+            "active_session": payload.get("active_session"),
+            "reason": payload.get("reason"),
+        }
+    except Exception as e:
+        log.error("doctor.session_failed", extra={"error": str(e)}, exc_info=True)
+        summary["checks"]["session_status"] = {"ok": False, "error": str(e)}
+
+    print(json.dumps(summary, indent=2))
+    return 0 if all(check.get("ok") for check in summary["checks"].values()) else 1
+
+
+def _preflight_session_gate() -> dict[str, object]:
+    from src.tools.session_tools import session_status_tool
+
+    return json.loads(session_status_tool.run(input_json="{}"))
 
 
 def main() -> int:
@@ -70,12 +133,46 @@ def main() -> int:
         import os
         os.environ["JUDAS_DB_PATH"] = str(db_path)
 
+        if args.doctor:
+            return _run_doctor(symbol)
+
+        session_status = _preflight_session_gate()
+        if not session_status.get("can_trade_now", False):
+            log.info(
+                "judas_crew.skipped_preflight",
+                extra={
+                    "symbol": symbol,
+                    "reason": session_status.get("reason"),
+                    "active_session": session_status.get("active_session"),
+                    "is_weekend": session_status.get("is_weekend"),
+                    "now_et": session_status.get("now_et"),
+                },
+            )
+            print(
+                json.dumps(
+                    {
+                        "status": "skipped",
+                        "symbol": symbol,
+                        "reason": session_status.get("reason"),
+                        "active_session": session_status.get("active_session"),
+                        "is_weekend": session_status.get("is_weekend"),
+                        "now_et": session_status.get("now_et"),
+                    },
+                    indent=2,
+                )
+            )
+            return 0
+
         # Run the crew
         from src.crews.judas_crew import JudasCrew
-        crew = JudasCrew(symbol=symbol, verbose=cfg.crew.verbose)
-        result = crew.kickoff(inputs={"symbol": symbol})
-
-        log.info("judas_crew.finished", extra={"symbol": symbol, "result_type": type(result).__name__})
+        symbols = [s.symbol.upper() for s in cfg.symbols] if args.all_symbols else [symbol]
+        for current_symbol in symbols:
+            crew = JudasCrew(symbol=current_symbol, verbose=cfg.crew.verbose)
+            result = crew.kickoff(inputs={"symbol": current_symbol})
+            log.info(
+                "judas_crew.finished",
+                extra={"symbol": current_symbol, "result_type": type(result).__name__},
+            )
         return 0
 
     except ValueError as e:

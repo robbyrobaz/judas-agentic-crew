@@ -49,6 +49,8 @@ class RiskConfig:
 class CrewConfig:
     llm_model: str
     llm_base_url: str
+    llm_provider: str = "openai"
+    llm_reasoning_split: bool = True
     verbose: bool = True
     min_quality_score: int = 6
 
@@ -90,8 +92,10 @@ def load_config(path: str | None = None) -> Config:
     risk = RiskConfig(**risk_raw) if risk_raw else RiskConfig()
     crew_raw = raw.get("crew", {})
     crew = CrewConfig(
-        llm_model=crew_raw.get("llm_model", "minimax/MiniMax-M2.1"),
+        llm_model=crew_raw.get("llm_model", "MiniMax-M2.7"),
         llm_base_url=crew_raw.get("llm_base_url", "https://api.minimax.io/v1"),
+        llm_provider=crew_raw.get("llm_provider", "openai"),
+        llm_reasoning_split=crew_raw.get("llm_reasoning_split", True),
         verbose=crew_raw.get("verbose", True),
         min_quality_score=crew_raw.get("min_quality_score", 6),
     )

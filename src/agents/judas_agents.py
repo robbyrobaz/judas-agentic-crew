@@ -6,16 +6,16 @@ Four agents:
   RiskGuardian    — checks DB + risk limits, outputs TRADE|SKIP
   TradeExecutor   — places paper order, records to DB
 
-LLM: MiniMax M2.1 via minimax/ prefix (LiteLLM native MiniMax support).
-Knowledge base: judas_concepts.md + research_findings.md loaded from knowledge_base/.
+LLM: config-driven MiniMax M2.7 via the OpenAI-compatible endpoint.
+Knowledge base: local research plus selected workshop findings.
 """
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from pathlib import Path
 
 from crewai import Agent, LLM
-from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
 from src.tools.ibkr_data import ibkr_data_tool
 from src.tools.ibkr_executor import ibkr_executor_tool
@@ -26,41 +26,97 @@ from src.tools.db_tools import (
     db_save_signal_tool,
     db_save_trade_tool,
 )
+from src.tools.session_tools import session_status_tool
+from src.config import load_config
 
 _KB_DIR = Path(__file__).parent.parent.parent / "knowledge_base"
 
 
+def _resolve_workshop_root() -> Path | None:
+    env_path = os.environ.get("JUDAS_WORKSHOP_PATH")
+    if env_path:
+        root = Path(env_path).expanduser()
+        return root if root.exists() else None
+
+    sibling = _KB_DIR.parent.parent / "judas-futures-workshop"
+    return sibling if sibling.exists() else None
+
+
+def _read_optional_text(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return path.read_text()
+
+
+@lru_cache(maxsize=1)
 def _load_knowledge_text() -> str:
-    """Load both KB files into a single string for StringKnowledgeSource."""
+    """Load local KB plus selected workshop context into one string."""
     parts = []
-    for fname in ("judas_concepts.md", "research_findings.md"):
+    for fname in (
+        "judas_concepts.md",
+        "research_findings.md",
+        "workshop_context.md",
+    ):
         fpath = _KB_DIR / fname
-        if fpath.exists():
-            parts.append(f"# FILE: {fname}\n\n{fpath.read_text()}")
+        text = _read_optional_text(fpath)
+        if text:
+            parts.append(f"# FILE: {fname}\n\n{text}")
+
+    workshop_root = _resolve_workshop_root()
+    if workshop_root is not None:
+        workshop_files = (
+            workshop_root / "RESEARCH_FINDINGS.md",
+            workshop_root / "STATUS.md",
+        )
+        for fpath in workshop_files:
+            text = _read_optional_text(fpath)
+            if text:
+                parts.append(f"# WORKSHOP FILE: {fpath.name}\n\n{text}")
     return "\n\n---\n\n".join(parts)
 
 
+@lru_cache(maxsize=1)
+def _load_runtime_config():
+    return load_config()
+
+
 def _make_llm() -> LLM:
-    """Construct MiniMax M2.1 LLM instance."""
+    """Construct the configured MiniMax/OpenAI-compatible LLM instance."""
+    cfg = _load_runtime_config()
+    additional_params: dict[str, object] = {}
+    if cfg.crew.llm_reasoning_split:
+        additional_params["extra_body"] = {"reasoning_split": True}
+
     return LLM(
-        model="minimax/MiniMax-M2.1",
+        model=cfg.crew.llm_model,
         api_key=os.environ.get("MINIMAX_API_KEY", ""),
-        api_base="https://api.minimax.io/v1",
+        api_base=cfg.crew.llm_base_url,
+        provider=cfg.crew.llm_provider,
         temperature=0.0,
         max_tokens=4096,
+        additional_params=additional_params,
     )
 
 
-def _make_knowledge_source() -> list:
-    """Return a list containing a StringKnowledgeSource with KB content."""
-    kb_text = _load_knowledge_text()
+def build_llm() -> LLM:
+    """Public wrapper for operational checks and one-off calls."""
+    return _make_llm()
+
+
+@lru_cache(maxsize=1)
+def _knowledge_appendix() -> str:
+    kb_text = _load_knowledge_text().strip()
     if not kb_text:
-        return []
-    return [StringKnowledgeSource(content=kb_text)]
+        return ""
+    max_chars = 12000
+    if len(kb_text) > max_chars:
+        kb_text = kb_text[:max_chars] + "\n\n[knowledge truncated for prompt budget]"
+    return f"\n\nReference knowledge you should treat as established context:\n{kb_text}"
 
 
 def make_market_analyst() -> Agent:
     """Agent 1: Fetches IBKR data and runs the Judas detector."""
+    cfg = _load_runtime_config()
     return Agent(
         role="Futures Market Data Analyst",
         goal=(
@@ -75,11 +131,10 @@ def make_market_analyst() -> Agent:
             "You work exclusively on 1H bars where the sweep+CHoCH logic has real edge. "
             "You run the deterministic sweep+CHoCH detector and report the raw output "
             "faithfully — you do not interpret or filter, only measure and report."
-        ),
+        ) + _knowledge_appendix(),
         tools=[ibkr_data_tool, judas_detector_tool],
         llm=_make_llm(),
-        knowledge_sources=_make_knowledge_source(),
-        verbose=True,
+        verbose=cfg.crew.verbose,
         allow_delegation=False,
         max_iter=5,
     )
@@ -87,6 +142,7 @@ def make_market_analyst() -> Agent:
 
 def make_setup_evaluator() -> Agent:
     """Agent 2: Scores the detected setup 0-10."""
+    cfg = _load_runtime_config()
     return Agent(
         role="ICT Setup Quality Evaluator",
         goal=(
@@ -110,11 +166,10 @@ def make_setup_evaluator() -> Agent:
             "Score 0-4 = clear skip. "
             "If no pattern was detected, score is 0. "
             "You reason from the MarketAnalyst's output — you do not call any tools."
-        ),
+        ) + _knowledge_appendix(),
         tools=[],
         llm=_make_llm(),
-        knowledge_sources=_make_knowledge_source(),
-        verbose=True,
+        verbose=cfg.crew.verbose,
         allow_delegation=False,
         max_iter=5,
     )
@@ -122,6 +177,7 @@ def make_setup_evaluator() -> Agent:
 
 def make_risk_guardian() -> Agent:
     """Agent 3: Checks risk limits and outputs TRADE or SKIP."""
+    cfg = _load_runtime_config()
     return Agent(
         role="Strict Risk Gatekeeper",
         goal=(
@@ -143,11 +199,10 @@ def make_risk_guardian() -> Agent:
             "would skip the best setups of the day. "
             "Output a JSON dict: {decision: 'TRADE' or 'SKIP', reasoning: str}. "
             "If TRADE: also include entry, stop, target, qty from prior context."
-        ),
-        tools=[db_daily_pnl_tool, db_open_positions_tool],
+        ) + _knowledge_appendix(),
+        tools=[db_daily_pnl_tool, db_open_positions_tool, session_status_tool],
         llm=_make_llm(),
-        knowledge_sources=_make_knowledge_source(),
-        verbose=True,
+        verbose=cfg.crew.verbose,
         allow_delegation=False,
         max_iter=5,
     )
@@ -155,6 +210,7 @@ def make_risk_guardian() -> Agent:
 
 def make_trade_executor() -> Agent:
     """Agent 4: Places paper order and records everything to DB."""
+    cfg = _load_runtime_config()
     return Agent(
         role="IBKR Paper Order Executor and Trade Recorder",
         goal=(
@@ -173,11 +229,10 @@ def make_trade_executor() -> Agent:
             "After recording to DB you confirm the signal_id and trade_id. "
             "You operate in PAPER MODE ONLY — the executor tool will reject any "
             "attempt to place live orders."
-        ),
+        ) + _knowledge_appendix(),
         tools=[ibkr_executor_tool, db_save_signal_tool, db_save_trade_tool],
         llm=_make_llm(),
-        knowledge_sources=_make_knowledge_source(),
-        verbose=True,
+        verbose=cfg.crew.verbose,
         allow_delegation=False,
         max_iter=8,
     )

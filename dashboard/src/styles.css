@@ -103,3 +103,20 @@ body {
   padding-left: 0.9rem;
   opacity: 0.9;
 }
+
+.markdown-dark code {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.markdown-dark pre {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.markdown-dark th,
+.markdown-dark td {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.markdown-dark th {
+  background: rgba(255, 255, 255, 0.08);
+}

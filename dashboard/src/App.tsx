@@ -1,9 +1,22 @@
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
-import { Activity, Bot, Clock3, FlaskConical, Play, SendHorizonal, ShieldAlert, Signal, TrendingUp } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  BarChart3,
+  Bot,
+  Clock3,
+  FlaskConical,
+  Play,
+  SendHorizonal,
+  ShieldAlert,
+  Signal,
+  TrendingUp,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+
+type Row = Record<string, unknown>;
 
 type Overview = {
   now_utc: string;
@@ -13,9 +26,21 @@ type Overview = {
   services: Record<string, string>;
   research_runtime: Record<string, unknown>;
   counts: Record<string, number>;
-  latest_signal: Record<string, unknown> | null;
-  latest_trade: Record<string, unknown> | null;
-  latest_experiment: Record<string, unknown> | null;
+  latest_signal: Row | null;
+  latest_trade: Row | null;
+  latest_experiment: Row | null;
+  trading_stats: {
+    headline: Record<string, number>;
+    by_symbol: Row[];
+    by_strategy: Row[];
+    generated_at_phx: string;
+  };
+  research_stats: {
+    headline: Record<string, number>;
+    active_strategies: Row[];
+    recent_walk_forward: Row[];
+    recent_experiments: Row[];
+  };
 };
 
 type ChatEntry = { role: "user" | "assistant"; content: string };
@@ -26,11 +51,20 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "number") {
+    if (Math.abs(value) >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  }
+  return String(value);
+}
+
 function App() {
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [signals, setSignals] = useState<Record<string, unknown>[]>([]);
-  const [trades, setTrades] = useState<Record<string, unknown>[]>([]);
-  const [experiments, setExperiments] = useState<Record<string, unknown>[]>([]);
+  const [signals, setSignals] = useState<Row[]>([]);
+  const [trades, setTrades] = useState<Row[]>([]);
+  const [experiments, setExperiments] = useState<Row[]>([]);
   const [chat, setChat] = useState<ChatEntry[]>([]);
   const [message, setMessage] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -39,9 +73,9 @@ function App() {
   const refresh = async () => {
     const [overviewData, signalsData, tradesData, experimentsData] = await Promise.all([
       getJson<Overview>("/api/overview"),
-      getJson<{ signals: Record<string, unknown>[] }>("/api/signals"),
-      getJson<{ trades: Record<string, unknown>[] }>("/api/trades"),
-      getJson<{ experiments: Record<string, unknown>[] }>("/api/experiments"),
+      getJson<{ signals: Row[] }>("/api/signals"),
+      getJson<{ trades: Row[] }>("/api/trades"),
+      getJson<{ experiments: Row[] }>("/api/experiments"),
     ]);
     setOverview(overviewData);
     setSignals(signalsData.signals);
@@ -97,136 +131,250 @@ function App() {
     }
   };
 
+  const headlineStats = useMemo(() => {
+    const t = overview?.trading_stats?.headline ?? {};
+    const r = overview?.research_stats?.headline ?? {};
+    return [
+      { icon: TrendingUp, label: "Realized P&L", value: formatValue(t.realized_pnl), detail: `${formatValue(t.pnl_today)} today` },
+      { icon: Activity, label: "Trades", value: formatValue(t.total_trades), detail: `${formatValue(t.open_trades)} open / ${formatValue(t.closed_trades)} closed` },
+      { icon: Signal, label: "Signal Quality", value: formatValue(t.avg_signal_quality), detail: `${formatValue(t.approved_signals)} approved / ${formatValue(t.skipped_signals)} skipped` },
+      { icon: FlaskConical, label: "Active Strategies", value: formatValue(r.active_strategy_count), detail: `${formatValue(r.walk_forward_count)} walk-forward runs` },
+    ];
+  }, [overview]);
+
   return (
     <div className="min-h-screen bg-background text-foreground bg-haze font-body">
-      <div className="mx-auto max-w-[1500px] px-6 pb-8 pt-8">
-        <header className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
-          <section className="rounded-[32px] border border-line/70 bg-panel/90 p-8 shadow-panel backdrop-blur-md">
-            <div className="flex items-start justify-between gap-6">
-              <div>
-                <p className="text-xs uppercase tracking-[0.32em] text-accent/70">Judas Operator Manager</p>
-                <h1 className="mt-3 font-display text-5xl leading-none">One manager over trading and research</h1>
-                <p className="mt-4 max-w-2xl text-sm leading-6 text-foreground/75">
-                  This manager watches the live paper trading path, the research lab cadence, timer health, and recent experiment output. Backend timestamps stay in UTC, but operator conversation is framed in Phoenix time.
-                </p>
+      <div className="mx-auto max-w-[1680px] px-5 pb-8 pt-6 lg:px-6">
+        <div className="grid gap-6 xl:grid-cols-[1.75fr_0.85fr]">
+          <main className="min-w-0">
+            <section className="rounded-[34px] border border-line/70 bg-panel/90 p-7 shadow-panel backdrop-blur-md">
+              <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.34em] text-accent/70">Trading + Research Dashboard</p>
+                  <h1 className="mt-3 font-display text-5xl leading-none">Paper portfolio stats, seeded baseline, active research</h1>
+                  <p className="mt-4 max-w-3xl text-sm leading-6 text-foreground/72">
+                    Phoenix time is the operator-facing clock everywhere on this page. The left workspace is for what the system is actually doing:
+                    active paper strategy stats, recent trading activity, seeded workshop baseline, and current backtest / walk-forward evidence.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:w-[360px]">
+                  <TimeChip label="PHX Time" value={overview?.now_phx ?? "loading..."} />
+                  <TimeChip label="Session" value={String(overview?.session?.active_session ?? "closed")} detail={String(overview?.session?.reason ?? "")} />
+                </div>
               </div>
-              <div className="rounded-3xl border border-line/70 bg-white/70 px-4 py-3 text-right">
-                <p className="text-xs uppercase tracking-[0.28em] text-foreground/45">Operator Time</p>
-                <p className="mt-2 text-lg font-semibold">{overview?.now_phx ?? "loading..."}</p>
-                <p className="text-xs text-foreground/55">Tailnet: omen-claw.tail76e7df.ts.net</p>
-              </div>
-            </div>
-            <div className="mt-8 grid gap-4 md:grid-cols-4">
-              <MetricCard icon={Clock3} label="Session" value={String(overview?.session?.active_session ?? "closed")} detail={String(overview?.session?.reason ?? "loading")} />
-              <MetricCard icon={Signal} label="Signals" value={String(overview?.counts?.signals ?? 0)} detail={String(overview?.latest_signal?.direction ?? "none")} />
-              <MetricCard icon={TrendingUp} label="Trades" value={String(overview?.counts?.trades ?? 0)} detail={String(overview?.counts?.open_trades ?? 0) + " open"} />
-              <MetricCard icon={FlaskConical} label="Experiments" value={String(overview?.counts?.experiments ?? 0)} detail={String(overview?.latest_experiment?.experiment_type ?? "none")} />
-            </div>
-          </section>
-
-          <section className="rounded-[32px] border border-line/70 bg-[#173c34] p-8 text-white shadow-panel">
-            <p className="text-xs uppercase tracking-[0.32em] text-white/60">Operator Actions</p>
-            <div className="mt-5 grid gap-3">
-              <ActionButton title="Run Doctor" subtitle="Connectivity, LLM, IBKR, session checks" icon={ShieldAlert} loading={busyAction === "/api/run/doctor"} onClick={() => runAction("/api/run/doctor")} />
-              <ActionButton title="Run Research" subtitle="Kick off the research scheduler manually" icon={Play} loading={busyAction === "/api/run/research"} onClick={() => runAction("/api/run/research")} />
-            </div>
-            <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-5">
-              <p className="text-xs uppercase tracking-[0.28em] text-white/55">Research Runtime</p>
-              <p className="mt-2 text-xl font-semibold capitalize">{String(overview?.research_runtime?.state ?? "unknown")}</p>
-              <p className="mt-2 text-sm leading-6 text-white/70">
-                {overview?.research_runtime?.started_at_utc
-                  ? `Started ${String(overview.research_runtime.started_at_utc)} UTC`
-                  : "No recent runtime state recorded."}
-              </p>
-            </div>
-          </section>
-        </header>
-
-        <main className="mt-8 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-          <section className="grid gap-6">
-            <Panel title="Service State" icon={Bot}>
-              <div className="grid gap-3 md:grid-cols-2">
-                {Object.entries(overview?.services ?? {}).map(([unit, status]) => (
-                  <div key={unit} className="rounded-3xl border border-line/70 bg-white/60 p-4">
-                    <p className="text-xs uppercase tracking-[0.24em] text-foreground/45">{unit}</p>
-                    <p className="mt-2 text-sm leading-6 text-foreground/75">{status}</p>
-                  </div>
+              <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {headlineStats.map((item) => (
+                  <MetricCard key={item.label} icon={item.icon} label={item.label} value={item.value} detail={item.detail} />
                 ))}
               </div>
-            </Panel>
-            <Panel title="Recent Signals" icon={Signal}>
-              <MiniTable rows={signals} fields={["ts_utc", "symbol", "direction", "quality_score", "risk_decision"]} />
-            </Panel>
-            <Panel title="Recent Trades" icon={Activity}>
-              <MiniTable rows={trades} fields={["opened_at", "symbol", "direction", "qty", "status", "pnl_dollars"]} />
-            </Panel>
-            <Panel title="Recent Experiments" icon={FlaskConical}>
-              <MiniTable rows={experiments} fields={["ts_utc", "experiment_type", "name", "status", "summary"]} />
-            </Panel>
-          </section>
+            </section>
 
-          <section className="sticky top-6 h-[calc(100vh-3rem)]">
-            <Panel title="Operator Manager Conversation" icon={Bot}>
-              <div className="flex h-[calc(100vh-10rem)] flex-col rounded-[28px] border border-line/70 bg-white/60 p-5">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-2xl text-white">🧭</div>
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.28em] text-foreground/45">Manager</p>
-                    <p className="text-xl font-semibold">Unified operator chat</p>
-                  </div>
-                </div>
-                <div className="flex-1 space-y-3 overflow-y-auto pr-2">
-                  {chat.length === 0 ? (
-                    <div className="rounded-3xl border border-dashed border-line bg-background/70 p-4 text-sm text-foreground/65">
-                      Ask about trading cadence, research progress, timer failures, recent experiments, or tell the manager to run doctor or research.
+            <div className="mt-6 grid gap-6 2xl:grid-cols-2">
+              <Panel title="Trading Headline Stats" icon={BarChart3}>
+                <StatsGrid
+                  items={[
+                    ["Trades Today", overview?.trading_stats?.headline?.trades_today],
+                    ["P&L Today", overview?.trading_stats?.headline?.pnl_today],
+                    ["Total Trades", overview?.trading_stats?.headline?.total_trades],
+                    ["Win Rate", overview?.trading_stats?.headline?.win_rate],
+                    ["Signal Count", overview?.trading_stats?.headline?.signal_count],
+                    ["Avg Signal Quality", overview?.trading_stats?.headline?.avg_signal_quality],
+                    ["Approved Signals", overview?.trading_stats?.headline?.approved_signals],
+                    ["Skipped Signals", overview?.trading_stats?.headline?.skipped_signals],
+                  ]}
+                />
+              </Panel>
+
+              <Panel title="Research Headline Stats" icon={FlaskConical}>
+                <StatsGrid
+                  items={[
+                    ["Active Strategies", overview?.research_stats?.headline?.active_strategy_count],
+                    ["Research Experiments", overview?.research_stats?.headline?.research_experiment_count],
+                    ["Walk-Forward Runs", overview?.research_stats?.headline?.walk_forward_count],
+                    ["Sweep Runs", overview?.research_stats?.headline?.sweep_count],
+                    ["Research Runtime", overview?.research_runtime?.state],
+                    ["Session Status", overview?.session?.reason],
+                    ["Last Signal Direction", overview?.latest_signal?.direction],
+                    ["Last Trade Status", overview?.latest_trade?.status],
+                  ]}
+                />
+              </Panel>
+
+              <Panel title="P&L By Symbol" icon={TrendingUp}>
+                <DataTable
+                  rows={overview?.trading_stats?.by_symbol ?? []}
+                  fields={["symbol", "trade_count", "realized_pnl", "open_trades"]}
+                />
+              </Panel>
+
+              <Panel title="P&L By Strategy Version" icon={Signal}>
+                <DataTable
+                  rows={overview?.trading_stats?.by_strategy ?? []}
+                  fields={["strategy_family", "strategy_version", "trade_count", "realized_pnl", "open_trades"]}
+                />
+              </Panel>
+
+              <Panel title="Active Portfolio Baseline" icon={FlaskConical}>
+                <DataTable
+                  rows={overview?.research_stats?.active_strategies ?? []}
+                  fields={["symbol", "strategy_name", "engine", "profit_factor", "trades", "winrate", "total_pnl_dollars", "max_drawdown_dollars"]}
+                />
+              </Panel>
+
+              <Panel title="Recent Walk-Forward Results" icon={Activity}>
+                <DataTable
+                  rows={overview?.research_stats?.recent_walk_forward ?? []}
+                  fields={["symbol", "name", "window_count", "avg_test_profit_factor", "avg_test_expectancy_r", "total_test_trades", "avg_test_max_drawdown_dollars", "robustness_score"]}
+                />
+              </Panel>
+
+              <Panel title="Recent Signals" icon={Signal}>
+                <DataTable
+                  rows={signals}
+                  fields={["created_at", "symbol", "direction", "quality_score", "risk_decision", "entry", "stop", "target"]}
+                />
+              </Panel>
+
+              <Panel title="Recent Trades" icon={Activity}>
+                <DataTable
+                  rows={trades}
+                  fields={["opened_at", "symbol", "direction", "qty", "entry_fill", "stop_price", "target_price", "status", "pnl_dollars"]}
+                />
+              </Panel>
+
+              <Panel title="Recent Research Experiments" icon={FlaskConical}>
+                <DataTable
+                  rows={experiments}
+                  fields={["ts_utc", "experiment_type", "name", "status", "summary"]}
+                />
+              </Panel>
+
+              <Panel title="Service Status" icon={Bot}>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {Object.entries(overview?.services ?? {}).map(([unit, status]) => (
+                    <div key={unit} className="rounded-3xl border border-line/70 bg-white/60 p-4">
+                      <p className="text-xs uppercase tracking-[0.24em] text-foreground/45">{unit}</p>
+                      <p className="mt-2 text-sm leading-6 text-foreground/74">{status}</p>
                     </div>
-                  ) : (
-                    chat.map((entry, index) => (
-                      <div
-                        key={`${entry.role}-${index}`}
-                        className={cn(
-                          "rounded-3xl px-4 py-3 text-sm leading-6",
-                          entry.role === "assistant" ? "bg-accent text-white" : "bg-sand/25 text-foreground",
-                        )}
-                      >
-                        <p className="mb-1 text-[11px] uppercase tracking-[0.24em] opacity-70">{entry.role}</p>
-                        <div className="markdown-body">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.content}</ReactMarkdown>
-                        </div>
-                      </div>
-                    ))
-                  )}
+                  ))}
                 </div>
-                <div className="mt-4 border-t border-line/70 pt-4">
-                  <p className="mb-2 text-xs uppercase tracking-[0.28em] text-foreground/45">Operator Manager</p>
-                  <div className="flex items-end gap-3">
-                    <textarea
-                      value={message}
-                      onChange={(event) => setMessage(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          sendMessage().catch(console.error);
-                        }
-                      }}
-                      placeholder="Ask the manager what is running, what failed, whether research is healthy, or tell it to run doctor or research..."
-                      className="min-h-[92px] flex-1 resize-none rounded-3xl border border-line/70 bg-background/70 px-4 py-3 text-sm leading-6 outline-none placeholder:text-foreground/45"
-                    />
-                    <button
-                      onClick={() => sendMessage().catch(console.error)}
-                      disabled={chatBusy || !message.trim()}
-                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent text-white transition hover:bg-[#215f4c] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <SendHorizonal size={18} />
-                    </button>
+              </Panel>
+            </div>
+          </main>
+
+          <aside className="xl:sticky xl:top-4 xl:h-[calc(100vh-2rem)]">
+            <div className="flex h-full flex-col rounded-[34px] border border-line/70 bg-[#14352f] p-5 text-white shadow-panel">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.32em] text-white/58">Operator Manager</p>
+                  <h2 className="mt-2 text-2xl font-semibold">Side rail chat</h2>
+                  <p className="mt-2 text-sm leading-6 text-white/72">
+                    This panel is for questions and actions. The main dashboard surface is for stats, not manager explanation.
+                  </p>
+                </div>
+                <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-right">
+                  <p className="text-[11px] uppercase tracking-[0.24em] text-white/55">PHX</p>
+                  <p className="mt-1 text-sm font-semibold">{overview?.now_phx ?? "loading..."}</p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3">
+                <ActionButton
+                  title="Run Doctor"
+                  subtitle="Connectivity, LLM, IBKR, session checks"
+                  icon={ShieldAlert}
+                  loading={busyAction === "/api/run/doctor"}
+                  onClick={() => runAction("/api/run/doctor")}
+                />
+                <ActionButton
+                  title="Run Research"
+                  subtitle="Kick off the research scheduler manually"
+                  icon={Play}
+                  loading={busyAction === "/api/run/research"}
+                  onClick={() => runAction("/api/run/research")}
+                />
+              </div>
+
+              <div className="mt-5 rounded-3xl border border-white/10 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-[0.28em] text-white/55">Runtime</p>
+                <p className="mt-2 text-lg font-semibold capitalize">{String(overview?.research_runtime?.state ?? "unknown")}</p>
+                <p className="mt-2 text-sm leading-6 text-white/72">
+                  {overview?.research_runtime?.started_at_utc
+                    ? `Research runtime started ${String(overview.research_runtime.started_at_utc)} UTC`
+                    : "No current research runtime record."}
+                </p>
+              </div>
+
+              <div className="mt-5 flex-1 overflow-hidden rounded-[28px] border border-white/10 bg-white/6 p-4">
+                <div className="flex h-full flex-col">
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#d58c3f] text-xl text-white">🧭</div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.24em] text-white/58">Conversation</p>
+                      <p className="text-base font-semibold">PHX-aware operator chat</p>
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                    {chat.length === 0 ? (
+                      <div className="rounded-3xl border border-dashed border-white/14 bg-white/6 p-4 text-sm leading-6 text-white/72">
+                        Ask about the active portfolio, current trading stats, seeded baseline quality, walk-forward results, or tell it to run doctor or research.
+                      </div>
+                    ) : (
+                      chat.map((entry, index) => (
+                        <div
+                          key={`${entry.role}-${index}`}
+                          className={cn(
+                            "rounded-3xl px-4 py-3 text-sm leading-6",
+                            entry.role === "assistant" ? "bg-white/10 text-white" : "bg-[#d58c3f] text-[#1d140a]",
+                          )}
+                        >
+                          <p className="mb-1 text-[11px] uppercase tracking-[0.24em] opacity-70">{entry.role}</p>
+                          <div className="markdown-body markdown-dark">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.content}</ReactMarkdown>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="mt-4 border-t border-white/10 pt-4">
+                    <div className="flex items-end gap-3">
+                      <textarea
+                        value={message}
+                        onChange={(event) => setMessage(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            sendMessage().catch(console.error);
+                          }
+                        }}
+                        placeholder="Ask about strategy stats, recent backtests, active portfolio health, or trigger doctor / research..."
+                        className="min-h-[100px] flex-1 resize-none rounded-3xl border border-white/12 bg-white/7 px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/42"
+                      />
+                      <button
+                        onClick={() => sendMessage().catch(console.error)}
+                        disabled={chatBusy || !message.trim()}
+                        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#d58c3f] text-[#23180b] transition hover:bg-[#f1a24d] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <SendHorizonal size={18} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </Panel>
-          </section>
-
-        </main>
+            </div>
+          </aside>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function TimeChip({ label, value, detail }: { label: string; value: string; detail?: string }) {
+  return (
+    <div className="rounded-3xl border border-line/70 bg-white/72 px-4 py-3">
+      <p className="text-[11px] uppercase tracking-[0.24em] text-foreground/45">{label}</p>
+      <p className="mt-2 text-sm font-semibold capitalize">{value}</p>
+      {detail ? <p className="mt-1 text-xs leading-5 text-foreground/58">{detail}</p> : null}
     </div>
   );
 }
@@ -243,15 +391,30 @@ function MetricCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-3xl border border-line/70 bg-white/70 p-4">
+    <div className="rounded-3xl border border-line/70 bg-white/72 p-4">
       <div className="flex items-center gap-3">
-        <div className="rounded-2xl bg-accent p-2 text-white"><Icon size={18} /></div>
+        <div className="rounded-2xl bg-accent p-2 text-white">
+          <Icon size={18} />
+        </div>
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-foreground/45">{label}</p>
-          <p className="text-xl font-semibold capitalize">{value}</p>
+          <p className="text-xl font-semibold">{value}</p>
         </div>
       </div>
       <p className="mt-3 text-xs text-foreground/60">{detail}</p>
+    </div>
+  );
+}
+
+function StatsGrid({ items }: { items: [string, unknown][] }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {items.map(([label, value]) => (
+        <div key={label} className="rounded-3xl border border-line/70 bg-white/60 p-4">
+          <p className="text-xs uppercase tracking-[0.24em] text-foreground/45">{label}</p>
+          <p className="mt-2 text-lg font-semibold">{formatValue(value)}</p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -262,60 +425,19 @@ function Panel({
   children,
 }: {
   title: string;
-  icon: typeof Clock3;
+  icon: typeof Bot;
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[32px] border border-line/70 bg-panel/90 p-6 shadow-panel">
+    <section className="rounded-[30px] border border-line/70 bg-panel/92 p-5 shadow-panel backdrop-blur-sm">
       <div className="mb-4 flex items-center gap-3">
-        <div className="rounded-2xl bg-berry p-2 text-white"><Icon size={18} /></div>
-        <h2 className="font-display text-2xl">{title}</h2>
+        <div className="rounded-2xl bg-accent p-2 text-white">
+          <Icon size={18} />
+        </div>
+        <h3 className="text-lg font-semibold">{title}</h3>
       </div>
       {children}
     </section>
-  );
-}
-
-function MiniTable({
-  rows,
-  fields,
-}: {
-  rows: Record<string, unknown>[];
-  fields: string[];
-}) {
-  return (
-    <div className="overflow-x-auto rounded-[24px] border border-line/70 bg-white/60">
-      <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-line/70 bg-white/70">
-          <tr>
-            {fields.map((field) => (
-              <th key={field} className="px-4 py-3 text-[11px] uppercase tracking-[0.24em] text-foreground/50">
-                {field.split("_").join(" ")}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={fields.length} className="px-4 py-6 text-center text-foreground/55">
-                No data yet
-              </td>
-            </tr>
-          ) : (
-            rows.map((row, index) => (
-              <tr key={index} className="border-b border-line/40 last:border-b-0">
-                {fields.map((field) => (
-                  <td key={field} className="px-4 py-3 align-top text-foreground/80">
-                    {String(row[field] ?? "")}
-                  </td>
-                ))}
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
   );
 }
 
@@ -334,18 +456,57 @@ function ActionButton({
 }) {
   return (
     <button
-      className="rounded-3xl border border-white/10 bg-white/5 px-5 py-4 text-left transition hover:bg-white/10"
       onClick={onClick}
       disabled={loading}
+      className="flex w-full items-center gap-4 rounded-3xl border border-white/10 bg-white/7 px-4 py-4 text-left transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      <div className="flex items-center gap-3">
-        <div className="rounded-2xl bg-white/10 p-2"><Icon size={18} /></div>
-        <div>
-          <p className="font-semibold">{loading ? "Running..." : title}</p>
-          <p className="text-sm text-white/65">{subtitle}</p>
-        </div>
+      <div className="rounded-2xl bg-[#d58c3f] p-2.5 text-[#24180a]">
+        <Icon size={18} />
+      </div>
+      <div>
+        <p className="font-semibold">{loading ? `${title}...` : title}</p>
+        <p className="text-sm text-white/68">{subtitle}</p>
       </div>
     </button>
+  );
+}
+
+function DataTable({ rows, fields }: { rows: Row[]; fields: string[] }) {
+  return (
+    <div className="overflow-hidden rounded-3xl border border-line/70 bg-white/58">
+      <div className="overflow-x-auto">
+        <table className="min-w-full border-collapse">
+          <thead>
+            <tr className="bg-black/4">
+              {fields.map((field) => (
+                <th key={field} className="border-b border-line/70 px-4 py-3 text-left text-[11px] uppercase tracking-[0.22em] text-foreground/50">
+                  {field.replaceAll("_", " ")}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={fields.length} className="px-4 py-6 text-sm text-foreground/56">
+                  No data yet.
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, index) => (
+                <tr key={index} className="odd:bg-white/45">
+                  {fields.map((field) => (
+                    <td key={field} className="border-b border-line/50 px-4 py-3 text-sm align-top text-foreground/76">
+                      {formatValue(row[field])}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

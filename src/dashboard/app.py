@@ -15,6 +15,7 @@ from waitress import serve
 from src.agents.judas_agents import build_llm
 from src.config import load_config
 from src.db.models import get_conn, init_db
+from src.strategy_registry import list_active_strategies
 from src.tools.session_tools import session_status_tool
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -101,6 +102,150 @@ def _fetch_recent_experiments(limit: int = 12) -> list[dict[str, Any]]:
         ]
 
 
+def _fetch_trading_stats() -> dict[str, Any]:
+    phx = ZoneInfo("America/Phoenix")
+    with get_conn(_db_path()) as conn:
+        totals = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total_trades,
+                COALESCE(SUM(CASE WHEN status = 'closed' THEN pnl_dollars ELSE 0 END), 0.0) AS realized_pnl,
+                COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_trades,
+                COALESCE(SUM(CASE WHEN status = 'closed' AND pnl_dollars > 0 THEN 1 ELSE 0 END), 0) AS wins,
+                COALESCE(SUM(CASE WHEN status = 'closed' AND pnl_dollars <= 0 THEN 1 ELSE 0 END), 0) AS losses
+            FROM trades
+            """
+        ).fetchone()
+        today = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS trades_today,
+                COALESCE(SUM(CASE WHEN status = 'closed' THEN pnl_dollars ELSE 0 END), 0.0) AS pnl_today
+            FROM trades
+            WHERE substr(opened_at, 1, 10) = strftime('%Y-%m-%d','now','localtime')
+            """
+        ).fetchone()
+        by_symbol_rows = conn.execute(
+            """
+            SELECT
+                symbol,
+                COUNT(*) AS trade_count,
+                COALESCE(SUM(CASE WHEN status = 'closed' THEN pnl_dollars ELSE 0 END), 0.0) AS realized_pnl,
+                COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_trades
+            FROM trades
+            GROUP BY symbol
+            ORDER BY realized_pnl DESC, trade_count DESC
+            """
+        ).fetchall()
+        by_strategy_rows = conn.execute(
+            """
+            SELECT
+                COALESCE(strategy_family, 'unknown') AS strategy_family,
+                COALESCE(strategy_version, 0) AS strategy_version,
+                COUNT(*) AS trade_count,
+                COALESCE(SUM(CASE WHEN status = 'closed' THEN pnl_dollars ELSE 0 END), 0.0) AS realized_pnl,
+                COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_trades
+            FROM trades
+            GROUP BY strategy_family, strategy_version
+            ORDER BY realized_pnl DESC, trade_count DESC
+            """
+        ).fetchall()
+        signal_quality = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS signal_count,
+                COALESCE(AVG(quality_score), 0.0) AS avg_quality
+            FROM signals
+            """
+        ).fetchone()
+        signal_decisions = conn.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN risk_decision = 'TRADE' THEN 1 ELSE 0 END), 0) AS approved,
+                COALESCE(SUM(CASE WHEN risk_decision = 'SKIP' THEN 1 ELSE 0 END), 0) AS skipped
+            FROM signals
+            """
+        ).fetchone()
+
+    wins = int(totals["wins"] or 0)
+    losses = int(totals["losses"] or 0)
+    closed = wins + losses
+    return {
+        "headline": {
+            "total_trades": int(totals["total_trades"] or 0),
+            "realized_pnl": round(float(totals["realized_pnl"] or 0.0), 2),
+            "open_trades": int(totals["open_trades"] or 0),
+            "win_rate": round(wins / closed, 3) if closed else 0.0,
+            "closed_trades": closed,
+            "trades_today": int(today["trades_today"] or 0),
+            "pnl_today": round(float(today["pnl_today"] or 0.0), 2),
+            "signal_count": int(signal_quality["signal_count"] or 0),
+            "avg_signal_quality": round(float(signal_quality["avg_quality"] or 0.0), 2),
+            "approved_signals": int(signal_decisions["approved"] or 0),
+            "skipped_signals": int(signal_decisions["skipped"] or 0),
+        },
+        "by_symbol": [dict(row) for row in by_symbol_rows],
+        "by_strategy": [dict(row) for row in by_strategy_rows],
+        "generated_at_phx": datetime.now(timezone.utc).astimezone(phx).isoformat(),
+    }
+
+
+def _fetch_research_stats() -> dict[str, Any]:
+    active = list_active_strategies()
+    experiments = _fetch_recent_experiments(limit=50)
+    walk_forwards = [exp for exp in experiments if exp.get("experiment_type") == "walk_forward"]
+    sweeps = [exp for exp in experiments if exp.get("experiment_type") == "judas_threshold_sweep"]
+    active_sorted = sorted(
+        active,
+        key=lambda row: float((row.get("metrics") or {}).get("profit_factor", 0.0)),
+        reverse=True,
+    )
+    best_active = []
+    for row in active_sorted[:12]:
+        metrics = row.get("metrics") or {}
+        best_active.append(
+            {
+                "symbol": row.get("symbol"),
+                "strategy_name": (row.get("params") or {}).get("strategy_name"),
+                "engine": (row.get("params") or {}).get("execution_engine"),
+                "profit_factor": metrics.get("profit_factor"),
+                "trades": metrics.get("trades"),
+                "winrate": metrics.get("winrate"),
+                "total_pnl_dollars": metrics.get("total_pnl_dollars"),
+                "max_drawdown_dollars": metrics.get("max_drawdown_dollars"),
+            }
+        )
+
+    recent_walk = []
+    for exp in walk_forwards[:10]:
+        metrics = exp.get("metrics") or {}
+        recent_walk.append(
+            {
+                "id": exp.get("id"),
+                "symbol": exp.get("symbol"),
+                "name": exp.get("name"),
+                "window_count": metrics.get("window_count"),
+                "avg_test_profit_factor": metrics.get("avg_test_profit_factor"),
+                "avg_test_expectancy_r": metrics.get("avg_test_expectancy_r"),
+                "avg_test_max_drawdown_dollars": metrics.get("avg_test_max_drawdown_dollars"),
+                "total_test_trades": metrics.get("total_test_trades"),
+                "robustness_score": metrics.get("robustness_score"),
+            }
+        )
+
+    return {
+        "headline": {
+            "active_strategy_count": len(active),
+            "research_experiment_count": len(experiments),
+            "walk_forward_count": len(walk_forwards),
+            "sweep_count": len(sweeps),
+        },
+        "active_strategies": best_active,
+        "recent_walk_forward": recent_walk,
+        "recent_experiments": experiments[:12],
+    }
+
+
 def _service_snapshot() -> dict[str, str]:
     services = [
         "judas-dashboard.service",
@@ -148,6 +293,8 @@ def _overview_payload() -> dict[str, Any]:
         "latest_signal": signals[0] if signals else None,
         "latest_trade": trades[0] if trades else None,
         "latest_experiment": experiments[0] if experiments else None,
+        "trading_stats": _fetch_trading_stats(),
+        "research_stats": _fetch_research_stats(),
     }
 
 

@@ -1,0 +1,189 @@
+"""IBKR data fetcher — CrewAI @tool wrapper.
+
+Fetches 100 x 1H bars for a symbol from IBKR Gateway (port 4002).
+Uses clientId=150 (data client, separate from execution clientId=151).
+
+Returns JSON string with bars list, prior_high, prior_low.
+"""
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import Any
+
+from crewai.tools import tool
+
+log = logging.getLogger(__name__)
+
+# MGC contract spec
+_CONTRACT_SPECS: dict[str, dict[str, Any]] = {
+    "MGC": {
+        "secType": "FUT",
+        "exchange": "COMEX",
+        "currency": "USD",
+        "lastTradeDateOrContractMonth": "",
+    },
+    "MNQ": {
+        "secType": "FUT",
+        "exchange": "CME",
+        "currency": "USD",
+        "lastTradeDateOrContractMonth": "",
+    },
+}
+
+
+def _get_nearest_contract_month() -> str:
+    """Return nearest active contract month in YYYYMM format.
+
+    For micro gold (MGC): quarterly contracts (Feb, Apr, Jun, Aug, Oct, Dec).
+    Roll roughly 2 weeks before expiry. This is a best-effort helper;
+    the actual nearest active is resolved by IBKR when lastTradeDateOrContractMonth=''.
+    """
+    now = datetime.now(tz=timezone.utc)
+    # Return empty string to let IBKR resolve the nearest active contract
+    return ""
+
+
+@tool("ibkr_data_tool")
+def ibkr_data_tool(input_json: str) -> str:
+    """Fetch 100 x 1H OHLCV bars for a symbol from IBKR paper account.
+
+    Input JSON: {"symbol": "MGC"}
+
+    Returns JSON string:
+    {
+      "bars": [{"ts": "2026-05-08T14:00:00", "open": ..., "high": ..., "low": ..., "close": ..., "volume": ...}, ...],
+      "prior_high": float,
+      "prior_low": float,
+      "error": null | "error message"
+    }
+
+    prior_high and prior_low are the prior trading day's high and low,
+    computed from bars where the date portion matches yesterday's date.
+    """
+    try:
+        from ib_async import IB, Future, util
+    except ImportError:
+        return json.dumps({"bars": [], "prior_high": 0.0, "prior_low": 0.0,
+                           "error": "ib_async not installed"})
+
+    try:
+        data = json.loads(input_json)
+        symbol = data.get("symbol", "MGC")
+    except (json.JSONDecodeError, AttributeError):
+        symbol = str(input_json).strip()
+
+    spec = _CONTRACT_SPECS.get(symbol.upper(), _CONTRACT_SPECS["MGC"])
+
+    try:
+        import os
+        host = os.environ.get("IBKR_HOST", "127.0.0.1")
+        port = int(os.environ.get("IBKR_PORT", "4002"))
+        client_id = int(os.environ.get("IBKR_DATA_CLIENT_ID", "150"))
+
+        ib = IB()
+        util.startLoop()
+
+        import asyncio
+
+        async def _fetch() -> list[dict]:
+            await ib.connectAsync(host, port, clientId=client_id, timeout=15)
+            try:
+                contract = Future(
+                    symbol=symbol.upper(),
+                    exchange=spec["exchange"],
+                    currency=spec["currency"],
+                    lastTradeDateOrContractMonth=spec["lastTradeDateOrContractMonth"],
+                )
+                qualified = await ib.qualifyContractsAsync(contract)
+                if not qualified:
+                    raise ValueError(f"Could not qualify contract for {symbol}")
+                contract = qualified[0]
+
+                bars = await ib.reqHistoricalDataAsync(
+                    contract,
+                    endDateTime="",
+                    durationStr="100 H",
+                    barSizeSetting="1 hour",
+                    whatToShow="TRADES",
+                    useRTH=False,
+                    formatDate=1,
+                    keepUpToDate=False,
+                )
+                return bars
+            finally:
+                ib.disconnect()
+
+        loop = asyncio.get_event_loop()
+        raw_bars = loop.run_until_complete(_fetch())
+
+        # Convert ib_async BarData objects to dicts
+        bars_list = []
+        for b in raw_bars:
+            # b.date may be datetime or string
+            if hasattr(b.date, "isoformat"):
+                ts = b.date.isoformat()
+                bar_date = b.date.date() if hasattr(b.date, "date") else None
+            else:
+                ts = str(b.date)
+                try:
+                    bar_date = datetime.strptime(ts[:10], "%Y-%m-%d").date()
+                except ValueError:
+                    bar_date = None
+
+            bars_list.append({
+                "ts": ts,
+                "open": float(b.open),
+                "high": float(b.high),
+                "low": float(b.low),
+                "close": float(b.close),
+                "volume": int(b.volume) if b.volume is not None else 0,
+                "_date": str(bar_date),
+            })
+
+        # Compute prior day high/low
+        if bars_list:
+            today = datetime.now(tz=timezone.utc).date()
+            yesterday = today - timedelta(days=1)
+            # Walk back to find the most recent trading day before today
+            prior_bars = [b for b in bars_list if b["_date"] < str(today)]
+            if prior_bars:
+                max_prior_date = max(b["_date"] for b in prior_bars)
+                prior_day_bars = [b for b in prior_bars if b["_date"] == max_prior_date]
+                prior_high = max(b["high"] for b in prior_day_bars)
+                prior_low = min(b["low"] for b in prior_day_bars)
+            else:
+                # Fallback: use all bars except last
+                prior_high = max(b["high"] for b in bars_list[:-1]) if len(bars_list) > 1 else 0.0
+                prior_low = min(b["low"] for b in bars_list[:-1]) if len(bars_list) > 1 else 0.0
+        else:
+            prior_high = 0.0
+            prior_low = 0.0
+
+        # Strip internal _date field
+        for b in bars_list:
+            b.pop("_date", None)
+
+        log.info("ibkr_data.fetched", extra={
+            "symbol": symbol,
+            "bar_count": len(bars_list),
+            "prior_high": prior_high,
+            "prior_low": prior_low,
+        })
+
+        return json.dumps({
+            "bars": bars_list,
+            "prior_high": prior_high,
+            "prior_low": prior_low,
+            "error": None,
+        })
+
+    except Exception as e:
+        log.error("ibkr_data.error", extra={"symbol": symbol, "error": str(e)}, exc_info=True)
+        return json.dumps({
+            "bars": [],
+            "prior_high": 0.0,
+            "prior_low": 0.0,
+            "error": str(e),
+        })

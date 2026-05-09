@@ -1,0 +1,46 @@
+mode: paper   # hard-locked; "live" will raise ValueError in code
+account: DUH860616
+
+ibkr:
+  host: "127.0.0.1"
+  port: 4002
+  data_client_id: 150
+  exec_client_id: 151
+  account: "DUH860616"
+
+symbols:
+  - symbol: MGC
+    tick: 0.10
+    dollar_per_point: 10.0
+    timeframe: "1 hour"
+  - symbol: MNQ
+    tick: 0.25
+    dollar_per_point: 2.0
+    timeframe: "1 hour"
+
+strategy:
+  judas:
+    confirmation_bars: 4       # CHoCH within N bars after sweep (1H bars, tighter than 5m)
+    pivot_length: 2
+    target_r: 2.0
+    stop_buffer_ticks: 2
+    min_sweep_ticks: 3         # sweep must be at least 3 ticks beyond level to count
+
+risk:
+  max_contracts: 1
+  daily_loss_limit_dollars: -300.0
+  max_open_positions: 2
+
+crew:
+  llm_model: "minimax/MiniMax-M2.1"
+  llm_base_url: "https://api.minimax.io/v1"
+  verbose: true
+  min_quality_score: 6          # SetupEvaluator must score >= this to proceed
+
+db_path: judas_crew.db
+
+schedule:
+  # Timer fires these windows (ET); crew runs once per firing
+  active_sessions:
+    - {start: "09:30", end: "16:00", name: "ny"}
+    - {start: "03:00", end: "08:30", name: "london"}

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "judas-agentic-crew"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "crewai>=1.14.0",
+    "crewai-tools>=0.47.0",
+    "ib_async>=1.0.0",
+    "pandas>=2.0.0",
+    "numpy>=1.26.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    "pytz>=2024.1",
+]

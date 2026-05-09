@@ -323,6 +323,15 @@ def _displacement_strength(bars_df: pd.DataFrame, choch_idx: int) -> float:
     return float(choch_range / avg_range) if avg_range > 0 else 0.0
 
 
+def _displacement_body_ratio(bars_df: pd.DataFrame, choch_idx: int) -> float:
+    """Absolute candle body / total candle range for the CHoCH bar."""
+    bar = bars_df.iloc[choch_idx]
+    candle_range = float(bar["high"] - bar["low"])
+    if candle_range <= 0:
+        return 0.0
+    return float(abs(bar["close"] - bar["open"]) / candle_range)
+
+
 def _sweep_type(bars_df: pd.DataFrame, sweep_idx: int, sweep_kind: str,
                 prior_high: float, prior_low: float) -> str:
     """'wick' if bar closed back inside the swept level, 'body' if close is also beyond."""
@@ -414,6 +423,7 @@ def run_judas_detection_rich(
     stype = _sweep_type(bars_df, sweep_idx, sweep_kind, prior_high, prior_low)
     fvg_present, fvg_high, fvg_low = _detect_fvg(bars_df, sweep_idx)
     disp_strength = _displacement_strength(bars_df, choch_idx)
+    body_ratio = _displacement_body_ratio(bars_df, choch_idx)
     choch_range = bars_df.iloc[choch_idx]["high"] - bars_df.iloc[choch_idx]["low"]
     atr_ratio = float(choch_range / current_atr) if current_atr > 0 else 0.0
 
@@ -437,6 +447,7 @@ def run_judas_detection_rich(
         "displacement": {
             "strength": round(disp_strength, 3),
             "atr_ratio": round(atr_ratio, 3),
+            "body_ratio": round(body_ratio, 3),
         },
         "fvg": {
             "present": fvg_present,
@@ -496,6 +507,11 @@ def judas_detector_tool(input_json: str) -> str:
         prior_high = float(data.get("prior_high", 0.0))
         prior_low = float(data.get("prior_low", 0.0))
         symbol = data.get("symbol", "MGC").upper()
+        strategy_params = (
+            data.get("strategy_params")
+            or (data.get("active_strategy") or {}).get("params")
+            or {}
+        )
     except (ValueError, KeyError, _json.JSONDecodeError) as e:
         return _json.dumps({"error": f"Invalid input: {e}", "pattern_found": False})
 
@@ -514,7 +530,7 @@ def judas_detector_tool(input_json: str) -> str:
     # Symbol-specific params
     _tick_map = {"MGC": 0.10, "MNQ": 0.25}
     _dpp_map = {"MGC": 10.0, "MNQ": 2.0}
-    tick_size = _tick_map.get(symbol, 0.10)
+    tick_size = float(strategy_params.get("tick_size", _tick_map.get(symbol, 0.10)))
     dollar_per_point = _dpp_map.get(symbol, 10.0)
 
     result = run_judas_detection_rich(
@@ -523,6 +539,13 @@ def judas_detector_tool(input_json: str) -> str:
         prior_high=prior_high,
         prior_low=prior_low,
         tick_size=tick_size,
+        confirmation_bars=int(strategy_params.get("confirmation_bars", 4)),
+        pivot_length=int(strategy_params.get("pivot_length", 2)),
+        target_r=float(strategy_params.get("target_r", 2.0)),
+        stop_buffer_ticks=int(strategy_params.get("stop_buffer_ticks", 2)),
+        min_sweep_ticks=int(strategy_params.get("min_sweep_ticks", 3)),
         dollar_per_point=dollar_per_point,
     )
+    if strategy_params:
+        result["strategy_params"] = strategy_params
     return _json.dumps(result, default=str)

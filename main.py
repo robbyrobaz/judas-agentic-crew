@@ -50,6 +50,22 @@ def parse_args() -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Log level (default: INFO)",
     )
+    p.add_argument(
+        "--runtime",
+        default="auto",
+        choices=["auto", "portfolio", "crew"],
+        help="Execution runtime: active-strategy portfolio, legacy CrewAI trading crew, or auto-detect",
+    )
+    p.add_argument(
+        "--seed-workshop",
+        action="store_true",
+        help="Import workshop buffet/backtest artifacts and seed active portfolio strategies before running",
+    )
+    p.add_argument(
+        "--eval-only",
+        action="store_true",
+        help="Portfolio runtime only: evaluate active strategies and record skips, but do not place paper orders",
+    )
     return p.parse_args()
 
 
@@ -133,6 +149,11 @@ def main() -> int:
         import os
         os.environ["JUDAS_DB_PATH"] = str(db_path)
 
+        if args.seed_workshop:
+            from scripts.import_workshop_seed import main as import_workshop_seed_main
+
+            import_workshop_seed_main()
+
         if args.doctor:
             return _run_doctor(symbol)
 
@@ -163,16 +184,40 @@ def main() -> int:
             )
             return 0
 
-        # Run the crew
-        from src.crews.judas_crew import JudasCrew
-        symbols = [s.symbol.upper() for s in cfg.symbols] if args.all_symbols else [symbol]
-        for current_symbol in symbols:
-            crew = JudasCrew(symbol=current_symbol, verbose=cfg.crew.verbose)
-            result = crew.kickoff(inputs={"symbol": current_symbol})
-            log.info(
-                "judas_crew.finished",
-                extra={"symbol": current_symbol, "result_type": type(result).__name__},
+        runtime = args.runtime
+        if runtime == "auto":
+            from src.strategy_registry import list_active_strategies
+
+            active = list_active_strategies()
+            runtime = "portfolio" if active else "crew"
+
+        if runtime == "portfolio":
+            from src.portfolio_runtime import run_portfolio_scan
+
+            result = run_portfolio_scan(
+                db_path=str(db_path),
+                host=cfg.ibkr.host,
+                port=cfg.ibkr.port,
+                data_client_id=cfg.ibkr.data_client_id,
+                exec_client_id=cfg.ibkr.exec_client_id,
+                max_new_trades=max(4, cfg.risk.max_trades_per_day),
+                max_open_positions=max(4, cfg.risk.max_open_positions),
+                max_trades_per_day=max(6, cfg.risk.max_trades_per_day),
+                place_orders=not args.eval_only,
             )
+            print(json.dumps({"status": "ok", "runtime": "portfolio", "result": result}, indent=2, default=str))
+            log.info("portfolio_runtime.finished", extra={"fire_count": len(result.get("fires", []))})
+        else:
+            from src.crews.judas_crew import JudasCrew
+
+            symbols = [s.symbol.upper() for s in cfg.symbols] if args.all_symbols else [symbol]
+            for current_symbol in symbols:
+                crew = JudasCrew(symbol=current_symbol, verbose=cfg.crew.verbose)
+                result = crew.kickoff(inputs={"symbol": current_symbol})
+                log.info(
+                    "judas_crew.finished",
+                    extra={"symbol": current_symbol, "result_type": type(result).__name__},
+                )
         return 0
 
     except ValueError as e:

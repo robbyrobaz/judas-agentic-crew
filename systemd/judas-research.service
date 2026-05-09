@@ -1,0 +1,12 @@
+[Unit]
+Description=Judas Research Crew scheduled tick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rob/judas-agentic-crew
+EnvironmentFile=/home/rob/judas-agentic-crew/.env
+ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python /home/rob/judas-agentic-crew/scripts/research_tick.py --symbol MGC --reason systemd
+StandardOutput=journal
+StandardError=journal

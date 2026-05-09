@@ -17,6 +17,7 @@ from pathlib import Path
 
 from crewai import Agent, LLM
 
+from src.agents.operator_context import build_operator_appendix
 from src.tools.ibkr_data import ibkr_data_tool
 from src.tools.ibkr_executor import ibkr_executor_tool
 from src.tools.judas_detector import judas_detector_tool
@@ -27,6 +28,7 @@ from src.tools.db_tools import (
     db_save_trade_tool,
 )
 from src.tools.session_tools import session_status_tool
+from src.tools.risk_policy import risk_policy_tool
 from src.config import load_config
 
 _KB_DIR = Path(__file__).parent.parent.parent / "knowledge_base"
@@ -55,6 +57,7 @@ def _load_knowledge_text() -> str:
     for fname in (
         "judas_concepts.md",
         "research_findings.md",
+        "market_hours.md",
         "workshop_context.md",
     ):
         fpath = _KB_DIR / fname
@@ -111,7 +114,10 @@ def _knowledge_appendix() -> str:
     max_chars = 12000
     if len(kb_text) > max_chars:
         kb_text = kb_text[:max_chars] + "\n\n[knowledge truncated for prompt budget]"
-    return f"\n\nReference knowledge you should treat as established context:\n{kb_text}"
+    return (
+        f"\n\nReference knowledge you should treat as established context:\n{kb_text}"
+        f"{build_operator_appendix()}"
+    )
 
 
 def make_market_analyst() -> Agent:
@@ -189,18 +195,21 @@ def make_risk_guardian() -> Agent:
             "capital by enforcing strict risk rules. You check: "
             "(1) Daily P&L: if today's realized P&L is below -$300, SKIP all trades. "
             "(2) Open positions: if 2 or more positions are already open, SKIP. "
-            "(3) Setup quality: if SetupEvaluator score < 6, SKIP immediately. "
+            "(3) Setup quality: if SetupEvaluator score is below the active strategy minimum, SKIP immediately. "
             "(4) ATR contraction: if atr_context.contracted=true, SKIP — no edge in "
             "    compressed ranges. "
-            "(5) Patience rule: if ANY condition is marginal or unclear, SKIP. "
+            "(5) Session timing: only open new trades during the configured live "
+            "    entry windows, and never hold past the hard flat deadline. "
+            "(6) Active strategy policy: use the active paper strategy parameters "
+            "    from MarketAnalyst context and apply them through the deterministic risk tool. "
+            "(6) Patience rule: if ANY condition is marginal or unclear, SKIP. "
             "    You would rather miss 10 real setups than take 1 bad one. "
-            "You do NOT apply a NY-open lockout. NY 09:30–10:30 ET is the PRIME Judas "
-            "window — the sweep often occurs in the first 30 minutes. A lockout here "
-            "would skip the best setups of the day. "
+            "NY open remains the prime Judas window, but this repo is prop-firm safe: "
+            "it uses constrained entry windows and a mandatory end-of-day flat policy. "
             "Output a JSON dict: {decision: 'TRADE' or 'SKIP', reasoning: str}. "
             "If TRADE: also include entry, stop, target, qty from prior context."
         ) + _knowledge_appendix(),
-        tools=[db_daily_pnl_tool, db_open_positions_tool, session_status_tool],
+        tools=[db_daily_pnl_tool, db_open_positions_tool, session_status_tool, risk_policy_tool],
         llm=_make_llm(),
         verbose=cfg.crew.verbose,
         allow_delegation=False,

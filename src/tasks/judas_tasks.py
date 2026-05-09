@@ -43,9 +43,9 @@ def make_tasks(symbol: str = "MGC") -> tuple[list[Task], dict]:
             f"Analyze the current market conditions for {symbol} on 1H bars.\n\n"
             f"Steps:\n"
             f"1. Call ibkr_data_tool with input '{{\"symbol\": \"{symbol}\"}}' to fetch "
-            f"   100 x 1H OHLCV bars plus the prior session high/low.\n"
+            f"   100 x 1H OHLCV bars plus the prior session high/low and active paper strategy.\n"
             f"2. Call judas_detector_tool with the full JSON from step 1 "
-            f"   (pass bars, prior_high, prior_low, and symbol='{symbol}').\n"
+            f"   (pass bars, prior_high, prior_low, active_strategy, and symbol='{symbol}').\n"
             f"3. Return a structured market summary.\n\n"
             f"If IBKR is unavailable or returns an error, report the error clearly "
             f"and set pattern_found=false."
@@ -57,6 +57,7 @@ def make_tasks(symbol: str = "MGC") -> tuple[list[Task], dict]:
             '  "bar_count": int,\n'
             '  "prior_high": float,\n'
             '  "prior_low": float,\n'
+            '  "active_strategy": {"id": int, "strategy_family": str, "version": int, "params": {...}} | null,\n'
             '  "latest_bar": {"ts": str, "open": float, "high": float, "low": float, "close": float},\n'
             '  "detector_output": {\n'
             '    "pattern_found": bool,\n'
@@ -130,14 +131,15 @@ def make_tasks(symbol: str = "MGC") -> tuple[list[Task], dict]:
             f"1. Call db_daily_pnl_tool to get today's P&L and trade count.\n"
             f"2. Call db_open_positions_tool to get open position count.\n"
             f"3. Call session_status_tool to confirm the run is inside an allowed trading window.\n"
-            f"4. Apply risk rules:\n"
-            f"   - If daily_pnl <= -300: SKIP (daily loss limit reached)\n"
-            f"   - If open_count >= 2: SKIP (max positions reached)\n"
-            f"   - If SetupEvaluator score < 6: SKIP (quality gate failed)\n"
-            f"   - If atr_context.contracted=true: SKIP (ATR too compressed)\n"
-            f"   - If can_trade_now=false: SKIP (weekend or out of session)\n"
+            f"4. Call risk_policy_tool with detector_output, SetupEvaluator score, daily PnL, "
+            f"open_count, trades_today, can_trade_now, and active_strategy.params from Task 1.\n"
+            f"5. Use the deterministic risk_policy_tool result as the hard gate:\n"
+            f"   - It enforces daily loss, max positions, max trades/day, quality score minimum,\n"
+            f"     ATR, displacement, body ratio, sweep freshness, and optional FVG rules.\n"
+            f"   - If can_trade_now=false: SKIP (market closed, outside entry window, or near hard flat)\n"
+            f"   - If flatten_positions_now=true: SKIP and instruct that positions should be flat before daily close\n"
             f"   - If any condition is marginal or unclear: SKIP\n"
-            f"5. Output your decision with full reasoning.\n\n"
+            f"6. Output your decision with full reasoning.\n\n"
             f"Remember: patience rule — when in doubt, SKIP. Missing a setup costs "
             f"nothing; taking a bad setup costs real money."
         ),
@@ -180,10 +182,12 @@ def make_tasks(symbol: str = "MGC") -> tuple[list[Task], dict]:
             f"1. Read the RiskGuardian decision from Task 3.\n"
             f"2. IF decision == 'TRADE':\n"
             f"   a. Call ibkr_executor_tool with trade_params from Task 3.\n"
-            f"   b. Call db_save_signal_tool with full signal data (risk_decision='TRADE').\n"
+            f"   b. Call db_save_signal_tool with full signal data (risk_decision='TRADE') and "
+            f"      include active_strategy id/family/version from Task 1.\n"
             f"   c. Call db_save_trade_tool with signal_id from step (b) + order details.\n"
             f"3. IF decision == 'SKIP':\n"
-            f"   a. Call db_save_signal_tool with signal data (risk_decision='SKIP').\n"
+            f"   a. Call db_save_signal_tool with signal data (risk_decision='SKIP') and "
+            f"      include active_strategy id/family/version from Task 1.\n"
             f"   b. Do NOT call ibkr_executor_tool or db_save_trade_tool.\n"
             f"4. Return a final run summary.\n\n"
             f"Always record signals to DB even on SKIP — complete records are essential "

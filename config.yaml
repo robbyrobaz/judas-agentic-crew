@@ -30,6 +30,12 @@ risk:
   max_contracts: 1
   daily_loss_limit_dollars: -300.0
   max_open_positions: 2
+  max_trades_per_day: 2
+  atr_contraction_min_ratio: 0.60
+  min_displacement_strength: 1.50
+  min_displacement_body_ratio: 0.50
+  max_sweep_age_bars: 2
+  flatten_before_daily_close_minutes: 5
 
 crew:
   llm_model: "MiniMax-M2.7"
@@ -42,7 +48,9 @@ crew:
 db_path: judas_crew.db
 
 schedule:
-  # Timer fires these windows (ET); crew runs once per firing
+  # Strategy entry windows (ET). Futures market itself follows Globex hours.
   active_sessions:
-    - {start: "09:30", end: "16:00", name: "ny"}
-    - {start: "03:00", end: "08:30", name: "london"}
+    - {start: "09:30", end: "11:30", name: "ny_open"}
+    - {start: "14:00", end: "15:30", name: "power_hour"}
+  hard_flat_deadline: "16:45"
+  daily_reset: "17:00"

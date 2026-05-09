@@ -1,0 +1,16 @@
+[Unit]
+Description=Judas Agentic Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/rob/judas-agentic-crew
+Environment=JUDAS_DASHBOARD_HOST=127.0.0.1
+Environment=JUDAS_DASHBOARD_PORT=5080
+ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python /home/rob/judas-agentic-crew/scripts/run_dashboard.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #16140f;
+  background: #f5efe2;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.markdown-body {
+  line-height: 1.6;
+}
+
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body table,
+.markdown-body pre,
+.markdown-body blockquote {
+  margin: 0.5rem 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.25rem;
+}
+
+.markdown-body li + li {
+  margin-top: 0.25rem;
+}
+
+.markdown-body strong {
+  font-weight: 700;
+}
+
+.markdown-body code {
+  border-radius: 0.5rem;
+  background: rgba(22, 20, 15, 0.08);
+  padding: 0.1rem 0.35rem;
+  font-size: 0.9em;
+}
+
+.markdown-body pre {
+  overflow-x: auto;
+  border-radius: 1rem;
+  background: rgba(22, 20, 15, 0.08);
+  padding: 0.9rem 1rem;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 1rem;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-body th {
+  background: rgba(255, 255, 255, 0.12);
+  font-weight: 600;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid rgba(255, 255, 255, 0.45);
+  padding-left: 0.9rem;
+  opacity: 0.9;
+}

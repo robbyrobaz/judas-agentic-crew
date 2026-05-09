@@ -43,6 +43,12 @@ class RiskConfig:
     max_contracts: int = 1
     daily_loss_limit_dollars: float = -300.0
     max_open_positions: int = 2
+    max_trades_per_day: int = 2
+    atr_contraction_min_ratio: float = 0.60
+    min_displacement_strength: float = 1.50
+    min_displacement_body_ratio: float = 0.50
+    max_sweep_age_bars: int = 2
+    flatten_before_daily_close_minutes: int = 5
 
 
 @dataclass

@@ -7,6 +7,5 @@ Type=oneshot
 WorkingDirectory=/home/rob/judas-agentic-crew
 ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python main.py --symbol MGC
 EnvironmentFile=/home/rob/judas-agentic-crew/.env
-User=rob
 StandardOutput=journal
 StandardError=journal

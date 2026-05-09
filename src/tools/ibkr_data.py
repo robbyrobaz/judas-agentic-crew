@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from crewai.tools import tool
+from src.strategy_registry import get_active_or_default
 
 log = logging.getLogger(__name__)
 
@@ -156,10 +157,21 @@ def ibkr_data_tool(input_json: str) -> str:
             "prior_low": prior_low,
         })
 
+        active = get_active_or_default(symbol=symbol.upper(), strategy_family="judas_1h")
+
         return json.dumps({
             "bars": bars_list,
             "prior_high": prior_high,
             "prior_low": prior_low,
+            "active_strategy": {
+                "id": active.id,
+                "strategy_family": active.strategy_family,
+                "version": active.version,
+                "params": active.params,
+                "metrics": active.metrics,
+                "activated_at_utc": active.activated_at_utc,
+                "notes": active.notes,
+            },
             "error": None,
         })
 
@@ -169,5 +181,6 @@ def ibkr_data_tool(input_json: str) -> str:
             "bars": [],
             "prior_high": 0.0,
             "prior_low": 0.0,
+            "active_strategy": None,
             "error": str(e),
         })

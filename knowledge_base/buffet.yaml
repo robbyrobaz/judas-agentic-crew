@@ -1,0 +1,174 @@
+# JudasFutures strategy buffet — hourly-polled candidate strategies.
+# Rebuilt 2026-05-05, ranked by PROFIT FACTOR (gross wins / |gross losses|).
+# Winrate is intentionally NOT the primary metric — a 30%/PF=2.5 strategy
+# is strictly better than a 70%/PF=1.1 one.
+#
+# Bucketing on backtest data (5.5 mo of fresh 1h IBKR bars, sleeve-realistic):
+#   STRONG (PF >= 2.0): the real edge
+#   solid  (1.5–2.0)  : tradeable
+#   below              : not in the buffet
+#
+# Re-run scripts/rank_by_pf.py to refresh.
+
+strategies:
+  # --- STRONG (PF ≥ 2.0): top of the buffet --------------------------
+  - id: met_rsi_20_80_15_10
+    kind: zoo
+    symbol: MET
+    type: rsi
+    params: { period: 14, lo_thr: 20, hi_thr: 80, target_r: 1.5, stop_atr_mult: 1.0 }
+    fires_per_month: 2.4
+    backtest: { profit_factor: 4.70, trades: 14, winrate: 0.64, pnl_usd: 282, max_dd_usd: 25 }
+
+  - id: dx_rsi_25_75_15_10
+    kind: zoo
+    symbol: DX
+    type: rsi
+    params: { period: 14, lo_thr: 25, hi_thr: 75, target_r: 1.5, stop_atr_mult: 1.0 }
+    fires_per_month: 1.5
+    backtest: { profit_factor: 3.64, trades: 9, winrate: 0.67, pnl_usd: 583, max_dd_usd: 88 }
+
+  - id: met_rsi_20_80_10_10
+    kind: zoo
+    symbol: MET
+    type: rsi
+    params: { period: 14, lo_thr: 20, hi_thr: 80, target_r: 1.0, stop_atr_mult: 1.0 }
+    fires_per_month: 2.4
+    backtest: { profit_factor: 3.14, trades: 14, winrate: 0.64, pnl_usd: 162, max_dd_usd: 25 }
+
+  - id: met_rsi_20_80_10_15
+    kind: zoo
+    symbol: MET
+    type: rsi
+    params: { period: 14, lo_thr: 20, hi_thr: 80, target_r: 1.0, stop_atr_mult: 1.5 }
+    fires_per_month: 2.4
+    backtest: { profit_factor: 2.80, trades: 14, winrate: 0.64, pnl_usd: 205, max_dd_usd: 38 }
+
+  - id: mbt_ma_12_26_30_10
+    kind: zoo
+    symbol: MBT
+    type: ma_cross
+    params: { fast: 12, slow: 26, target_r: 3.0, stop_atr_mult: 1.0 }
+    fires_per_month: 1.9
+    backtest: { profit_factor: 2.49, trades: 11, winrate: 0.46, pnl_usd: 386, max_dd_usd: 173 }
+
+  - id: dx_rsi_25_75_10_10
+    kind: zoo
+    symbol: DX
+    type: rsi
+    params: { period: 14, lo_thr: 25, hi_thr: 75, target_r: 1.0, stop_atr_mult: 1.0 }
+    fires_per_month: 1.5
+    backtest: { profit_factor: 2.43, trades: 9, winrate: 0.67, pnl_usd: 315, max_dd_usd: 88 }
+
+  - id: mcl_ma_9_21_30_15
+    kind: zoo
+    symbol: MCL
+    type: ma_cross
+    params: { fast: 9, slow: 21, target_r: 3.0, stop_atr_mult: 1.5 }
+    fires_per_month: 3.8
+    backtest: { profit_factor: 2.24, trades: 25, winrate: 0.44, pnl_usd: 683, max_dd_usd: 167 }
+
+  - id: mgc_mnq_pair_w100_e25
+    kind: pair
+    symbols: [MGC, MNQ]
+    type: zspread
+    params: { window: 100, z_entry: 2.5, z_exit: 0.5, z_stop: 4.5 }
+    fires_per_month: 3.0
+    backtest: { profit_factor: 2.17, trades: 18, winrate: 0.61, pnl_usd: 8581, max_dd_usd: 3506 }
+
+  - id: mbt_ma_20_50_30_15
+    kind: zoo
+    symbol: MBT
+    type: ma_cross
+    params: { fast: 20, slow: 50, target_r: 3.0, stop_atr_mult: 1.5 }
+    fires_per_month: 2.7
+    backtest: { profit_factor: 2.17, trades: 16, winrate: 0.44, pnl_usd: 852, max_dd_usd: 328 }
+
+  - id: mgc_mnq_pair_w100_e20
+    kind: pair
+    symbols: [MGC, MNQ]
+    type: zspread
+    params: { window: 100, z_entry: 2.0, z_exit: 0.5, z_stop: 4.5 }
+    fires_per_month: 4.1
+    backtest: { profit_factor: 2.06, trades: 24, winrate: 0.67, pnl_usd: 9188, max_dd_usd: 3950 }
+
+  # --- solid (PF 1.5–2.0): rest of the buffet ------------------------
+  - id: 6j_ma_50_200_30_10
+    kind: zoo
+    symbol: 6J
+    type: ma_cross
+    params: { fast: 50, slow: 200, target_r: 3.0, stop_atr_mult: 1.0 }
+    fires_per_month: 1.4
+    backtest: { profit_factor: 1.82, trades: 8, winrate: 0.38, pnl_usd: 352, max_dd_usd: 255 }
+
+  - id: mcl_rsi_25_75_15_10
+    kind: zoo
+    symbol: MCL
+    type: rsi
+    params: { period: 14, lo_thr: 25, hi_thr: 75, target_r: 1.5, stop_atr_mult: 1.0 }
+    fires_per_month: 2.0
+    backtest: { profit_factor: 1.79, trades: 13, winrate: 0.54, pnl_usd: 188, max_dd_usd: 141 }
+
+  - id: mbt_ma_20_50_15_15
+    kind: zoo
+    symbol: MBT
+    type: ma_cross
+    params: { fast: 20, slow: 50, target_r: 1.5, stop_atr_mult: 1.5 }
+    fires_per_month: 2.7
+    backtest: { profit_factor: 1.78, trades: 18, winrate: 0.56, pnl_usd: 502, max_dd_usd: 358 }
+
+  - id: mcl_ma_9_21_20_15
+    kind: zoo
+    symbol: MCL
+    type: ma_cross
+    params: { fast: 9, slow: 21, target_r: 2.0, stop_atr_mult: 1.5 }
+    fires_per_month: 5.2
+    backtest: { profit_factor: 1.71, trades: 34, winrate: 0.47, pnl_usd: 497, max_dd_usd: 149 }
+
+  - id: mcl_mgc_pair_w100_e25
+    kind: pair
+    symbols: [MCL, MGC]
+    type: zspread
+    params: { window: 100, z_entry: 2.5, z_exit: 0.5, z_stop: 4.5 }
+    fires_per_month: 3.5
+    backtest: { profit_factor: 1.69, trades: 23, winrate: 0.48, pnl_usd: 6141, max_dd_usd: 6053 }
+
+  - id: mcl_bb_20_15
+    kind: zoo
+    symbol: MCL
+    type: bollinger
+    params: { period: 20, n_std: 2.0, target_r: 1.5, stop_atr_mult: 1.0 }
+    fires_per_month: 11.8
+    backtest: { profit_factor: 1.65, trades: 77, winrate: 0.53, pnl_usd: 868, max_dd_usd: 247 }
+
+  - id: dx_rsi_30_70_10_10
+    kind: zoo
+    symbol: DX
+    type: rsi
+    params: { period: 14, lo_thr: 30, hi_thr: 70, target_r: 1.0, stop_atr_mult: 1.0 }
+    fires_per_month: 3.4
+    backtest: { profit_factor: 1.63, trades: 22, winrate: 0.59, pnl_usd: 425, max_dd_usd: 159 }
+
+  - id: mcl_ma_9_21_30_10
+    kind: zoo
+    symbol: MCL
+    type: ma_cross
+    params: { fast: 9, slow: 21, target_r: 3.0, stop_atr_mult: 1.0 }
+    fires_per_month: 8.2
+    backtest: { profit_factor: 1.62, trades: 53, winrate: 0.34, pnl_usd: 786, max_dd_usd: 235 }
+
+  - id: mbt_mcl_pair_w80_e20
+    kind: pair
+    symbols: [MBT, MCL]
+    type: zspread
+    params: { window: 80, z_entry: 2.0, z_exit: 0.5, z_stop: 4.5 }
+    fires_per_month: 5.2
+    backtest: { profit_factor: 1.62, trades: 34, winrate: 0.44, pnl_usd: 3120, max_dd_usd: 2826 }
+
+  - id: met_rsi_30_70_15_15
+    kind: zoo
+    symbol: MET
+    type: rsi
+    params: { period: 14, lo_thr: 30, hi_thr: 70, target_r: 1.5, stop_atr_mult: 1.5 }
+    fires_per_month: 9.7
+    backtest: { profit_factor: 1.55, trades: 63, winrate: 0.51, pnl_usd: 403, max_dd_usd: 179 }

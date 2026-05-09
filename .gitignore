@@ -1,8 +1,13 @@
 .env
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 .venv/
 __pycache__/
 *.pyc
+*.tsbuildinfo
 outputs/
 logs/
+dashboard/node_modules/
+dashboard/dist/

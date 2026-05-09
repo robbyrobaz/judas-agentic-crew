@@ -20,6 +20,16 @@ systemctl --user daemon-reload
 echo "Importing workshop seed portfolio ..."
 /home/rob/judas-agentic-crew/.venv/bin/python /home/rob/judas-agentic-crew/scripts/import_workshop_seed.py || true
 
+if command -v npm >/dev/null 2>&1 && [ -f "/home/rob/judas-agentic-crew/dashboard/package.json" ]; then
+  echo "Installing dashboard dependencies and building frontend ..."
+  cd /home/rob/judas-agentic-crew/dashboard
+  npm ci
+  npm run build
+  cd /home/rob/judas-agentic-crew
+else
+  echo "Skipping dashboard build: npm not found."
+fi
+
 echo "Enabling judas-crew.timer ..."
 systemctl --user enable judas-crew.timer
 

@@ -5,6 +5,8 @@ team='coder' agent_tasks rows; for each, records a symptom in
 auto_fixes and triggers ``_try_run_one_autofix``. Does NOT touch
 order-routing files (deny-list enforced by the existing post-commit
 hook).
+Always check the current time and market hours when reasoning about timing.
+
 """
 from __future__ import annotations
 
@@ -34,9 +36,7 @@ Record your own findings as you discover anything worth remembering
 (e.g. a bug pattern that has recurred).
 """
 
-INCLUDE_TOOLS = {
-    "get_market_state",  # injected each cycle in the runner banner; also callable
-    "claim_task", "complete_task", "get_open_tasks",
+INCLUDE_TOOLS = {    "claim_task", "complete_task", "get_open_tasks",
     # shared findings memory
     "record_finding", "read_findings", "retract_finding",
     "get_strategy_dossier",

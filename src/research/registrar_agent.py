@@ -38,11 +38,10 @@ You cannot ingest content, run backtests, or place trades.
 
 You have {turn_budget} tool calls and {time_budget_s} seconds. End by
 summarising the mutations applied.
+Always check the current time and market hours when reasoning about timing.
 """
 
-INCLUDE_TOOLS = {
-    "get_market_state",  # injected each cycle in the runner banner; also callable
-    "retire_strategy", "promote_candidate", "modify_strategy_params",
+INCLUDE_TOOLS = {    "retire_strategy", "promote_candidate", "modify_strategy_params",
     "reactivate_demoted", "get_active_strategies", "get_candidates_queue",
     "get_strategy_detail",
     "claim_task", "complete_task", "get_open_tasks",

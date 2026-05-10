@@ -37,11 +37,10 @@ Workflow each cycle:
 
 You have {turn_budget} tool calls and {time_budget_s} seconds. End by
 emitting a brief summary of what you researched and what you proposed.
+Always check the current time and market hours when reasoning about timing.
 """
 
-INCLUDE_TOOLS = {
-    "get_market_state",  # injected each cycle in the runner banner; also callable
-    # reads
+INCLUDE_TOOLS = {    # reads
     "get_active_strategies", "get_strategy_detail", "get_workshop_leaderboard",
     "get_candidates_queue", "get_recent_pnl", "get_regime_tag",
     "get_recent_briefs", "get_recent_experiments", "query_db",

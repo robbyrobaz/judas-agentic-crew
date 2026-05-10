@@ -93,13 +93,12 @@ to trade, what to retire, what to fix.
 
 You have {turn_budget} tool calls and {time_budget_s} seconds. End
 by emitting a brief summary of what you delegated and why.
+Always check the current time and market hours when reasoning about timing.
 """
 
 
 # Operator's palette: delegations + reads only. Explicitly NOT action tools.
-INCLUDE_TOOLS = {
-    "get_market_state",  # injected each cycle in the runner banner; also callable
-    # delegations
+INCLUDE_TOOLS = {    # delegations
     "delegate_to_researcher", "delegate_to_trader",
     "delegate_to_registrar", "delegate_to_coder",
     # reads

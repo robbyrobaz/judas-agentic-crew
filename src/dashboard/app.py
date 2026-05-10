@@ -564,14 +564,6 @@ def _overview_payload() -> dict[str, Any]:
     }
 
 
-def _time_banner_for_chat() -> str:
-    try:
-        from src.research.market_clock import format_market_banner
-        return format_market_banner()
-    except Exception:  # noqa: BLE001
-        return ""
-
-
 def _build_chat_prompt(message: str) -> str:
     overview = _overview_payload()
     latest_signals = _fetch_recent_signals(limit=5)
@@ -622,7 +614,6 @@ def _build_chat_prompt(message: str) -> str:
         "ids that conflict with the fresh data, the fresh data wins.\n\n"
         "The operator is in America/Phoenix. When replying, use PHX time by default. "
         "The backend and DB may still use UTC internally. This repo is IBKR paper-only, not live.\n\n"
-        f"{_time_banner_for_chat()}\n"
         f"{freshness}\n"
         f"Current overview:\n{json.dumps(overview, indent=2)}\n\n"
         f"Active strategies ({len(active_strategies)}):\n{json.dumps(active_strategies, indent=2)}\n\n"

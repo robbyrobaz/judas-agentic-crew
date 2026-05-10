@@ -38,11 +38,10 @@ or promote candidates. Stay in your lane.
 
 You have {turn_budget} tool calls and {time_budget_s} seconds. End by
 summarising trades placed/cancelled this cycle.
+Always check the current time and market hours when reasoning about timing.
 """
 
-INCLUDE_TOOLS = {
-    "get_market_state",  # injected each cycle in the runner banner; also callable
-    "place_bracket_order", "cancel_order",
+INCLUDE_TOOLS = {    "place_bracket_order", "cancel_order",
     "get_open_positions", "get_fills", "get_recent_pnl",
     "claim_task", "complete_task", "get_open_tasks",
     # shared findings memory

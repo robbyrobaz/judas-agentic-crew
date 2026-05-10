@@ -21,6 +21,27 @@ from src.research import agent_tools
 log = logging.getLogger(__name__)
 
 
+# The Coder runs a deterministic loop (no LLM ReAct), but still exposes
+# the shared queue + findings tools. Listed here for palette regression
+# tests and so any future LLM-driven coder cycle inherits them.
+SYSTEM_PROMPT = """\
+You are the Coder on a paper futures trading lab. You triage and fix
+bugs via the Phase 3 autofix harness.
+
+At the start of each cycle, call read_findings() to see what the team
+has learned recently — that's your persistent memory across cycles.
+Record your own findings as you discover anything worth remembering
+(e.g. a bug pattern that has recurred).
+"""
+
+INCLUDE_TOOLS = {
+    "claim_task", "complete_task", "get_open_tasks",
+    # shared findings memory
+    "record_finding", "read_findings", "retract_finding",
+    "get_strategy_dossier",
+}
+
+
 @dataclass
 class CoderResult:
     success: bool
@@ -93,8 +114,8 @@ def run_coder_decision(
 
     tools, _schemas = agent_tools.make_tools(
         db_path=db_path,
-        include={"claim_task", "complete_task", "get_open_tasks"},
-        team="coder", claimed_by="coder_agent",
+        include=INCLUDE_TOOLS,
+        team="coder", claimed_by="coder_agent", author="coder",
     )
 
     actions: list[dict] = []

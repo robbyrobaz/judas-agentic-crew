@@ -437,20 +437,49 @@ def _build_chat_prompt(message: str) -> str:
     overview = _overview_payload()
     latest_signals = _fetch_recent_signals(limit=5)
     latest_trades = _fetch_recent_trades(limit=5)
-    latest_experiments = _fetch_recent_experiments(limit=5)
-    history = CHAT_HISTORY[-10:]
+    latest_experiments = _fetch_recent_experiments(limit=8)
+    # Truncate history aggressively. Long history was causing the model to
+    # reference experiment ids it discussed days ago and ignore the
+    # freshly-pulled rows directly above it. Keep only the immediate context.
+    history = CHAT_HISTORY[-4:]
     history_text = "\n".join(f"{item['role']}: {item['content']}" for item in history)
+
+    # Loud freshness banner. Compute a one-line snapshot the model can't
+    # plausibly miss when scanning the prompt.
+    if latest_experiments:
+        latest_exp = latest_experiments[0]
+        ladder = ", ".join(
+            f"#{e['id']} {e.get('experiment_type','')}@{e.get('ts_utc','')[:19]}"
+            for e in latest_experiments[:5]
+        )
+        freshness = (
+            f"FRESHNESS BANNER (this overrides anything you said earlier in chat history):\n"
+            f"  - Latest research_experiments row id is #{latest_exp['id']} "
+            f"({latest_exp.get('experiment_type','')}, {latest_exp.get('name','')}), "
+            f"ts {latest_exp.get('ts_utc','')}.\n"
+            f"  - Last 5 experiment ids/types: {ladder}.\n"
+            f"  - Total recent experiments returned: {len(latest_experiments)}.\n"
+            f"If your reply names an experiment id older than #{latest_exp['id']} as 'the latest', "
+            f"you are wrong — re-read the Recent experiments block below and use that.\n"
+        )
+    else:
+        freshness = "FRESHNESS BANNER: no research_experiments rows present.\n"
+
     return (
         f"{OPERATOR_MANAGER_PROMPT}\n\n"
         "You are replying inside the Judas dashboard. Be concise, concrete, and operational.\n"
-        "Never claim a live action happened unless it is present in the provided context.\n\n"
+        "Never claim a live action happened unless it is present in the provided context.\n"
+        "Always treat the provided overview/experiments blocks as ground truth. "
+        "If chat history references stale ids that conflict with the fresh data, the fresh data wins.\n\n"
         "The operator is in America/Phoenix. When replying, use PHX time by default. "
         "The backend and DB may still use UTC internally. This repo is IBKR paper-only, not live.\n\n"
+        f"{freshness}\n"
         f"Current overview:\n{json.dumps(overview, indent=2)}\n\n"
         f"Recent signals:\n{json.dumps(latest_signals, indent=2)}\n\n"
         f"Recent trades:\n{json.dumps(latest_trades, indent=2)}\n\n"
         f"Recent experiments:\n{json.dumps(latest_experiments, indent=2)}\n\n"
-        f"Conversation so far:\n{history_text or '[none]'}\n\n"
+        f"Conversation so far (older context, may be stale — fresh blocks above win):\n"
+        f"{history_text or '[none]'}\n\n"
         f"User message: {message}\n"
     )
 

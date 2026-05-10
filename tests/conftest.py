@@ -30,3 +30,9 @@ def pytest_configure(config):
     os.environ.pop("MINIMAX_API_KEY", None)
     os.environ.setdefault("JUDAS_AUTOFIX_INHIBIT", "1")
     os.environ.setdefault("JUDAS_PM_AGENT_INHIBIT", "1")
+    # Phase 10 specialists inhibited by default — tests opt in by clearing.
+    os.environ.setdefault("JUDAS_OPERATOR_AGENT_INHIBIT", "1")
+    os.environ.setdefault("JUDAS_RESEARCHER_AGENT_INHIBIT", "1")
+    os.environ.setdefault("JUDAS_TRADER_AGENT_INHIBIT", "1")
+    os.environ.setdefault("JUDAS_REGISTRAR_AGENT_INHIBIT", "1")
+    os.environ.setdefault("JUDAS_CODER_AGENT_INHIBIT", "1")

@@ -427,6 +427,210 @@ class OperatorFlow(Flow[OperatorState]):
             },
         )
 
+        # Phase 3 wire-up: dispatch ONE autofix attempt per flow invocation.
+        # Trigger gates from autofix_executor.can_autofix() enforce paper-safe
+        # conditions (autofix.disable, market closed, no open positions,
+        # MAX_AUTOFIXES_PER_DAY).
+        try:
+            self._try_run_one_autofix(db_path=db_path)
+        except Exception:  # noqa: BLE001
+            log.exception("operator.fix_bug_step.autofix_dispatch_failed")
+
+    def _try_run_one_autofix(self, *, db_path: str) -> None:
+        """Pick the oldest 'detected' auto_fixes row and try to fix it via
+        worktree → M2.7 harness → commit+push. Updates the row with results.
+
+        Inhibit via ``JUDAS_AUTOFIX_INHIBIT=1`` — the test suite sets this so
+        unit tests that exercise just the symptom-recording path don't pay
+        for a real harness invocation.
+        """
+        if os.environ.get("JUDAS_AUTOFIX_INHIBIT") == "1":
+            log.info("operator.autofix.inhibited_by_env")
+            return
+        import sqlite3
+        from src.research.autofix_executor import (
+            ALLOWLIST_PATTERNS,
+            DENYLIST_PATTERNS,
+            can_autofix,
+            cleanup_worktree,
+            commit_and_push,
+            create_autofix_worktree,
+            install_denylist_hook,
+        )
+        from src.research.autofix_harness import run_harness
+
+        allowed, reason = can_autofix()
+        if not allowed:
+            log.info("operator.autofix.gated", extra={"reason": reason})
+            return
+
+        repo_root = str(_REPO_ROOT)
+        # Find the most recent 'detected' symptom we haven't tried.
+        try:
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT id, symptom_category, symptom_hash, symptom_summary
+                FROM auto_fixes
+                WHERE status = 'detected' AND operator_decision IS NULL
+                ORDER BY started_at_utc DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            conn.close()
+        except sqlite3.Error:
+            log.exception("operator.autofix.select_failed")
+            return
+        if row is None:
+            log.info("operator.autofix.no_detected_rows")
+            return
+
+        autofix_id = int(row["id"])
+        symptom_category = row["symptom_category"]
+        symptom_summary = row["symptom_summary"]
+        slug = (symptom_category or "fix").replace(" ", "-")[:32]
+
+        try:
+            ctx = create_autofix_worktree(
+                autofix_id=autofix_id,
+                symptom_slug=slug,
+                repo_root=repo_root,
+            )
+            install_denylist_hook(worktree_path=ctx.worktree_path)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("operator.autofix.worktree_failed")
+            self._update_autofix(
+                db_path=db_path, autofix_id=autofix_id,
+                status="error", test_result=None, diff_summary=None,
+                files_changed_json=None, prompt=None, branch_name=None,
+                worktree_path=None, pushed=0, finished=True,
+                test_output_tail=f"worktree creation failed: {exc}",
+            )
+            return
+
+        prompt = (
+            f"Symptom category: {symptom_category}\n"
+            f"Summary: {symptom_summary}\n\n"
+            f"Diagnose the root cause within the allowlisted files only. "
+            f"Apply the minimal patch that resolves the symptom and makes "
+            f"pytest pass. If the fix requires touching a denylisted file, "
+            f"explain why and stop.\n"
+        )
+
+        # Mark running before harness call.
+        self._update_autofix(
+            db_path=db_path, autofix_id=autofix_id,
+            status="running", branch_name=ctx.branch_name,
+            worktree_path=ctx.worktree_path, prompt=prompt,
+        )
+
+        try:
+            result = run_harness(
+                prompt=prompt,
+                worktree_path=ctx.worktree_path,
+                allowlist=list(ALLOWLIST_PATTERNS),
+                denylist=list(DENYLIST_PATTERNS),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.exception("operator.autofix.harness_failed")
+            cleanup_worktree(worktree_path=ctx.worktree_path,
+                             branch_name=ctx.branch_name, keep_branch=True)
+            self._update_autofix(
+                db_path=db_path, autofix_id=autofix_id,
+                status="error", test_result="error",
+                test_output_tail=f"harness exception: {exc}",
+                finished=True,
+            )
+            return
+
+        files_changed_json = None
+        try:
+            import json as _json
+            files_changed_json = _json.dumps(result.files_changed)
+        except Exception:  # noqa: BLE001
+            files_changed_json = "[]"
+
+        if not result.success:
+            log.warning("operator.autofix.harness_no_fix",
+                        extra={"error": result.error, "test_passed": result.test_passed})
+            cleanup_worktree(worktree_path=ctx.worktree_path,
+                             branch_name=ctx.branch_name, keep_branch=False)
+            self._update_autofix(
+                db_path=db_path, autofix_id=autofix_id,
+                status="error",
+                test_result="failed" if not result.test_passed else "skipped",
+                diff_summary=result.diff_summary,
+                files_changed_json=files_changed_json,
+                test_output_tail=(result.test_output_tail or result.error or "")[:4000],
+                finished=True,
+            )
+            return
+
+        # Patch applied + tests passed. Commit + push.
+        commit_message = f"autofix({symptom_category}): {symptom_summary[:60]}"
+        push_result = commit_and_push(
+            worktree_path=ctx.worktree_path,
+            branch_name=ctx.branch_name,
+            message=commit_message,
+        )
+        cleanup_worktree(worktree_path=ctx.worktree_path,
+                         branch_name=ctx.branch_name, keep_branch=True)
+
+        if push_result.get("denied"):
+            log.warning("operator.autofix.denylist_hook_rejected",
+                        extra=push_result)
+            self._update_autofix(
+                db_path=db_path, autofix_id=autofix_id,
+                status="denied", test_result="denied",
+                diff_summary=result.diff_summary,
+                files_changed_json=files_changed_json,
+                test_output_tail=(push_result.get("error") or "denylist hit")[:4000],
+                pushed=0, finished=True,
+            )
+            return
+
+        self._update_autofix(
+            db_path=db_path, autofix_id=autofix_id,
+            status="completed",
+            test_result="passed" if result.test_passed else "failed",
+            diff_summary=result.diff_summary,
+            files_changed_json=files_changed_json,
+            test_output_tail=(result.test_output_tail or "")[:4000],
+            pushed=1 if push_result.get("pushed") else 0,
+            finished=True,
+        )
+        log.warning("operator.autofix.completed",
+                    extra={"autofix_id": autofix_id,
+                           "branch": ctx.branch_name,
+                           "pushed": push_result.get("pushed")})
+
+    @staticmethod
+    def _update_autofix(*, db_path: str, autofix_id: int, **fields) -> None:
+        """Patch arbitrary auto_fixes columns by id. `finished=True` sets
+        finished_at_utc to now."""
+        import sqlite3
+        finished = fields.pop("finished", False)
+        if finished:
+            fields["finished_at_utc"] = datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+        if not fields:
+            return
+        cols = ", ".join(f"{k} = ?" for k in fields)
+        vals = list(fields.values()) + [autofix_id]
+        try:
+            conn = sqlite3.connect(str(db_path))
+            try:
+                conn.execute(
+                    f"UPDATE auto_fixes SET {cols} WHERE id = ?", vals
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            log.exception("operator.autofix.update_failed")
+
     @listen("noop")
     def write_brief_step(self) -> None:
         """Compose + persist the daily brief for yesterday (America/New_York).

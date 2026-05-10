@@ -114,6 +114,8 @@ def _reload_operator_flow(monkeypatch, tmp_path) -> tuple:
     init_db(judas_db)
     monkeypatch.setenv("JUDAS_OPERATOR_STATE_DB", str(state_db))
     monkeypatch.setenv("JUDAS_DB_PATH", str(judas_db))
+    # Inhibit autofix dispatch — these tests cover symptom-recording only.
+    monkeypatch.setenv("JUDAS_AUTOFIX_INHIBIT", "1")
     for name in list(sys.modules):
         if name == "src.flows.operator_flow" or name.startswith("src.flows.operator_flow."):
             del sys.modules[name]

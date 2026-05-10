@@ -192,8 +192,38 @@ class OperatorFlow(Flow[OperatorState]):
 
     @listen("noop")
     def write_brief_step(self) -> None:
-        """Stub — real daily brief lands in Phase 4. Always runs on the noop path."""
-        log.info("operator.write_brief_step.would_run")
+        """Compose + persist the daily brief for yesterday (America/New_York).
+
+        Errors must NOT crash the flow — log and continue.
+        """
+        try:
+            from src.research.brief import (
+                compose_daily_brief,
+                persist_daily_brief,
+                _yesterday_et,
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("operator.write_brief_step.import_failed")
+            return
+
+        db_path = _resolve_judas_db_path()
+        try:
+            brief_date = _yesterday_et()
+            composed = compose_daily_brief(db_path=db_path, brief_date=brief_date)
+            brief_id = persist_daily_brief(
+                db_path=db_path,
+                brief_date=brief_date,
+                content_md=composed["content_md"],
+                summary_json=composed["summary"],
+            )
+            log.info(
+                "operator.write_brief_step.persisted",
+                extra={"brief_date": brief_date, "brief_id": brief_id},
+            )
+        except Exception:  # noqa: BLE001
+            log.exception(
+                "operator.write_brief_step.failed_noop_with_brief_skipped"
+            )
 
 
 def main() -> None:

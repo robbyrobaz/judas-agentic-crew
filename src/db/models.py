@@ -124,6 +124,17 @@ CREATE TABLE IF NOT EXISTS auto_demotions (
 );
 """
 
+_CREATE_DAILY_BRIEFS = """
+CREATE TABLE IF NOT EXISTS daily_briefs (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    brief_date           TEXT    NOT NULL UNIQUE,         -- YYYY-MM-DD in America/New_York
+    created_at_utc       TEXT    NOT NULL,                -- ISO8601 UTC
+    content_md           TEXT    NOT NULL,                -- full Markdown body
+    summary_json         TEXT    NOT NULL,                -- structured payload
+    acknowledged_at_utc  TEXT
+);
+"""
+
 _INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_signals_ts_utc  ON signals(ts_utc);",
     "CREATE INDEX IF NOT EXISTS ix_signals_symbol  ON signals(symbol);",
@@ -144,6 +155,7 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_demotions_symbol ON auto_demotions(symbol);",
     "CREATE INDEX IF NOT EXISTS ix_signals_strategy ON signals(strategy_id, strategy_family, strategy_version);",
     "CREATE INDEX IF NOT EXISTS ix_trades_strategy ON trades(strategy_id, strategy_family, strategy_version);",
+    "CREATE INDEX IF NOT EXISTS idx_daily_briefs_date ON daily_briefs(brief_date DESC);",
 ]
 
 _MIGRATIONS = [
@@ -172,6 +184,7 @@ def init_db(db_path: str | Path) -> None:
         conn.execute(_CREATE_STRATEGY_CANDIDATES)
         conn.execute(_CREATE_ACTIVE_STRATEGIES)
         conn.execute(_CREATE_AUTO_DEMOTIONS)
+        conn.execute(_CREATE_DAILY_BRIEFS)
         for table, column, ddl in _MIGRATIONS:
             if not _column_exists(conn, table, column):
                 conn.execute(ddl)

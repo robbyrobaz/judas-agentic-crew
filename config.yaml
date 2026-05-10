@@ -48,9 +48,10 @@ crew:
 db_path: judas_crew.db
 
 schedule:
-  # Strategy entry windows (ET). Futures market itself follows Globex hours.
+  # Strategy entry windows (ET). Whenever Globex is open. The agent team
+  # decides per-trade; we don't pre-narrow to NY-only hours.
   active_sessions:
-    - {start: "09:30", end: "11:30", name: "ny_open"}
-    - {start: "14:00", end: "15:30", name: "power_hour"}
+    - {start: "18:00", end: "23:59", name: "globex_evening"}   # Sun-Thu evening through ET midnight
+    - {start: "00:00", end: "16:00", name: "globex_day"}        # Daily through close (16:00 ET = daily 1h break)
   hard_flat_deadline: "16:45"
   daily_reset: "17:00"

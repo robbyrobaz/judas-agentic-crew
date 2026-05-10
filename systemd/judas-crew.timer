@@ -1,11 +1,10 @@
 [Unit]
-Description=Judas Crew hourly timer — London + NY sessions
+Description=Judas Crew hourly timer — whenever Globex is open
 
 [Timer]
-# London: 03:00–08:00 UTC
-OnCalendar=*-*-* 03,04,05,06,07,08:00:00 UTC
-# NY: 14:00–21:00 UTC
-OnCalendar=*-*-* 14,15,16,17,18,19,20,21:00:00 UTC
+# Every hour. The session-status gate inside the runner skips Fri 21:00 UTC
+# through Sun 22:00 UTC (weekend close) and the daily 21:00-22:00 UTC break.
+OnCalendar=*-*-* *:00:00 UTC
 Persistent=false
 Unit=judas-crew.service
 

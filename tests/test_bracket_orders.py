@@ -62,6 +62,82 @@ def test_short_bracket_inverts_child_actions():
     assert sl.auxPrice == 2000.0
 
 
+def test_place_bracket_holds_until_confirmed(monkeypatch):
+    """The IBKR connection must stay open until both legs report
+    Submitted/PreSubmitted. The previous implementation slept 1s and
+    disconnected, causing IBKR to cancel the bracket. The fix polls
+    orderStatus.status with a 10-second budget."""
+    import asyncio
+    from src import portfolio_runtime as pr
+
+    class _Status:
+        def __init__(self, s=""):
+            self.status = s
+
+    class _Trade:
+        def __init__(self):
+            self._calls = 0
+            self.orderStatus = _Status("PendingSubmit")
+        def advance(self):
+            self._calls += 1
+            if self._calls >= 2:
+                self.orderStatus.status = "Submitted"
+
+    parent_t = _Trade()
+    sl_t = _Trade()
+    tp_t = _Trade()
+
+    class FakeOrder:
+        def __init__(self):
+            self.orderId = 0
+            self.transmit = False
+            self.tif = ""
+            self.outsideRth = False
+            self.parentId = 0
+
+    class FakeIB:
+        def __init__(self):
+            self._next = 100
+        async def connectAsync(self, *a, **kw):
+            return None
+        async def qualifyContractsAsync(self, c):
+            c.localSymbol = "MGCJ26"
+            c.lastTradeDateOrContractMonth = "20260424"
+            return [c]
+        def placeOrder(self, contract, order):
+            self._next += 1
+            order.orderId = self._next
+            if order.orderType == "MKT":
+                return parent_t
+            if order.orderType == "STP":
+                return sl_t
+            return tp_t
+        def disconnect(self):
+            pass
+
+    monkeypatch.setattr(pr, "IB", lambda: FakeIB())
+
+    # On each sleep tick, advance the trade statuses toward Submitted.
+    real_sleep = asyncio.sleep
+
+    async def patched_sleep(delay):
+        parent_t.advance()
+        sl_t.advance()
+        await real_sleep(0)
+
+    monkeypatch.setattr(pr.asyncio, "sleep", patched_sleep)
+
+    out = asyncio.run(pr._place_bracket_async(
+        symbol="MGC", side="BUY", quantity=1,
+        stop_price=10.0, target_price=20.0,
+        host="x", port=4002, client_id=151,
+    ))
+    assert out["status"] == "Submitted"
+    # Both trades must have been polled at least once before disconnect.
+    assert parent_t._calls >= 1
+    assert sl_t._calls >= 1
+
+
 def test_parent_id_wiring_pattern():
     """Children inherit the parent's orderId after placeOrder assigns it.
 

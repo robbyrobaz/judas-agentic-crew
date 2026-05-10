@@ -1,0 +1,10 @@
+[Unit]
+Description=Trader cadence — every 5 minutes during cron-day
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=false
+Unit=judas-trader.service
+
+[Install]
+WantedBy=timers.target

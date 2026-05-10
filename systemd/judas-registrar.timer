@@ -1,0 +1,10 @@
+[Unit]
+Description=Registrar cadence — every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=false
+Unit=judas-registrar.service
+
+[Install]
+WantedBy=timers.target

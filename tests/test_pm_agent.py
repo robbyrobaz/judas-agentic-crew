@@ -494,7 +494,31 @@ def test_morning_review_uses_pm_agent(tmp_path, monkeypatch):
             error=None,
         )
 
-    monkeypatch.setattr(pm_agent, "run_pm_decision", fake_run, raising=True)
+    # Phase 10: morning_review delegates via operator_agent.
+    from src.research import operator_agent
+    def fake_op_run(**kwargs):
+        calls.append(kwargs)
+        return operator_agent.OperatorDecisionResult(
+            success=True,
+            delegations=[],
+            actions_taken=[
+                pm_agent.PMAction(
+                    action="retire_strategy",
+                    target_id=42,
+                    payload={"id": 42, "reason": "test"},
+                    rationale="test",
+                    tool_result={"ok": True, "demotion_id": 7},
+                )
+            ],
+            narrative="PM cycle ran.",
+            turns_used=3,
+            elapsed_s=1.2,
+            fallback_used=False,
+            raw_messages=[],
+            error=None,
+        )
+    monkeypatch.setattr(operator_agent, "run_operator_decision", fake_op_run,
+                        raising=True)
 
     flow = module.OperatorFlow()
     flow.kickoff(inputs={"id": module.OPERATOR_FLOW_ID})
@@ -549,7 +573,7 @@ def test_brief_includes_pm_narrative(tmp_path):
         db_path=str(db), brief_date="2026-05-09", pm_result=pm_payload,
     )
     md = composed["content_md"]
-    assert "## PM Decisions" in md
+    assert "## Operator Decisions" in md
     assert "Kept MGC on track" in md
     assert "retire_strategy" in md
     assert "place_paper_order" in md

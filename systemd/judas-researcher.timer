@@ -1,0 +1,11 @@
+[Unit]
+Description=Researcher cadence — weekend hourly + weekday nightly
+
+[Timer]
+OnCalendar=Sat,Sun *:15:00
+OnCalendar=Mon..Fri 19:15:00
+Persistent=false
+Unit=judas-researcher.service
+
+[Install]
+WantedBy=timers.target

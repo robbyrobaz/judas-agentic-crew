@@ -187,29 +187,30 @@ class OperatorFlow(Flow[OperatorState]):
         self.state.cycle_count += 1
         self.state.last_run_utc = datetime.now(timezone.utc).isoformat()
 
-        from src.research import pm_agent
+        from src.research import operator_agent
 
         db_path = _resolve_judas_db_path()
         try:
-            pm_result = pm_agent.run_pm_decision(db_path=db_path)
+            op_result = operator_agent.run_operator_decision(db_path=db_path)
         except Exception as exc:  # noqa: BLE001
-            log.exception("operator.morning_review.pm_agent_failed")
-            pm_result = None
+            log.exception("operator.morning_review.operator_agent_failed")
+            op_result = None
 
         pm_payload: dict | None
-        if pm_result is None:
+        if op_result is None:
             pm_payload = {
                 "success": False,
                 "actions_taken": [],
-                "narrative": "PM agent crashed — see logs.",
+                "delegations": [],
+                "narrative": "Operator agent crashed — see logs.",
                 "turns_used": 0,
                 "elapsed_s": 0.0,
                 "fallback_used": True,
-                "error": "pm_agent crashed",
+                "error": "operator_agent crashed",
             }
         else:
             pm_payload = {
-                "success": pm_result.success,
+                "success": op_result.success,
                 "actions_taken": [
                     {
                         "action": a.action,
@@ -218,13 +219,24 @@ class OperatorFlow(Flow[OperatorState]):
                         "rationale": a.rationale,
                         "tool_result": a.tool_result,
                     }
-                    for a in pm_result.actions_taken
+                    for a in op_result.actions_taken
                 ],
-                "narrative": pm_result.narrative,
-                "turns_used": pm_result.turns_used,
-                "elapsed_s": pm_result.elapsed_s,
-                "fallback_used": pm_result.fallback_used,
-                "error": pm_result.error,
+                "delegations": [
+                    {
+                        "team": d.team,
+                        "action": d.action,
+                        "payload": d.payload,
+                        "rationale": d.rationale,
+                        "urgency": d.urgency,
+                        "task_id": d.task_id,
+                    }
+                    for d in op_result.delegations
+                ],
+                "narrative": op_result.narrative,
+                "turns_used": op_result.turns_used,
+                "elapsed_s": op_result.elapsed_s,
+                "fallback_used": op_result.fallback_used,
+                "error": op_result.error,
             }
 
         pending_symptoms = _detect_pending_symptoms(db_path=db_path)

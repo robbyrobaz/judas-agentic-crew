@@ -47,7 +47,7 @@ def ibkr_data_tool(input_json: str) -> str:
     and low relative to the latest fetched bar date.
     """
     try:
-        from ib_async import IB, ContFuture, util
+        from ib_async import IB, ContFuture
     except ImportError:
         return json.dumps({"bars": [], "prior_high": 0.0, "prior_low": 0.0,
                            "error": "ib_async not installed"})
@@ -67,7 +67,6 @@ def ibkr_data_tool(input_json: str) -> str:
         client_id = int(os.environ.get("IBKR_DATA_CLIENT_ID", "150"))
 
         ib = IB()
-        util.startLoop()
 
         import asyncio
 
@@ -97,8 +96,7 @@ def ibkr_data_tool(input_json: str) -> str:
             finally:
                 ib.disconnect()
 
-        loop = asyncio.get_event_loop()
-        raw_bars = loop.run_until_complete(_fetch())
+        raw_bars = asyncio.run(_fetch())
 
         # Convert ib_async BarData objects to dicts
         bars_list = []

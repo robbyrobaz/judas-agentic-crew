@@ -190,8 +190,7 @@ def ibkr_executor_tool(input_json: str) -> str:
             finally:
                 ib.disconnect()
 
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(_place())
+        result = asyncio.run(_place())
         return json.dumps(result)
 
     except Exception as e:

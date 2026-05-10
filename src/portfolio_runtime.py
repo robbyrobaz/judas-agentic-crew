@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
-from ib_async import ContFuture, Future, IB, LimitOrder, MarketOrder, StopOrder, util
+from ib_async import ContFuture, Future, IB, LimitOrder, MarketOrder, StopOrder
 
 from src.db.models import init_db
 from src.strategy_registry import list_active_strategies
@@ -340,7 +340,10 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
 async def _fetch_bars_async(symbols: set[str], host: str, port: int, client_id: int) -> dict[str, pd.DataFrame]:
     ib = IB()
     await ib.connectAsync(host, port, clientId=client_id, timeout=15)
-    util.startLoop()
+    # NOTE: a misplaced util loop-bootstrap call used to live here. It is
+    # meant for IPython / Jupyter only -- inside a real asyncio coroutine
+    # we already have a running loop and bootstrapping it again patches it
+    # incorrectly. Removed as part of P0b/2.
     out: dict[str, pd.DataFrame] = {}
     try:
         for symbol in sorted(symbols):
@@ -374,7 +377,7 @@ async def _fetch_bars_async(symbols: set[str], host: str, port: int, client_id: 
 
 
 def fetch_bars(symbols: set[str], host: str, port: int, client_id: int) -> dict[str, pd.DataFrame]:
-    return asyncio.get_event_loop().run_until_complete(_fetch_bars_async(symbols, host, port, client_id))
+    return asyncio.run(_fetch_bars_async(symbols, host, port, client_id))
 
 
 def _build_bracket_orders(
@@ -468,7 +471,7 @@ async def _place_bracket_async(
 
 
 def place_bracket(**kwargs) -> dict[str, Any]:
-    return asyncio.get_event_loop().run_until_complete(_place_bracket_async(**kwargs))
+    return asyncio.run(_place_bracket_async(**kwargs))
 
 
 def _save_signal_and_trade(db_path: str, fire: ActiveFire, order: dict[str, Any] | None, decision: str) -> dict[str, Any]:

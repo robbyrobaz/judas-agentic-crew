@@ -315,6 +315,70 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
         )
         return fires
 
+    if engine == "custom":
+        # Phase 9: agent-authored strategy code dispatched through the
+        # restricted runtime. Validation + sandbox happens inside
+        # ``custom_strategy_runtime``; we only resolve the row and feed
+        # it bars matching the active row's symbol.
+        from src.research.custom_strategy_runtime import (
+            evaluate_custom_strategy,
+            load_custom_strategy,
+        )
+
+        try:
+            custom_id = int(params.get("custom_strategy_id", 0))
+        except (TypeError, ValueError):
+            return fires
+        if custom_id <= 0:
+            return fires
+        import os as _os
+        from pathlib import Path as _Path
+        db_path = _os.environ.get(
+            "JUDAS_DB_PATH",
+            str(_Path(__file__).parent.parent / "judas_crew.db"),
+        )
+        loaded = load_custom_strategy(custom_id, db_path=db_path)
+        if loaded is None:
+            return fires
+        code, custom_params = loaded
+        symbol = str(active["symbol"]).upper()
+        bars = bars_by_sym.get(symbol)
+        if bars is None:
+            return fires
+        sig = evaluate_custom_strategy(code=code, bars=bars, params=custom_params)
+        if sig is None or not isinstance(sig, dict):
+            return fires
+        try:
+            direction = str(sig["direction"]).lower()
+            entry = float(sig["entry"])
+            stop = float(sig["stop"])
+            target = float(sig["target"])
+        except (KeyError, TypeError, ValueError):
+            log.warning("custom_strategy %s returned malformed signal", custom_id)
+            return fires
+        if direction not in ("long", "short"):
+            return fires
+        feats = {"custom_strategy_id": custom_id}
+        if isinstance(sig.get("features"), dict):
+            feats.update(sig["features"])
+        fires.append(
+            ActiveFire(
+                strategy_id=int(active["id"]),
+                strategy_name=strategy_name,
+                strategy_family=str(active["strategy_family"]),
+                strategy_version=int(active["version"]),
+                symbol=symbol,
+                direction=direction,
+                entry=entry,
+                stop=stop,
+                target=target,
+                qty=qty,
+                rationale=f"custom_strategy:{custom_id}",
+                features=feats,
+            )
+        )
+        return fires
+
     if engine == "buffet_pair":
         for leg in _evaluate_pair(bars_by_sym, strategy_name, params):
             fires.append(

@@ -14,7 +14,78 @@ The companion repo `../judas-futures-workshop` is the **seeded incumbent baselin
 
 ---
 
-## What's Built (Phases 0–5 shipped, 3 fully wired, 7 designed)
+## Architecture (Phase 10 — agentic team)
+
+The single "PM agent with a fat tool palette" of Phases 8–9 is superseded.
+The Operator is a **manager that delegates**. Specialists do the work.
+
+```
+                      Operator (manager) — every 4h, ~20 turns
+                          │  brain. decides what should happen.
+                          │  tools = DELEGATIONS, not actions.
+                          │
+            ┌─────────────┼─────────────┬─────────────┐
+            ▼             ▼             ▼             ▼
+        Researcher     Trader      Registrar       Coder
+        ─────────      ──────      ─────────       ─────
+        long-cycle     short       short           on-demand
+        ingest web/yt  ~10 turns   ~5 turns        ~30 turns
+        backtest       executes    atomic retire/  Phase 3 autofix
+        propose        a single    promote/        already built
+        candidates     trade       modify
+```
+
+### How delegation works
+
+1. Operator runs every 4h via `judas-operator.timer`. Its tool palette is
+   four `delegate_to_*` tools plus reads — no direct retire/promote/
+   place_bracket/ingestion.
+2. Each `delegate_to_*` call inserts a row into the shared `agent_tasks`
+   table tagged with `team`, `action`, `payload_json`, `urgency`,
+   `status='open'`.
+3. Specialists run on their own cadence (`judas-researcher.timer`,
+   `judas-trader.timer`, `judas-registrar.timer`). Each pulls open tasks
+   for its team via `get_open_tasks`, claims via `claim_task`, executes,
+   then `complete_task` writes `result_json`.
+4. The Coder is on-demand — fired when the Operator delegates, runs the
+   existing Phase 3 autofix harness for one symptom per cycle.
+5. The daily brief (`outputs/briefs/YYYY-MM-DD.md`) shows what got
+   delegated, what came back, and the usual P&L/regime/surprises.
+
+### Tool palettes
+
+**Operator** — delegations + reads only:
+`delegate_to_researcher`, `delegate_to_trader`, `delegate_to_registrar`,
+`delegate_to_coder`, `get_active_strategies`, `get_recent_pnl`,
+`get_recent_briefs`, `get_outstanding_delegations`, `get_recent_trades`,
+`get_candidates_queue`, `get_workshop_leaderboard`, `query_db`,
+`get_strategy_detail`, `get_recent_experiments`, `get_open_positions`,
+`get_regime_tag`.
+
+**Researcher** — ingestion + backtests + proposals only:
+`get_active_strategies`, `get_strategy_detail`, `get_workshop_leaderboard`,
+`get_candidates_queue`, `get_recent_pnl`, `get_regime_tag`,
+`get_recent_briefs`, `get_recent_experiments`, `query_db`, `web_search`,
+`web_fetch`, `fetch_youtube_transcript`, `search_youtube_trading_videos`,
+`read_file`, `list_files`, `read_research_artifact`,
+`run_judas_threshold_sweep`, `run_walk_forward`, `run_custom_backtest`,
+`propose_candidate`, `propose_custom_strategy`, `claim_task`,
+`complete_task`, `get_open_tasks`.
+
+**Trader** — execute + cancel + report fills:
+`place_bracket_order`, `cancel_order`, `get_open_positions`, `get_fills`,
+`get_recent_pnl`, `claim_task`, `complete_task`, `get_open_tasks`.
+
+**Registrar** — atomic registry mutations only:
+`retire_strategy`, `promote_candidate`, `modify_strategy_params`,
+`reactivate_demoted`, `get_active_strategies`, `get_candidates_queue`,
+`get_strategy_detail`, `claim_task`, `complete_task`, `get_open_tasks`.
+
+**Coder** — Phase 3 autofix harness consumer (no direct LLM tool palette).
+
+---
+
+## What's Built (Phases 0–10 shipped)
 
 | Phase | Feature | Status |
 |---|---|---|
@@ -38,7 +109,9 @@ The system runs on three independent cadences:
 | Cadence | Service / Timer | What it does |
 |---|---|---|
 | Hourly | `judas-crew.timer` (existing trading runtime) | Scans `active_strategies`, evaluates each on fresh 1H bars, places paper bracket orders. **Pure deterministic Python** — no LLM in the order path. |
-| Hourly (weekends) / nightly (weekdays) | `judas-research.timer` | Runs the existing ResearchCrew for sweep + walk-forward + report on a single symbol. |
+| Hourly (weekends) / nightly (weekdays) | `judas-researcher.timer` | Researcher specialist — ingests web/YouTube/files, runs backtests, proposes candidates. Replaces the old `judas-research.timer`. |
+| Every 5 min | `judas-trader.timer` | Trader specialist — pulls queued trades and places brackets. |
+| Every 5 min | `judas-registrar.timer` | Registrar specialist — applies queued retire/promote/modify atomically. |
 | **Daily 06:00 ET** | **`judas-operator.timer`** (the brain) | The OperatorFlow morning review — see below. |
 | Always-on | `judas-dashboard.service` | Flask backend + React frontend on `:8080` |
 
@@ -199,7 +272,9 @@ That script also imports the workshop baseline + builds the frontend.
 
 ```bash
 systemctl --user start judas-operator.service        # full daily review
-systemctl --user start judas-research.service        # one research crew tick
+systemctl --user start judas-researcher.service      # one researcher cycle
+systemctl --user start judas-trader.service          # drain queued trades
+systemctl --user start judas-registrar.service       # apply queued mutations
 systemctl --user start judas-crew.service            # one trading scan
 ```
 

@@ -21,6 +21,10 @@ You are the Researcher on a paper futures trading lab. Your mandate
 is loose: find strategy ideas, ingest web articles/YouTube transcripts/
 research artifacts, run backtests, and propose candidates for review.
 
+At the start of each cycle, call read_findings() to see what the team
+has learned recently — that's your persistent memory across cycles.
+Record your own findings as you discover anything worth remembering.
+
 You do NOT retire active strategies, promote candidates, or place
 trades — those belong to other specialists. Your job is to surface
 high-quality ideas with backtest evidence.
@@ -50,6 +54,9 @@ INCLUDE_TOOLS = {
     "propose_candidate", "propose_custom_strategy",
     # queue
     "claim_task", "complete_task", "get_open_tasks",
+    # shared findings memory
+    "record_finding", "read_findings", "retract_finding",
+    "get_strategy_dossier",
 }
 
 
@@ -70,7 +77,7 @@ def run_researcher_decision(
 
     tools, schemas = agent_tools.make_tools(
         db_path=db_path, include=INCLUDE_TOOLS, team="researcher",
-        claimed_by="researcher_agent",
+        claimed_by="researcher_agent", author="researcher",
     )
     return run_agent_loop(
         db_path=db_path,

@@ -30,6 +30,10 @@ SYSTEM_PROMPT = """\
 You are the manager of a paper futures trading lab with a $5,000 IBKR
 paper account. Your only job is to make as much money as possible.
 
+At the start of each cycle, call read_findings() to see what the team
+has learned recently — that's your persistent memory across cycles.
+Record your own findings as you discover anything worth remembering.
+
 You don't do the work yourself — you have a team:
   - Researcher: finds strategy ideas, ingests web/YouTube/files,
     runs backtests, proposes candidates.
@@ -69,6 +73,9 @@ INCLUDE_TOOLS = {
     "get_candidates_queue", "get_workshop_leaderboard", "query_db",
     "get_strategy_detail", "get_recent_experiments", "get_open_positions",
     "get_regime_tag",
+    # shared findings memory
+    "record_finding", "read_findings", "retract_finding",
+    "get_strategy_dossier",
 }
 
 
@@ -113,6 +120,7 @@ def run_operator_decision(
 
     tools, schemas = agent_tools.make_tools(
         db_path=db_path, include=INCLUDE_TOOLS, operator_mode=True,
+        author="operator",
     )
 
     try:

@@ -19,6 +19,11 @@ log = logging.getLogger(__name__)
 SYSTEM_PROMPT = """\
 You are the Registrar on a paper futures trading lab. You perform
 registry mutations atomically:
+
+At the start of each cycle, call read_findings() to see what the team
+has learned recently — that's your persistent memory across cycles.
+Record your own findings as you discover anything worth remembering.
+
   - retire_strategy
   - promote_candidate
   - modify_strategy_params (atomic retire+promote with new params)
@@ -40,6 +45,9 @@ INCLUDE_TOOLS = {
     "reactivate_demoted", "get_active_strategies", "get_candidates_queue",
     "get_strategy_detail",
     "claim_task", "complete_task", "get_open_tasks",
+    # shared findings memory
+    "record_finding", "read_findings", "retract_finding",
+    "get_strategy_dossier",
 }
 
 
@@ -60,7 +68,7 @@ def run_registrar_decision(
 
     tools, schemas = agent_tools.make_tools(
         db_path=db_path, include=INCLUDE_TOOLS, team="registrar",
-        claimed_by="registrar_agent",
+        claimed_by="registrar_agent", author="registrar",
     )
     return run_agent_loop(
         db_path=db_path,

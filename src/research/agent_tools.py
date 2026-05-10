@@ -425,6 +425,320 @@ def reactivate_demoted(*, demotion_id: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Findings — shared persistent memory across all agents
+# ---------------------------------------------------------------------------
+
+
+_VALID_FINDING_STATUSES = {"active", "superseded", "retracted"}
+
+
+def make_record_finding(*, db_path: str, author: str) -> Callable[..., dict]:
+    """Record a finding into the shared memory log.
+
+    The ``author`` is bound at factory time (one of operator/researcher/
+    trader/registrar/coder/human). On supersedes, the prior row's
+    status is flipped to 'superseded' atomically with the insert.
+    """
+    def record_finding(*, title: str, body: str,
+                       strategy_id: int | None = None,
+                       strategy_name: str | None = None,
+                       symbol: str | None = None,
+                       refs: dict | None = None,
+                       supersedes_id: int | None = None) -> dict:
+        if not isinstance(title, str) or not title.strip():
+            return {"ok": False, "error": "title required"}
+        if not isinstance(body, str) or not body.strip():
+            return {"ok": False, "error": "body required"}
+        sid = int(strategy_id) if strategy_id is not None else None
+        sup = int(supersedes_id) if supersedes_id is not None else None
+        refs_json = json.dumps(refs or {}, default=str) if refs else None
+        from src.db.models import init_db
+        init_db(db_path)
+        conn = _connect(db_path)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            superseded_id: int | None = None
+            if sup is not None:
+                row = conn.execute(
+                    "SELECT id FROM findings WHERE id = ?", (sup,),
+                ).fetchone()
+                if row is None:
+                    conn.rollback()
+                    return {"ok": False, "error": f"supersedes_id {sup} not found"}
+                conn.execute(
+                    "UPDATE findings SET status='superseded' WHERE id = ?",
+                    (sup,),
+                )
+                superseded_id = sup
+            cur = conn.execute(
+                """
+                INSERT INTO findings
+                  (created_at_utc, author, title, body, strategy_id,
+                   strategy_name, symbol, refs_json, supersedes_id, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+                """,
+                (_utc_now(), author, title.strip(), body.strip(),
+                 sid, strategy_name, symbol, refs_json, sup),
+            )
+            fid = int(cur.lastrowid)
+            conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            conn.rollback()
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        finally:
+            conn.close()
+        out: dict = {"ok": True, "finding_id": fid}
+        if superseded_id is not None:
+            out["superseded_id"] = superseded_id
+        return out
+    return record_finding
+
+
+def make_read_findings(*, db_path: str) -> Callable[..., list[dict]]:
+    def read_findings(*, query: str | None = None,
+                      strategy_id: int | None = None,
+                      strategy_name: str | None = None,
+                      symbol: str | None = None,
+                      author: str | None = None,
+                      since_days: int = 30,
+                      include_status: list[str] | None = None,
+                      limit: int = 20) -> list[dict]:
+        try:
+            n = int(limit)
+        except (TypeError, ValueError):
+            n = 20
+        n = max(1, min(n, 100))
+        try:
+            days = int(since_days)
+        except (TypeError, ValueError):
+            days = 30
+        days = max(1, days)
+        statuses = list(include_status) if include_status else ["active"]
+        statuses = [s for s in statuses if s in _VALID_FINDING_STATUSES] or ["active"]
+        from src.db.models import init_db
+        init_db(db_path)
+        clauses: list[str] = ["created_at_utc >= datetime('now', ?)"]
+        args: list[Any] = [f"-{days} days"]
+        if query:
+            clauses.append("(title LIKE ? OR body LIKE ?)")
+            like = f"%{query}%"
+            args.extend([like, like])
+        if strategy_id is not None:
+            clauses.append("strategy_id = ?")
+            args.append(int(strategy_id))
+        if strategy_name:
+            clauses.append("strategy_name = ?")
+            args.append(strategy_name)
+        if symbol:
+            clauses.append("symbol = ?")
+            args.append(symbol)
+        if author:
+            clauses.append("author = ?")
+            args.append(author)
+        placeholders = ",".join("?" for _ in statuses)
+        clauses.append(f"status IN ({placeholders})")
+        args.extend(statuses)
+        where = " AND ".join(clauses)
+        args.append(n)
+        with _connect(db_path) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id, created_at_utc, author, title, body, strategy_id,
+                       strategy_name, symbol, refs_json, supersedes_id, status
+                FROM findings
+                WHERE {where}
+                ORDER BY created_at_utc DESC, id DESC
+                LIMIT ?
+                """,
+                tuple(args),
+            ).fetchall()
+        out: list[dict] = []
+        for r in rows:
+            try:
+                refs = json.loads(r["refs_json"]) if r["refs_json"] else {}
+            except (TypeError, json.JSONDecodeError):
+                refs = {}
+            out.append({
+                "id": int(r["id"]),
+                "created_at_utc": str(r["created_at_utc"]),
+                "author": str(r["author"]),
+                "title": str(r["title"]),
+                "body": str(r["body"]),
+                "strategy_id": r["strategy_id"],
+                "strategy_name": r["strategy_name"],
+                "symbol": r["symbol"],
+                "refs": refs,
+                "supersedes_id": r["supersedes_id"],
+                "status": str(r["status"]),
+            })
+        return out
+    return read_findings
+
+
+def make_retract_finding(*, db_path: str, author: str) -> Callable[..., dict]:
+    def retract_finding(*, id: int, reason: str) -> dict:
+        try:
+            fid = int(id)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "id must be int"}
+        if not isinstance(reason, str) or not reason.strip():
+            return {"ok": False, "error": "reason required"}
+        from src.db.models import init_db
+        init_db(db_path)
+        suffix = f" [retracted by {author}: {reason.strip()}]"
+        with _connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT id, body FROM findings WHERE id = ?", (fid,),
+            ).fetchone()
+            if row is None:
+                return {"ok": False, "error": f"finding {fid} not found"}
+            new_body = str(row["body"]) + suffix
+            conn.execute(
+                "UPDATE findings SET status='retracted', body=? WHERE id=?",
+                (new_body, fid),
+            )
+            conn.commit()
+        return {"ok": True, "id": fid}
+    return retract_finding
+
+
+def make_get_strategy_dossier(*, db_path: str) -> Callable[..., dict]:
+    def get_strategy_dossier(*, strategy_id: int | None = None,
+                             strategy_name: str | None = None) -> dict:
+        if strategy_id is None and not strategy_name:
+            return {"ok": False, "error": "strategy_id or strategy_name required"}
+        from src.db.models import init_db
+        init_db(db_path)
+        with _connect(db_path) as conn:
+            active = None
+            family: str | None = None
+            if strategy_id is not None:
+                arow = conn.execute(
+                    "SELECT * FROM active_strategies WHERE id = ?",
+                    (int(strategy_id),),
+                ).fetchone()
+                if arow is not None:
+                    active = dict(arow)
+                    family = str(arow["strategy_family"])
+            elif strategy_name:
+                arow = conn.execute(
+                    "SELECT * FROM active_strategies WHERE strategy_family = ? "
+                    "AND state = 'active' ORDER BY id DESC LIMIT 1",
+                    (strategy_name,),
+                ).fetchone()
+                if arow is not None:
+                    active = dict(arow)
+                family = strategy_name
+
+            # Findings: by id OR by name (whichever provided; OR them).
+            f_clauses: list[str] = []
+            f_args: list[Any] = []
+            if strategy_id is not None:
+                f_clauses.append("strategy_id = ?")
+                f_args.append(int(strategy_id))
+            if family:
+                f_clauses.append("strategy_name = ?")
+                f_args.append(family)
+            if not f_clauses:
+                findings_rows = []
+            else:
+                where_f = " OR ".join(f_clauses)
+                findings_rows = conn.execute(
+                    f"""
+                    SELECT id, created_at_utc, author, title, body, strategy_id,
+                           strategy_name, symbol, refs_json, supersedes_id, status
+                    FROM findings WHERE ({where_f}) AND status = 'active'
+                    ORDER BY created_at_utc DESC, id DESC LIMIT 20
+                    """,
+                    tuple(f_args),
+                ).fetchall()
+            findings: list[dict] = []
+            for r in findings_rows:
+                try:
+                    refs = json.loads(r["refs_json"]) if r["refs_json"] else {}
+                except (TypeError, json.JSONDecodeError):
+                    refs = {}
+                findings.append({
+                    "id": int(r["id"]),
+                    "created_at_utc": str(r["created_at_utc"]),
+                    "author": str(r["author"]),
+                    "title": str(r["title"]),
+                    "body": str(r["body"]),
+                    "strategy_id": r["strategy_id"],
+                    "strategy_name": r["strategy_name"],
+                    "symbol": r["symbol"],
+                    "refs": refs,
+                    "supersedes_id": r["supersedes_id"],
+                    "status": str(r["status"]),
+                })
+
+            demotions: list[dict] = []
+            if strategy_id is not None:
+                drows = conn.execute(
+                    "SELECT * FROM auto_demotions WHERE strategy_id = ? "
+                    "ORDER BY ts_utc DESC LIMIT 5",
+                    (int(strategy_id),),
+                ).fetchall()
+                demotions = [dict(r) for r in drows]
+            elif family:
+                drows = conn.execute(
+                    "SELECT * FROM auto_demotions WHERE strategy_family = ? "
+                    "ORDER BY ts_utc DESC LIMIT 5",
+                    (family,),
+                ).fetchall()
+                demotions = [dict(r) for r in drows]
+
+            candidates: list[dict] = []
+            if family:
+                crows = conn.execute(
+                    "SELECT * FROM strategy_candidates WHERE strategy_family = ? "
+                    "ORDER BY ts_utc DESC LIMIT 5",
+                    (family,),
+                ).fetchall()
+                candidates = [dict(r) for r in crows]
+
+            recent_trades: list[dict] = []
+            recent_signals: list[dict] = []
+            if strategy_id is not None:
+                trows = conn.execute(
+                    "SELECT * FROM trades WHERE strategy_id = ? "
+                    "ORDER BY id DESC LIMIT 10",
+                    (int(strategy_id),),
+                ).fetchall()
+                recent_trades = [dict(r) for r in trows]
+                srows = conn.execute(
+                    "SELECT * FROM signals WHERE strategy_id = ? "
+                    "ORDER BY id DESC LIMIT 10",
+                    (int(strategy_id),),
+                ).fetchall()
+                recent_signals = [dict(r) for r in srows]
+            elif family:
+                trows = conn.execute(
+                    "SELECT * FROM trades WHERE strategy_family = ? "
+                    "ORDER BY id DESC LIMIT 10",
+                    (family,),
+                ).fetchall()
+                recent_trades = [dict(r) for r in trows]
+                srows = conn.execute(
+                    "SELECT * FROM signals WHERE strategy_family = ? "
+                    "ORDER BY id DESC LIMIT 10",
+                    (family,),
+                ).fetchall()
+                recent_signals = [dict(r) for r in srows]
+
+        return {
+            "ok": True,
+            "active": active,
+            "findings": findings,
+            "demotions": demotions,
+            "candidates": candidates,
+            "recent_trades": recent_trades,
+            "recent_signals": recent_signals,
+        }
+    return get_strategy_dossier
+
+
+# ---------------------------------------------------------------------------
 # Tool palette assembly
 # ---------------------------------------------------------------------------
 
@@ -663,6 +977,96 @@ def _new_schemas() -> list[dict]:
         {
             "type": "function",
             "function": {
+                "name": "record_finding",
+                "description": (
+                    "Record a finding into the team's shared persistent memory. "
+                    "Use it whenever you discover something worth remembering "
+                    "across cycles (a strategy weakness, a regime observation, "
+                    "a recurring bug pattern, etc.)."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "body": {"type": "string"},
+                        "strategy_id": {"type": "integer"},
+                        "strategy_name": {"type": "string"},
+                        "symbol": {"type": "string"},
+                        "refs": {"type": "object"},
+                        "supersedes_id": {"type": "integer"},
+                    },
+                    "required": ["title", "body"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_findings",
+                "description": (
+                    "Read recent findings from the team's shared memory. All "
+                    "filters optional and ANDed; default returns last 30 days "
+                    "of active findings."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "strategy_id": {"type": "integer"},
+                        "strategy_name": {"type": "string"},
+                        "symbol": {"type": "string"},
+                        "author": {"type": "string"},
+                        "since_days": {"type": "integer", "default": 30},
+                        "include_status": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "default": ["active"],
+                        },
+                        "limit": {"type": "integer", "default": 20},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "retract_finding",
+                "description": (
+                    "Mark a finding as retracted with a reason. The reason is "
+                    "appended to the body."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "integer"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["id", "reason"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_strategy_dossier",
+                "description": (
+                    "One-shot snapshot of everything the team knows about a "
+                    "strategy: active row, recent findings, demotions, "
+                    "candidates with the same name, recent trades, recent "
+                    "signals. Pass strategy_id OR strategy_name."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "strategy_id": {"type": "integer"},
+                        "strategy_name": {"type": "string"},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "get_outstanding_delegations",
                 "description": "Recent agent_tasks rows the Operator has issued (any team).",
                 "parameters": {
@@ -677,6 +1081,7 @@ def _new_schemas() -> list[dict]:
 def make_tools(*, db_path: str, include: set[str] | None = None,
                team: str | None = None,
                claimed_by: str | None = None,
+               author: str | None = None,
                operator_mode: bool = False) -> tuple[dict[str, Callable[..., Any]], list[dict]]:
     """Return ``(tools_dict, schemas_list)`` filtered to ``include``.
 
@@ -702,6 +1107,16 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
         extras["claim_task"] = _safe_tool(make_claim_task(db_path=db_path, team=team, claimed_by=cb))
         extras["complete_task"] = _safe_tool(make_complete_task(db_path=db_path))
         extras["get_open_tasks"] = _safe_tool(make_get_open_tasks(db_path=db_path, team=team))
+
+    # Findings — shared across all agents. Author defaults to team if omitted,
+    # else 'operator' when operator_mode, else 'human' as a sensible fallback.
+    effective_author = author or team or ("operator" if operator_mode else "human")
+    extras["record_finding"] = _safe_tool(
+        make_record_finding(db_path=db_path, author=effective_author))
+    extras["read_findings"] = _safe_tool(make_read_findings(db_path=db_path))
+    extras["retract_finding"] = _safe_tool(
+        make_retract_finding(db_path=db_path, author=effective_author))
+    extras["get_strategy_dossier"] = _safe_tool(make_get_strategy_dossier(db_path=db_path))
 
     if operator_mode:
         enq = make_enqueue_task(db_path=db_path, requester="operator")

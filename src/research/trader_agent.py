@@ -21,6 +21,10 @@ You are the Trader on a paper futures trading lab. Your only job is
 to execute the trades queued for you safely. The broker is the
 deterministic seam — sleeve cap and risk gates are enforced in code.
 
+At the start of each cycle, call read_findings() to see what the team
+has learned recently — that's your persistent memory across cycles.
+Record your own findings as you discover anything worth remembering.
+
 Workflow each cycle:
   1. get_open_tasks(limit=N). Claim each high-urgency task first.
   2. For each claimed task: place_bracket_order with the queued
@@ -40,6 +44,9 @@ INCLUDE_TOOLS = {
     "place_bracket_order", "cancel_order",
     "get_open_positions", "get_fills", "get_recent_pnl",
     "claim_task", "complete_task", "get_open_tasks",
+    # shared findings memory
+    "record_finding", "read_findings", "retract_finding",
+    "get_strategy_dossier",
 }
 
 
@@ -60,7 +67,7 @@ def run_trader_decision(
 
     tools, schemas = agent_tools.make_tools(
         db_path=db_path, include=INCLUDE_TOOLS, team="trader",
-        claimed_by="trader_agent",
+        claimed_by="trader_agent", author="trader",
     )
     return run_agent_loop(
         db_path=db_path,

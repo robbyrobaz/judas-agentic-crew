@@ -412,6 +412,32 @@ Each phase has: **deliverables**, **exit criteria**, **owner**, **dependencies**
 
 ---
 
+## Phase 11 — Shared findings memory
+
+Adds a `findings` table — the team's persistent memory log — and four
+shared tools (`record_finding`, `read_findings`, `retract_finding`,
+`get_strategy_dossier`) wired into all five agent palettes
+(operator/researcher/trader/registrar/coder).
+
+**Why:** prior to Phase 11, every cycle started cold. The Operator and
+specialists had no place to jot down "this regime tends to false-break
+on Wednesdays" or "strategy 58 keeps getting demoted on the same kind
+of drawdown." The agent_tasks queue captures what the team is *doing*;
+the briefs capture what *happened*; findings capture what the team has
+*learned*. Findings can be attached to a strategy_id, a strategy_name
+(persists across version bumps), or a symbol; can be superseded by
+later findings; and can be retracted with a reason.
+
+`get_strategy_dossier(strategy_id_or_name)` bundles the active row +
+recent findings + demotions + candidates with the same name + recent
+trades + signals into one call so an agent can ask "tell me about
+strategy X" without firing six tool calls.
+
+Each agent's SYSTEM_PROMPT now includes a one-line nudge to read
+findings at the start of each cycle and record new ones as it learns.
+
+---
+
 ## Drift Prevention
 
 This file is the spec. Any phase that lands without a matching update here is incomplete. Updates to scope require:

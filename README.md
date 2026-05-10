@@ -83,6 +83,11 @@ The Operator is a **manager that delegates**. Specialists do the work.
 
 **Coder** — Phase 3 autofix harness consumer (no direct LLM tool palette).
 
+**Shared by all agents:** `record_finding`, `read_findings`,
+`retract_finding`, `get_strategy_dossier` — the team's persistent memory
+log. Each agent reads recent findings at the start of its cycle and
+records new ones as it discovers things worth remembering across cycles.
+
 ---
 
 ## What's Built (Phases 0–10 shipped)

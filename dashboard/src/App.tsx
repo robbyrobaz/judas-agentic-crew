@@ -4,13 +4,19 @@ import {
   Activity,
   BarChart3,
   Bot,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   FlaskConical,
+  Newspaper,
   Play,
   SendHorizonal,
   ShieldAlert,
   Signal,
   TrendingUp,
+  X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -44,6 +50,44 @@ type Overview = {
 };
 
 type ChatEntry = { role: "user" | "assistant"; content: string };
+
+type RecommendedAction = {
+  type: string;
+  strategy_id?: number;
+  reason?: string;
+  demotion_id?: number | null;
+};
+
+type BriefSummary = {
+  fires?: number;
+  fills?: number;
+  pnl_total?: number;
+  pnl_by_strategy?: Array<{ strategy_id: number; name: string; pnl: number; trades: number }>;
+  regime?: { vol_regime?: string; trend?: string; leaders?: string[] };
+  surprises?: Array<Record<string, unknown>>;
+  recommended_actions?: RecommendedAction[];
+};
+
+type BriefListItem = {
+  id: number;
+  brief_date: string;
+  created_at_utc: string;
+  summary: BriefSummary;
+  acknowledged_at_utc: string | null;
+};
+
+type BriefDecision = {
+  action_index: number;
+  decision: string;
+  action: RecommendedAction;
+  result: string | null;
+  decided_at_utc: string;
+};
+
+type BriefDetail = BriefListItem & {
+  content_md: string;
+  decisions: BriefDecision[];
+};
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -84,6 +128,49 @@ function App() {
   const [message, setMessage] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
+  const [latestBrief, setLatestBrief] = useState<BriefDetail | null>(null);
+  const [briefExpanded, setBriefExpanded] = useState(false);
+  const [briefBusy, setBriefBusy] = useState<string | null>(null);
+
+  const refreshBrief = async () => {
+    try {
+      const list = await getJson<{ briefs: BriefListItem[] }>("/api/briefs");
+      const top = list.briefs[0];
+      if (!top) {
+        setLatestBrief(null);
+        return;
+      }
+      const detail = await getJson<BriefDetail>(`/api/briefs/${top.brief_date}`);
+      setLatestBrief(detail);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const ackLatestBrief = async () => {
+    if (!latestBrief) return;
+    setBriefBusy("ack");
+    try {
+      await getJson<{ ok: boolean }>(`/api/briefs/${latestBrief.brief_date}/ack`, { method: "POST" });
+      await refreshBrief();
+    } finally {
+      setBriefBusy(null);
+    }
+  };
+
+  const decideBriefAction = async (index: number, decision: "apply" | "reject") => {
+    if (!latestBrief) return;
+    const key = `${decision}:${index}`;
+    setBriefBusy(key);
+    try {
+      await getJson(`/api/briefs/${latestBrief.brief_date}/recommended/${index}/${decision}`, {
+        method: "POST",
+      });
+      await refreshBrief();
+    } finally {
+      setBriefBusy(null);
+    }
+  };
 
   const refresh = async () => {
     const [overviewData, signalsData, tradesData, experimentsData] = await Promise.all([
@@ -100,10 +187,17 @@ function App() {
 
   useEffect(() => {
     refresh().catch(console.error);
+    refreshBrief().catch(console.error);
     const interval = window.setInterval(() => {
       refresh().catch(console.error);
     }, 30000);
-    return () => window.clearInterval(interval);
+    const briefInterval = window.setInterval(() => {
+      refreshBrief().catch(console.error);
+    }, 60000);
+    return () => {
+      window.clearInterval(interval);
+      window.clearInterval(briefInterval);
+    };
   }, []);
 
   const sendMessage = async () => {
@@ -200,6 +294,19 @@ function App() {
                 ))}
               </div>
             </section>
+
+            {latestBrief ? (
+              <div className="mt-4">
+                <BriefPanel
+                  brief={latestBrief}
+                  expanded={briefExpanded}
+                  onToggle={() => setBriefExpanded((v) => !v)}
+                  busy={briefBusy}
+                  onAck={ackLatestBrief}
+                  onDecide={decideBriefAction}
+                />
+              </div>
+            ) : null}
 
             <div className="mt-4 grid gap-4 2xl:grid-cols-2">
               <Panel title="Trading Headline Stats" icon={BarChart3}>
@@ -541,6 +648,134 @@ function DataTable({ rows, fields }: { rows: Row[]; fields: string[] }) {
         </table>
       </div>
     </div>
+  );
+}
+
+function BriefPanel({
+  brief,
+  expanded,
+  onToggle,
+  busy,
+  onAck,
+  onDecide,
+}: {
+  brief: BriefDetail;
+  expanded: boolean;
+  onToggle: () => void;
+  busy: string | null;
+  onAck: () => void;
+  onDecide: (index: number, decision: "apply" | "reject") => void;
+}) {
+  const summary = brief.summary || {};
+  const pnl = typeof summary.pnl_total === "number" ? summary.pnl_total : 0;
+  const pnlClass = pnl > 0 ? "text-emerald-700" : pnl < 0 ? "text-rose-700" : "text-foreground/70";
+  const regime = summary.regime || {};
+  const actions = summary.recommended_actions || [];
+  const decisionsByIndex = new Map(brief.decisions.map((d) => [d.action_index, d]));
+  const acked = !!brief.acknowledged_at_utc;
+
+  return (
+    <section className="rounded-[24px] border border-line/70 bg-panel/92 p-4 shadow-panel backdrop-blur-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2.5">
+        <div className="rounded-xl bg-accent p-1.5 text-white">
+          <Newspaper size={16} />
+        </div>
+        <h3 className="text-base font-semibold">Today's Brief — {brief.brief_date}</h3>
+        <span className={cn("ml-2 text-base font-bold", pnlClass)}>{formatValue(pnl)}</span>
+        <Pill label={`fires ${formatValue(summary.fires)}`} />
+        <Pill label={`fills ${formatValue(summary.fills)}`} />
+        {regime.vol_regime ? <Pill label={`vol ${regime.vol_regime}`} /> : null}
+        {regime.trend ? <Pill label={`trend ${regime.trend}`} /> : null}
+        {(regime.leaders || []).map((l) => (
+          <Pill key={l} label={l} />
+        ))}
+        <div className="ml-auto flex items-center gap-2">
+          {acked ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">
+              <CheckCircle2 size={12} /> Acked
+            </span>
+          ) : (
+            <button
+              onClick={onAck}
+              disabled={busy === "ack"}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-line/70 bg-white/68 px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-white/88 disabled:opacity-60"
+            >
+              <Check size={14} /> {busy === "ack" ? "Acking..." : "Mark Reviewed"}
+            </button>
+          )}
+          <button
+            onClick={onToggle}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-line/70 bg-white/68 px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-white/88"
+          >
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {expanded ? "Hide" : "Show"} Markdown
+          </button>
+        </div>
+      </div>
+
+      {actions.length > 0 ? (
+        <div className="mb-3 space-y-2">
+          <p className="text-xs uppercase tracking-[0.24em] text-foreground/45">Recommended Actions</p>
+          {actions.map((action, index) => {
+            const prior = decisionsByIndex.get(index);
+            return (
+              <div
+                key={index}
+                className="flex flex-wrap items-center gap-2 rounded-2xl border border-line/70 bg-white/60 p-3"
+              >
+                <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-foreground/70">
+                  {action.type}
+                </span>
+                <span className="text-xs text-foreground/76">
+                  {action.strategy_id !== undefined ? `strategy ${action.strategy_id}` : ""}
+                  {action.reason ? ` — ${action.reason}` : ""}
+                </span>
+                <div className="ml-auto flex items-center gap-2">
+                  {prior ? (
+                    <span className="text-[11px] text-foreground/60">
+                      {prior.decision} {prior.result ? `· ${prior.result}` : ""}
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => onDecide(index, "apply")}
+                        disabled={busy === `apply:${index}`}
+                        className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        <Check size={12} /> Apply
+                      </button>
+                      <button
+                        onClick={() => onDecide(index, "reject")}
+                        disabled={busy === `reject:${index}`}
+                        className="inline-flex items-center gap-1 rounded-xl bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                      >
+                        <X size={12} /> Reject
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {expanded ? (
+        <div className="rounded-2xl border border-line/70 bg-white/58 p-3">
+          <div className="markdown-body">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{brief.content_md || "*(empty)*"}</ReactMarkdown>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function Pill({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-line/70 bg-white/68 px-2.5 py-1 text-[11px] font-medium text-foreground/74">
+      {label}
+    </span>
   );
 }
 

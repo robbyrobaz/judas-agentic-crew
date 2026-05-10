@@ -783,6 +783,128 @@ def create_app() -> Flask:
             "operator_decision_at_utc": row["operator_decision_at_utc"],
             "status": row["status"],
         })
+    @app.post("/api/autofixes/<int:autofix_id>/merge")
+    def autofix_merge(autofix_id: int) -> Any:
+        """Merge a pushed autofix branch into master.
+
+        Safety pattern (answers the half-merged question):
+          1. ``pre_sha = git rev-parse master`` BEFORE any mutation.
+          2. ``git merge --no-ff <branch>`` locally. On failure → ``git merge --abort``,
+             return error. Master is untouched.
+          3. ``git push origin master``. On failure → ``git reset --hard <pre_sha>``,
+             return error. Local rolled back; origin never advanced.
+          4. Only after a successful push do we update the DB row.
+        """
+        with get_conn(_db_path()) as conn:
+            try:
+                row = conn.execute(
+                    "SELECT branch_name, pushed, operator_decision FROM auto_fixes WHERE id = ?",
+                    (autofix_id,),
+                ).fetchone()
+            except Exception as exc:
+                return jsonify({"ok": False, "error": f"auto_fixes not initialized: {exc}"}), 404
+        if not row:
+            return jsonify({"ok": False, "error": "autofix not found"}), 404
+        if not int(row["pushed"] or 0):
+            return jsonify({"ok": False, "error": "branch not pushed"}), 400
+        if row["operator_decision"]:
+            return jsonify({"ok": False, "error": f"already decided: {row['operator_decision']}"}), 400
+        branch = str(row["branch_name"])
+
+        repo = str(REPO_ROOT)
+
+        def _git(*args: str) -> subprocess.CompletedProcess:
+            return subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+
+        pre = _git("rev-parse", "master")
+        if pre.returncode != 0:
+            return jsonify({"ok": False, "error": f"could not resolve master: {pre.stderr.strip()}"}), 500
+        pre_sha = pre.stdout.strip()
+
+        # Make sure we are on master locally.
+        co = _git("checkout", "master")
+        if co.returncode != 0:
+            return jsonify({"ok": False, "error": f"checkout master failed: {co.stderr.strip()}"}), 500
+
+        merge = _git("merge", "--no-ff", "-m", f"Merge autofix branch {branch}", branch)
+        if merge.returncode != 0:
+            _git("merge", "--abort")
+            # Belt-and-braces: ensure we are still at pre_sha.
+            _git("reset", "--hard", pre_sha)
+            return jsonify({
+                "ok": False,
+                "error": f"merge failed (master untouched): {merge.stderr.strip() or merge.stdout.strip()}",
+            }), 409
+
+        push = _git("push", "origin", "master")
+        if push.returncode != 0:
+            _git("reset", "--hard", pre_sha)
+            return jsonify({
+                "ok": False,
+                "error": f"push failed; rolled back local master to {pre_sha[:8]}: {push.stderr.strip()}",
+            }), 502
+
+        post = _git("rev-parse", "master")
+        master_sha = post.stdout.strip() if post.returncode == 0 else ""
+
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with get_conn(_db_path()) as conn:
+            conn.execute(
+                """
+                UPDATE auto_fixes
+                SET operator_decision = 'merged', operator_decision_at_utc = ?
+                WHERE id = ?
+                """,
+                (now, autofix_id),
+            )
+            conn.commit()
+        return jsonify({"ok": True, "master_sha": master_sha})
+
+    @app.post("/api/autofixes/<int:autofix_id>/reject")
+    def autofix_reject(autofix_id: int) -> Any:
+        """Mark an autofix as rejected.
+
+        We keep the remote branch by default for forensics (per design open
+        question #3). Pass ``{"delete_branch": true}`` to also delete it.
+        """
+        body = request.get_json(silent=True) or {}
+        delete_branch = bool(body.get("delete_branch", False))
+
+        with get_conn(_db_path()) as conn:
+            try:
+                row = conn.execute(
+                    "SELECT branch_name, pushed, operator_decision FROM auto_fixes WHERE id = ?",
+                    (autofix_id,),
+                ).fetchone()
+            except Exception as exc:
+                return jsonify({"ok": False, "error": f"auto_fixes not initialized: {exc}"}), 404
+        if not row:
+            return jsonify({"ok": False, "error": "autofix not found"}), 404
+        if not int(row["pushed"] or 0):
+            return jsonify({"ok": False, "error": "branch not pushed"}), 400
+        if row["operator_decision"]:
+            return jsonify({"ok": False, "error": f"already decided: {row['operator_decision']}"}), 400
+
+        branch = str(row["branch_name"])
+        if delete_branch:
+            subprocess.run(
+                ["git", "-C", str(REPO_ROOT), "push", "origin", "--delete", branch],
+                capture_output=True,
+                text=True,
+            )
+
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with get_conn(_db_path()) as conn:
+            conn.execute(
+                """
+                UPDATE auto_fixes
+                SET operator_decision = 'rejected', operator_decision_at_utc = ?
+                WHERE id = ?
+                """,
+                (now, autofix_id),
+            )
+            conn.commit()
+        return jsonify({"ok": True})
 
     @app.get("/", defaults={"path": ""})
     @app.get("/<path:path>")

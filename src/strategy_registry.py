@@ -168,64 +168,77 @@ def create_candidate(
 
 def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStrategy:
     with get_conn(_ensure_db()) as conn:
-        candidate = conn.execute(
-            "SELECT * FROM strategy_candidates WHERE id = ?",
-            (candidate_id,),
-        ).fetchone()
-        if not candidate:
-            raise ValueError(f"Candidate {candidate_id} not found")
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            candidate = conn.execute(
+                "SELECT * FROM strategy_candidates WHERE id = ?",
+                (candidate_id,),
+            ).fetchone()
+            if not candidate:
+                raise ValueError(f"Candidate {candidate_id} not found")
 
-        symbol = str(candidate["symbol"])
-        family = str(candidate["strategy_family"])
-        current = conn.execute(
-            """
-            SELECT *
-            FROM active_strategies
-            WHERE symbol = ? AND strategy_family = ? AND state = 'active'
-            ORDER BY version DESC, id DESC
-            LIMIT 1
-            """,
-            (symbol, family),
-        ).fetchone()
-        next_version = (int(current["version"]) + 1) if current else 1
+            # Validate params_json before doing anything destructive.
+            _validate_params_json(candidate["params_json"])
 
-        if current:
-            conn.execute(
+            symbol = str(candidate["symbol"])
+            family = str(candidate["strategy_family"])
+            current = conn.execute(
                 """
-                UPDATE active_strategies
-                SET state = 'retired', deactivated_at_utc = ?, notes = COALESCE(notes, '') || ?
-                WHERE id = ?
+                SELECT *
+                FROM active_strategies
+                WHERE symbol = ? AND strategy_family = ? AND state = 'active'
+                ORDER BY version DESC, id DESC
+                LIMIT 1
                 """,
-                (_utc_now(), "\nSuperseded by automated promotion.", int(current["id"])),
-            )
+                (symbol, family),
+            ).fetchone()
+            next_version = (int(current["version"]) + 1) if current else 1
 
-        cur = conn.execute(
-            """
-            INSERT INTO active_strategies
-                (symbol, strategy_family, version, params_json, metrics_json, source_candidate_id,
-                 state, activated_at_utc, notes)
-            VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
-            """,
-            (
-                symbol,
-                family,
-                next_version,
-                candidate["params_json"],
-                candidate["metrics_json"],
-                candidate_id,
-                _utc_now(),
-                notes or "Automated paper promotion.",
-            ),
-        )
-        conn.execute(
-            "UPDATE strategy_candidates SET status = 'promoted' WHERE id = ?",
-            (candidate_id,),
-        )
-        new_row = conn.execute(
-            "SELECT * FROM active_strategies WHERE id = ?",
-            (int(cur.lastrowid),),
-        ).fetchone()
-    return _row_to_active(new_row)
+            # Insert new active row FIRST, then retire previous — guarantees
+            # external readers never see zero active rows for this (symbol, family).
+            cur = conn.execute(
+                """
+                INSERT INTO active_strategies
+                    (symbol, strategy_family, version, params_json, metrics_json, source_candidate_id,
+                     state, activated_at_utc, notes)
+                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                """,
+                (
+                    symbol,
+                    family,
+                    next_version,
+                    candidate["params_json"],
+                    candidate["metrics_json"],
+                    candidate_id,
+                    _utc_now(),
+                    notes or "Automated paper promotion.",
+                ),
+            )
+            new_id = int(cur.lastrowid)
+
+            if current:
+                conn.execute(
+                    """
+                    UPDATE active_strategies
+                    SET state = 'retired', deactivated_at_utc = ?, notes = COALESCE(notes, '') || ?
+                    WHERE id = ?
+                    """,
+                    (_utc_now(), "\nSuperseded by automated promotion.", int(current["id"])),
+                )
+
+            conn.execute(
+                "UPDATE strategy_candidates SET status = 'promoted' WHERE id = ?",
+                (candidate_id,),
+            )
+            new_row = conn.execute(
+                "SELECT * FROM active_strategies WHERE id = ?",
+                (new_id,),
+            ).fetchone()
+            conn.commit()
+            return _row_to_active(new_row)
+        except Exception:
+            conn.rollback()
+            raise
 
 
 _REQUIRED_PARAM_KEYS = ("symbol",)

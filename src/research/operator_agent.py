@@ -98,6 +98,7 @@ by emitting a brief summary of what you delegated and why.
 
 # Operator's palette: delegations + reads only. Explicitly NOT action tools.
 INCLUDE_TOOLS = {
+    "get_market_state",  # injected each cycle in the runner banner; also callable
     # delegations
     "delegate_to_researcher", "delegate_to_trader",
     "delegate_to_registrar", "delegate_to_coder",

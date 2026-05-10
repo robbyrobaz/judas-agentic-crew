@@ -41,6 +41,7 @@ summarising the mutations applied.
 """
 
 INCLUDE_TOOLS = {
+    "get_market_state",  # injected each cycle in the runner banner; also callable
     "retire_strategy", "promote_candidate", "modify_strategy_params",
     "reactivate_demoted", "get_active_strategies", "get_candidates_queue",
     "get_strategy_detail",

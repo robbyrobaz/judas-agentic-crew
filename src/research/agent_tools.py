@@ -1118,6 +1118,11 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
         make_retract_finding(db_path=db_path, author=effective_author))
     extras["get_strategy_dossier"] = _safe_tool(make_get_strategy_dossier(db_path=db_path))
 
+    # Market state — every agent needs this to reason about timing.
+    from src.research.market_clock import make_get_market_state
+    _market_fn, _market_schema = make_get_market_state(db_path=db_path)
+    extras["get_market_state"] = _safe_tool(_market_fn)
+
     if operator_mode:
         enq = make_enqueue_task(db_path=db_path, requester="operator")
 
@@ -1195,6 +1200,9 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
     all_tools.update(extras)
 
     extra_schemas = _new_schemas()
+    # Schema for get_market_state — added unconditionally so every agent
+    # palette sees it.
+    extra_schemas.append(_market_schema)
     # Schema for get_recent_trades:
     extra_schemas.append({
         "type": "function",

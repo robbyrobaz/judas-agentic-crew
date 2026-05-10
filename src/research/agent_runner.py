@@ -75,10 +75,20 @@ def run_agent_loop(
             error=None,
         )
 
+    # Second system message: TIME & MARKET STATE banner. Every agent gets
+    # this so it can't miss market hours / bar-close timing when reasoning.
+    try:
+        from src.research.market_clock import format_market_banner
+        time_banner = format_market_banner()
+    except Exception:  # noqa: BLE001
+        time_banner = ""
+
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_kickoff},
     ]
+    if time_banner:
+        messages.append({"role": "system", "content": time_banner})
+    messages.append({"role": "user", "content": user_kickoff})
     actions: list[AgentAction] = []
     turn = 0
     error: str | None = None

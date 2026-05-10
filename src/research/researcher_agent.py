@@ -40,6 +40,7 @@ emitting a brief summary of what you researched and what you proposed.
 """
 
 INCLUDE_TOOLS = {
+    "get_market_state",  # injected each cycle in the runner banner; also callable
     # reads
     "get_active_strategies", "get_strategy_detail", "get_workshop_leaderboard",
     "get_candidates_queue", "get_recent_pnl", "get_regime_tag",

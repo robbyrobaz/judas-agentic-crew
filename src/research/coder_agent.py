@@ -35,6 +35,7 @@ Record your own findings as you discover anything worth remembering
 """
 
 INCLUDE_TOOLS = {
+    "get_market_state",  # injected each cycle in the runner banner; also callable
     "claim_task", "complete_task", "get_open_tasks",
     # shared findings memory
     "record_finding", "read_findings", "retract_finding",

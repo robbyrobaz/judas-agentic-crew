@@ -41,6 +41,7 @@ summarising trades placed/cancelled this cycle.
 """
 
 INCLUDE_TOOLS = {
+    "get_market_state",  # injected each cycle in the runner banner; also callable
     "place_bracket_order", "cancel_order",
     "get_open_positions", "get_fills", "get_recent_pnl",
     "claim_task", "complete_task", "get_open_tasks",

@@ -1,222 +1,309 @@
 # judas-agentic-crew
 
-`judas-agentic-crew` is now a paper-only, agentic futures lab on IBKR that does two separate jobs:
+A self-running, paper-only futures lab on IBKR that **explores, validates, promotes, retires, and self-heals its own bugs** within a bounded $5,000 paper sleeve. Operator reviews ~once a day; the system handles the rest.
 
-1. `Trading runtime`: scans the currently active paper strategy portfolio and places paper bracket orders.
-2. `Research runtime`: keeps exploring, backtesting, walk-forward testing, and proposing or promoting stronger paper strategies.
+```
+┌─ MiniMax M2.7 (reasoning) ─┐    ┌─ Deterministic Python ─┐    ┌─ IBKR paper ─┐
+│ • per-strategy retire calls│ →  │ • sleeve sizing         │ →  │ DUH860616     │
+│ • exploration planning     │    │ • bracket order placer  │    │ port 4002     │
+│ • code-fix harness (P3)    │    │ • atomic registry       │    │ clientId 150  │
+└────────────────────────────┘    └─────────────────────────┘    └───────────────┘
+```
 
-The workshop repo `../judas-futures-workshop` is treated as the seeded incumbent baseline, not just background reading. This repo imports its buffet winners, backtest artifacts, and leaderboard data, then tries to beat that baseline over time.
+The companion repo `../judas-futures-workshop` is the **seeded incumbent baseline** — its PF-ranked buffet strategies are imported here and continuously challenged by research. Workshop is read-only from this repo.
 
-## Current Architecture
+---
 
-- `main.py`
-  - entrypoint for doctor mode, seeded imports, and trading runtime selection
-  - `--runtime auto` chooses:
-    - `portfolio` if active strategies exist
-    - `crew` otherwise
-- `src/portfolio_runtime.py`
-  - multi-strategy paper portfolio engine
-  - supports:
-    - `judas_native`
-    - `buffet_zoo`
-    - `buffet_pair`
-- `src/strategy_registry.py`
-  - active paper strategy registry
-  - candidate creation and promotion helpers
-- `src/tools/research_tools.py`
-  - deterministic research tools
-  - workshop leaderboard ingestion
-  - Judas sweeps
-  - walk-forward validation
-  - candidate creation / auto-promotion for validated Judas variants
-- `src/crews/research_crew.py`
-  - research crew for exploration and reporting
-- `src/dashboard/app.py`
-  - dashboard backend and Operator Manager chat
-- `dashboard/`
-  - React + TypeScript + Tailwind frontend
+## What's Built (Phases 0–5 shipped, 3 fully wired, 7 designed)
 
-## What It Trades
+| Phase | Feature | Status |
+|---|---|---|
+| **0** | Sweep loop fix + 3 audit-critical correctness fixes (bracket construction, asyncio loops, atomic pair legs) | ✅ |
+| **1** | `OperatorFlow` skeleton — CrewAI Flow with `@persist` SQLite-backed state, daily systemd timer | ✅ |
+| **2** | Live-performance demotion — rolling 20-trade PF/expectancy → retire decisions, atomic registry, `auto_demotions` ledger with one-click reactivate | ✅ |
+| **3** | Code-fix delegation — symptom detection, M2.7 autofix harness with tool palette, branch-isolated worktree, deny-list post-commit hook, dashboard merge/reject | ✅ |
+| **4** | Daily brief — composes 24h fires/fills/PnL/regime/surprises/recommendations, persists Markdown + DB row, dashboard panel | ✅ |
+| **5** | Adaptive exploration planner — M2.7 picks tool/symbol/params with deterministic fallback, dispatches sweeps + walk-forward | ✅ |
+| **6** | HITL shrinkage — promotion gate auto-loosens with track record (policy, incremental) | 🟡 |
+| **7** | Dashboard surface — auto-fixes queue, demotions ledger, live perf grid, regime ribbon, system health bar (designed in `DASHBOARD_PROPOSAL.md`) | 📋 |
 
-The active paper portfolio is seeded from the workshop buffet and currently includes:
+Tests: **97/97 passing.** Wall-clock to ship 0/1/2/4/5 + 3 design + 3 a/b/c full wire-up: ~3 hours via parallel worktree-isolated worker agents.
 
-- `judas_native` on `MGC`
-- `buffet_zoo` strategies such as:
-  - RSI mean reversion
-  - EMA cross trend-follow
-  - Bollinger mean reversion
-- `buffet_pair` strategies such as:
-  - `MGC/MNQ`
-  - `MCL/MGC`
-  - `MBT/MCL`
+---
 
-Everything is still `IBKR paper only`.
+## Daily Routine
 
-## Safety Model
+The system runs on three independent cadences:
 
-- hard `paper` mode only
-- backend timestamps/logs in UTC
-- operator-facing responses in `America/Phoenix`
-- session gate blocks weekend/off-hours entry
-- hard flat deadline logic remains in the session/risk path
-- active strategy registry controls what can trade
-- research may promote to paper, but this repo does not support live trading
+| Cadence | Service / Timer | What it does |
+|---|---|---|
+| Hourly | `judas-crew.timer` (existing trading runtime) | Scans `active_strategies`, evaluates each on fresh 1H bars, places paper bracket orders. **Pure deterministic Python** — no LLM in the order path. |
+| Hourly (weekends) / nightly (weekdays) | `judas-research.timer` | Runs the existing ResearchCrew for sweep + walk-forward + report on a single symbol. |
+| **Daily 06:00 ET** | **`judas-operator.timer`** (the brain) | The OperatorFlow morning review — see below. |
+| Always-on | `judas-dashboard.service` | Flask backend + React frontend on `:8080` |
 
-## Seeded Baseline
+### What the OperatorFlow does each morning
 
-This repo imports the workshop baseline from `../judas-futures-workshop`:
+```
+06:00 ET  ── morning_review
+              │  for each of N active_strategies:
+              │    compute rolling 20-trade PF / expectancy / max-consec-losers / days-since-fire
+              │    M2.7 decides: keep | retune | retire (deterministic fallback always available)
+              │  also detects symptoms (tool failures, looping research, naked positions, etc.)
+              ▼
+          classify → routes to:
+              ├─ retire_step    → atomically retire each flagged strategy via auto_demotions
+              ├─ explore_step   → M2.7 picks experiment plan, dispatches sweep / walk-forward
+              ├─ fix_bug_step   → symptom → worktree → M2.7 harness → commit autofix branch → push
+              └─ noop           → fall through
+              ▼
+          write_brief_step (always runs)
+              composes daily Markdown brief, persists to daily_briefs + outputs/briefs/YYYY-MM-DD.md,
+              surfaces on dashboard with Apply/Reject buttons next to each recommended action
+```
 
-- `buffet.yaml`
-- `buffet_top.csv`
-- `buffet_pf_ranked.csv`
-- `buffet_results.csv`
-- `fast_battery_MGC_1h.csv`
-- `fast_battery_NQ_1h.csv`
-- `sweep_all_results.csv`
-- `pairs_results.csv`
-- `RESEARCH_FINDINGS.md`
-- `STATUS.md`
+Errors at any step are logged and swallowed — the brief always writes. The flow never crashes.
 
-Imported copies are stored in:
+### Heavy research blitz (manual)
 
-- `outputs/research/workshop_seed/`
-- `knowledge_base/buffet.yaml`
+`scripts/research_blitz.py` cycles through every active symbol back-to-back via `research_tick`. Each run is bounded by the existing flock + 45-min hard timeout + stale-PID reaper. Designed for nohup over multi-hour windows when you're away from the desk:
+
+```bash
+nohup .venv/bin/python scripts/research_blitz.py --hours 22 --interval-min 0.5 \
+    > logs/research_blitz.log 2>&1 &
+```
+
+A typical 22-hour run produces ~50–100 fresh `research_experiments` rows.
+
+---
+
+## Authority Envelope (hard-coded)
+
+| Capability | Allowed | Forbidden |
+|---|---|---|
+| Account mode | `paper` only — hard-locked in `src/config.py`; raises on anything else | live, real money |
+| Sleeve cap | `$5,000` configurable; kill switch trips at `sleeve_drawdown_pct` (default 25%) | exceeding sleeve |
+| Instruments | MGC, MNQ, MCL, MBT, MET, DX, ZF, 6J. Adding a symbol is HITL-gated | unrecognized symbols |
+| Code-write | autofix on isolated branches; **never** to `master` without operator merge click | direct master push from autofix |
+| Order-path files | **Write-protected from autofix:** `ibkr_executor.py`, `ibkr_data.py`, `config.py`, `config.yaml`, `src/risk/**`. Enforced by post-commit deny-list hook | autofix touching these |
+| Cross-repo | Workshop is read-only | mutating workshop |
+| Lucid / NT bridge | Stays parked. Reactivate via `lucid_bridge_plan.md` | autonomous activation |
+
+### Always-on safety rails
+
+1. `mode='paper'` check raises on non-paper at construction.
+2. `kill.flag` in repo root halts trading on next tick.
+3. `autofix.disable` flag halts the autofix path. Mirrors `kill.flag`.
+4. `JUDAS_AUTOFIX_INHIBIT=1` env short-circuits autofix dispatch (used in tests).
+5. Sleeve-drawdown auto-halt.
+6. Per-strategy `already_open` gate prevents stacking.
+7. `max_open_positions` cap.
+8. Hourly reconcile against IBKR positions; halt new entries on mismatch.
+9. `@human_feedback` gates: promotions, autofix-branch merges, kill-switch resets, contract-universe expansion.
+10. `auto_demotions` is append-only — full audit trail with one-click reactivate.
+
+---
+
+## Layout
+
+```
+src/
+  flows/operator_flow.py         OperatorFlow brain (CrewAI Flow + @persist)
+  research/
+    live_review.py               Phase 2 — rolling metrics + decide_action (M2.7 + det. fallback)
+    brief.py                     Phase 4 — compose + persist daily brief
+    regime.py                    Phase 4 — vol / trend / leaders tagger
+    explore.py                   Phase 5 — context + plan + execute experiment
+    symptoms.py                  Phase 3a — 5 symptom detectors
+    autofix_harness.py           Phase 3b — M2.7 harness with tool palette + budgets
+    autofix_executor.py          Phase 3c — worktree, deny-list hook, commit + push
+  strategy_registry.py           atomic promote / retire_strategy / reactivate_demoted
+  portfolio_runtime.py           hourly trading runtime (deterministic)
+  tools/                         judas detector, IBKR data/exec, db tools, session tools
+  agents/                        CrewAI agents (research crew + operator manager)
+  crews/                         JudasCrew (legacy 4-step) + ResearchCrew
+  dashboard/app.py               Flask + endpoints for briefs / demotions / autofixes
+  db/models.py                   SQLite schema (raw SQL + init_db)
+
+scripts/
+  research_blitz.py              cycle research across all active symbols, hours-long
+  research_tick.py               one ResearchCrew tick with flock + timeout + reaper
+  run_research.py                ResearchCrew kickoff for a single symbol
+  import_workshop_seed.py        one-shot baseline import from ../judas-futures-workshop
+
+systemd/
+  judas-crew.{service,timer}             hourly trading
+  judas-research.{service,timer}         weekend research
+  judas-operator.{service,timer}         daily 06:00 ET brain
+  judas-dashboard.service                always-on Flask + frontend
+  install.sh                             rootless --user install
+
+knowledge_base/
+  buffet.yaml                            workshop top-PF strategies
+  judas_concepts.md                      ICT Judas Swing reference
+  market_hours.md
+  research_findings.md
+  workshop_context.md
+
+dashboard/                               React + TypeScript + Tailwind frontend
+
+tests/                                   97 tests across all phases
+
+AGENTIC_OPERATOR_PLAN.md                 the spec — drift-prevention rule
+PHASE3_DESIGN.md                         self-modifying-code design (advisor-reviewed)
+DASHBOARD_PROPOSAL.md                    Phase 7 panel spec
+HANDOFF_2026-05-10.md                    operator handoff log
+```
+
+---
 
 ## Setup
-
-Create the venv and install Python deps:
 
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-Create `.env` and set at minimum:
+# Frontend
+cd dashboard && npm ci && npm run build && cd ..
 
-```bash
+# Env
+cat > .env <<EOF
 MINIMAX_API_KEY=...
 IBKR_HOST=127.0.0.1
 IBKR_PORT=4002
 IBKR_DATA_CLIENT_ID=150
 IBKR_EXEC_CLIENT_ID=151
+EOF
 ```
 
-For the dashboard frontend:
-
-```bash
-cd dashboard
-npm ci
-npm run build
-cd ..
-```
-
-## Common Commands
-
-Health check:
-
-```bash
-.venv/bin/python main.py --doctor --symbol MGC
-```
-
-Import the workshop baseline and activate seeded paper strategies:
-
-```bash
-.venv/bin/python scripts/import_workshop_seed.py
-```
-
-Evaluate the active portfolio without placing orders:
-
-```bash
-.venv/bin/python main.py --runtime portfolio --eval-only --symbol MGC
-```
-
-Normal runtime:
-
-```bash
-.venv/bin/python main.py --runtime auto --symbol MGC
-```
-
-Run research manually:
-
-```bash
-.venv/bin/python scripts/run_research.py --symbol MGC --log-level INFO
-```
-
-## Systemd
-
-Install services and timers:
+Install systemd units (all four, including the new operator brain):
 
 ```bash
 bash systemd/install.sh
 ```
 
-That install script now also:
+That script also imports the workshop baseline + builds the frontend.
 
-- imports the workshop seed portfolio
-- runs `npm ci`
-- builds the dashboard frontend
+---
 
-Primary units:
+## Common Operations
 
-- `judas-crew.timer`
-  - hourly trading cadence
-- `judas-research.timer`
-  - hourly on weekends
-  - nightly on weekdays
-- `judas-dashboard.service`
-  - dashboard backend
+### Health check
 
-## Dashboard
+```bash
+.venv/bin/python main.py --doctor --symbol MGC
+```
 
-Tailscale endpoints:
+### Manual trigger (right now)
 
-- `http://omen-claw.tail76e7df.ts.net:8080/`
-- `https://omen-claw.tail76e7df.ts.net:8443/`
+```bash
+systemctl --user start judas-operator.service        # full daily review
+systemctl --user start judas-research.service        # one research crew tick
+systemctl --user start judas-crew.service            # one trading scan
+```
 
-The dashboard gives you:
+### Inspect what's happening
 
-- recent signals
-- recent trades
-- research experiments
-- runtime/service status
-- Operator Manager chat
+```bash
+# Today's brief (if generated)
+sqlite3 judas_crew.db "SELECT brief_date, length(content_md), substr(summary_json, 1, 200) FROM daily_briefs ORDER BY id DESC LIMIT 1;"
 
-The Operator Manager is an operator interface, not unrestricted god-mode execution.
+# Auto-demotions ledger
+sqlite3 judas_crew.db "SELECT id, ts_utc, symbol, strategy_family, reason, reactivated_at_utc FROM auto_demotions ORDER BY id DESC LIMIT 10;"
 
-## How Promotion Works Now
+# Auto-fixes queue
+sqlite3 judas_crew.db "SELECT id, started_at_utc, symptom_category, status, test_result, pushed, operator_decision FROM auto_fixes ORDER BY id DESC LIMIT 10;"
 
-For Judas variants:
+# Recent research experiments
+sqlite3 judas_crew.db "SELECT id, ts_utc, experiment_type, status FROM research_experiments ORDER BY id DESC LIMIT 10;"
 
-1. research runs sweeps
-2. research runs walk-forward
-3. deterministic thresholds decide:
-   - reject
-   - candidate only
-   - promote to paper
-4. promoted variants are written into `active_strategies`
-5. portfolio runtime reads active strategy params on the next scan
+# Research blitz progress
+tail -10 logs/research_blitz.log
+tail -5 outputs/research/blitz_log.jsonl
 
-For workshop buffet strategies:
+# Active strategies
+sqlite3 judas_crew.db "SELECT symbol, strategy_family, version, state FROM active_strategies WHERE state='active';"
 
-- the imported top buffet set is the incumbent seeded baseline
-- the portfolio engine can paper-trade supported seeded strategies now
-- research should compare new candidates against that incumbent set
+# Timer health
+systemctl --user list-timers | grep judas-
 
-## Important Limitations
+# OperatorFlow last run state
+sqlite3 outputs/flow_state.db ".tables"
+```
 
-- full live-market-hours validation of the new portfolio paper order path still requires an open futures session
-- pair and buffet execution is now wired into this repo, but regime review / demotion logic is still earlier-stage than the runtime itself
-- the Operator Manager chat is useful, but the real intelligence is still in deterministic research, promotion, and execution code
+### Operator overrides
+
+```bash
+# Halt all trading next tick
+touch kill.flag
+
+# Halt only the autofix path (system keeps trading and reviewing)
+touch autofix.disable
+
+# Reactivate a demoted strategy via the dashboard (preferred)
+curl -X POST http://127.0.0.1:8080/api/demotions/<id>/reactivate
+
+# Apply a recommended action from the brief
+curl -X POST http://127.0.0.1:8080/api/briefs/<YYYY-MM-DD>/recommended/<index>/apply
+
+# Merge an autofix branch after reviewing on GitHub
+curl -X POST http://127.0.0.1:8080/api/autofixes/<id>/merge
+```
+
+### Dashboard
+
+- `http://omen-claw.tail76e7df.ts.net:8080/` (tailnet)
+- `http://127.0.0.1:8080/` (local)
+
+Today's Brief panel sits at the top with Apply / Reject buttons on each recommended action. More panels (auto-fixes queue, demotions ledger, live perf grid, regime ribbon, system health bar) are designed in `DASHBOARD_PROPOSAL.md` — Phase 7.
+
+---
+
+## How Promotion / Demotion Works
+
+**Promotion** (still operator-gated for now):
+1. Research runs a sweep (or explore_step picks a target).
+2. Walk-forward validation checks deterministic thresholds (PF ≥ 1.3, expectancy ≥ 0.15).
+3. A `strategy_candidates` row is created.
+4. `promote_candidate(id)` atomically retires the prior version and inserts a v+1 active row. Wrapped in `BEGIN IMMEDIATE` with `params_json` schema validation.
+5. `@human_feedback` gates the operator click (loosens with track record per Phase 6).
+
+**Demotion** (auto, the closed-loop fix):
+1. Daily morning_review computes live metrics from `trades`.
+2. M2.7 (or deterministic fallback) decides keep | retune | retire per strategy.
+3. `retire_step` atomically: marks active row retired AND inserts `auto_demotions` row preserving full `params_json` snapshot.
+4. Operator can one-click reactivate via dashboard if they disagree — the snapshot is the source of truth.
+
+**Code-fix** (Phase 3, gated):
+1. Symptoms detected (tool failures, looping research, etc.) → `auto_fixes` row inserted with `status='detected'`.
+2. Trigger gates: `autofix.disable` absent + market closed + 0 open positions + < 3 fixes today.
+3. Worktree created at `/tmp/jac-autofix-<id>` on branch `autofix/<utc>-<slug>`.
+4. Post-commit deny-list hook installed (rejects any commit touching order-path files).
+5. M2.7 harness runs with tools: `read_file`, `list_files`, `grep`, `apply_patch`, `run_tests`, `git_status`, `git_diff`. 30 turn / 30 min budget.
+6. If patch + pytest passes → `git commit` (hook validates) → `git push origin autofix/<...>`.
+7. Operator reviews diff on GitHub, clicks Merge or Reject in dashboard.
+
+---
 
 ## Goal
 
-The goal is not to merely copy the workshop bot.
+The system is not a static replica of the workshop. It's a **learner**:
 
-The goal is:
+- Workshop is the seeded incumbent.
+- Research continuously challenges it.
+- Promotion adds stronger variants; demotion retires weaker ones.
+- Autofix patches the system itself when something breaks.
+- Operator reviews aggregates, not individual trades.
 
-- use the workshop as the seeded incumbent
-- let research continuously challenge it
-- promote stronger paper strategies
-- retire weaker ones
-- make the agentic version outperform the static workshop baseline over time
+Over time, the active set should outperform the seed. That's the only metric that matters.
+
+---
+
+## Sister Repos
+
+- `../judas-futures-workshop` — the deterministic Python workshop. Read-only baseline. Has its own systemd units (`judasfutures-*`) and DB (`judasfutures.db`). Different clientIds (137/138 vs 150/151) so we coexist on the same paper account.
+
+## Drift Prevention
+
+Any phase that lands without a matching update to `AGENTIC_OPERATOR_PLAN.md` is incomplete. The plan is the spec; the README is the marketing.

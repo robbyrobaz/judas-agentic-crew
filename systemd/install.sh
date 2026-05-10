@@ -13,6 +13,8 @@ cp "${SCRIPT_DIR}/judas-crew.timer"   "${SYSTEMD_USER_DIR}/"
 cp "${SCRIPT_DIR}/judas-dashboard.service" "${SYSTEMD_USER_DIR}/"
 cp "${SCRIPT_DIR}/judas-research.service" "${SYSTEMD_USER_DIR}/"
 cp "${SCRIPT_DIR}/judas-research.timer"   "${SYSTEMD_USER_DIR}/"
+cp "${SCRIPT_DIR}/judas-operator.service" "${SYSTEMD_USER_DIR}/"
+cp "${SCRIPT_DIR}/judas-operator.timer"   "${SYSTEMD_USER_DIR}/"
 
 echo "Reloading systemd user daemon ..."
 systemctl --user daemon-reload
@@ -48,6 +50,12 @@ systemctl --user enable judas-research.timer
 echo "Starting judas-research.timer ..."
 systemctl --user start judas-research.timer
 
+echo "Enabling judas-operator.timer ..."
+systemctl --user enable judas-operator.timer
+
+echo "Starting judas-operator.timer ..."
+systemctl --user start judas-operator.timer
+
 echo ""
 echo "Done. Timer status:"
 systemctl --user status judas-crew.timer --no-pager || true
@@ -63,3 +71,7 @@ systemctl --user status judas-dashboard.service --no-pager || true
 echo ""
 echo "Research timer status:"
 systemctl --user status judas-research.timer --no-pager || true
+
+echo ""
+echo "Operator timer status:"
+systemctl --user status judas-operator.timer --no-pager || true

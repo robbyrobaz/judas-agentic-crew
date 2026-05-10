@@ -157,6 +157,20 @@ CREATE TABLE IF NOT EXISTS auto_fixes (
 );
 """
 
+_CREATE_CUSTOM_STRATEGIES = """
+CREATE TABLE IF NOT EXISTS custom_strategies (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at_utc  TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    symbol          TEXT NOT NULL,
+    code            TEXT NOT NULL,
+    rationale       TEXT NOT NULL,
+    backtest_metrics_json  TEXT NOT NULL,
+    active          INTEGER NOT NULL DEFAULT 1,
+    retired_at_utc  TEXT
+);
+"""
+
 _INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_signals_ts_utc  ON signals(ts_utc);",
     "CREATE INDEX IF NOT EXISTS ix_signals_symbol  ON signals(symbol);",
@@ -182,6 +196,12 @@ _INDEXES = [
     "ON auto_fixes(symptom_hash) WHERE operator_decision IS NULL;",
     "CREATE INDEX IF NOT EXISTS idx_auto_fixes_started ON auto_fixes(started_at_utc DESC);",
     "CREATE INDEX IF NOT EXISTS idx_auto_fixes_status ON auto_fixes(status);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_strategies_name_active "
+    "ON custom_strategies(name) WHERE retired_at_utc IS NULL;",
+    "CREATE INDEX IF NOT EXISTS idx_custom_strategies_symbol "
+    "ON custom_strategies(symbol);",
+    "CREATE INDEX IF NOT EXISTS idx_custom_strategies_active "
+    "ON custom_strategies(active);",
 ]
 
 _MIGRATIONS = [
@@ -212,6 +232,7 @@ def init_db(db_path: str | Path) -> None:
         conn.execute(_CREATE_AUTO_DEMOTIONS)
         conn.execute(_CREATE_DAILY_BRIEFS)
         conn.execute(_CREATE_AUTO_FIXES)
+        conn.execute(_CREATE_CUSTOM_STRATEGIES)
         for table, column, ddl in _MIGRATIONS:
             if not _column_exists(conn, table, column):
                 conn.execute(ddl)

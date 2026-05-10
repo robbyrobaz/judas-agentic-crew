@@ -1,6 +1,12 @@
 # Agentic Operator Plan
 
-**Status:** active spec, written 2026-05-09 after day-1 launch surfaced rough edges (3-hour CrewAI hierarchical loop, dry-run weekend-flatten on the workshop side, broker `dry_run` default-trap).
+**Status:** active spec.
+
+- **Phases 0, 1, 2, 4, 5 implemented and pushed to `master` 2026-05-10** (~75 min wall clock end-to-end via parallel worker agents).
+- **Phase 3 design** pushed as `PHASE3_DESIGN.md`; **code build deferred until operator returns** to gate the autofix-merge path (per advisor: design review is not authorization to build autonomously).
+- **Phase 6 (HITL shrinkage)** is policy + threshold tuning — implemented incrementally as track record accumulates, not a single deliverable.
+- Test count: 57 passing. Smoke-tested OperatorFlow end-to-end: deterministic path completes in <60s, persists state, writes daily_briefs + Markdown.
+- Original status: written 2026-05-09 after day-1 launch surfaced rough edges (3-hour CrewAI hierarchical loop, dry-run weekend-flatten on the workshop side, broker `dry_run` default-trap).
 
 **Goal in one sentence:** an autonomous, paper-only futures lab on the IBKR paper account `DUH860616` that explores, validates, promotes, retires, and self-heals its own bugs within a bounded $5,000 sleeve — surfacing only big calls to the operator.
 

@@ -202,10 +202,13 @@ def _reload_operator_flow():
 
 
 @_skip_flow
-def test_morning_review_routes_to_retire(tmp_path, monkeypatch):
+def test_morning_review_invokes_pm_agent_and_routes(tmp_path, monkeypatch):
+    """morning_review now delegates to run_pm_decision and routes to noop or
+    fix_bug. This test asserts the PM agent is called and its result is
+    stashed on findings.pm_result.
+    """
     db = tmp_path / "judas_crew.db"
     sid = _seed_strategy(db, name="bad_strat")
-    # PF 0.5: 5 wins $50 + 15 losses $50 = +250 / -750 = 0.333
     _seed_trades(db, strategy_id=sid, pnls=[50.0] * 5 + [-50.0] * 15)
 
     monkeypatch.setenv(
@@ -216,48 +219,40 @@ def test_morning_review_routes_to_retire(tmp_path, monkeypatch):
 
     module = _reload_operator_flow()
 
-    retire_calls: list[dict] = []
+    calls: list[dict] = []
 
-    from src import strategy_registry
+    from src.research import pm_agent
 
-    def fake_retire(*, strategy_id: int, reason: str, metrics_snapshot: dict) -> int:
-        retire_calls.append(
-            {
-                "strategy_id": strategy_id,
-                "reason": reason,
-                "metrics_snapshot": metrics_snapshot,
-            }
+    def fake_run(**kwargs):
+        calls.append(kwargs)
+        return pm_agent.PMDecisionResult(
+            success=True,
+            actions_taken=[],
+            narrative="fake PM cycle",
+            turns_used=0,
+            elapsed_s=0.0,
+            fallback_used=True,
+            raw_messages=[],
+            error=None,
         )
-        return 999
 
-    monkeypatch.setattr(
-        strategy_registry, "retire_strategy", fake_retire, raising=False
-    )
+    monkeypatch.setattr(pm_agent, "run_pm_decision", fake_run, raising=True)
 
     flow = module.OperatorFlow()
     flow.kickoff(inputs={"id": module.OPERATOR_FLOW_ID})
 
-    assert flow.state.decision == "retire"
+    assert len(calls) == 1
+    # No symptoms detected on a fresh DB → routes to noop.
+    assert flow.state.decision in ("noop", "fix_bug")
     assert flow.state.findings is not None
-    assert "retire_list" in flow.state.findings
-    assert len(flow.state.findings["retire_list"]) == 1
-    assert len(retire_calls) == 1
-    assert retire_calls[0]["strategy_id"] == sid
+    assert "pm_result" in flow.state.findings
+    assert flow.state.findings["pm_result"]["narrative"] == "fake PM cycle"
 
 
 @_skip_flow
 def test_morning_review_routes_to_noop_when_clean(tmp_path, monkeypatch):
     db = tmp_path / "judas_crew.db"
-    sid = _seed_strategy(db, name="good_strat")
-    # PF ~3.0 — healthy, alternating to keep consec losers low
-    pnls = []
-    w, l = 12, 8
-    while w or l:
-        if w:
-            pnls.append(100.0); w -= 1
-        if l:
-            pnls.append(-50.0); l -= 1
-    _seed_trades(db, strategy_id=sid, pnls=pnls)
+    _seed_strategy(db, name="good_strat")
 
     monkeypatch.setenv(
         "JUDAS_OPERATOR_STATE_DB", str(tmp_path / "flow_state.db")
@@ -266,8 +261,22 @@ def test_morning_review_routes_to_noop_when_clean(tmp_path, monkeypatch):
     monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
 
     module = _reload_operator_flow()
-    # Force noop routing so Phase 5 explore triggers don't flip this test.
-    monkeypatch.setattr(module, "_decide_explore_or_noop", lambda *, db_path: ("noop", None))
+
+    from src.research import pm_agent
+
+    def fake_run(**_kwargs):
+        return pm_agent.PMDecisionResult(
+            success=True,
+            actions_taken=[],
+            narrative="clean",
+            turns_used=0,
+            elapsed_s=0.0,
+            fallback_used=True,
+            raw_messages=[],
+            error=None,
+        )
+
+    monkeypatch.setattr(pm_agent, "run_pm_decision", fake_run, raising=True)
 
     flow = module.OperatorFlow()
     flow.kickoff(inputs={"id": module.OPERATOR_FLOW_ID})

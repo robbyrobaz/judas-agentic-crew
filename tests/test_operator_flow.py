@@ -107,9 +107,11 @@ def _find_state_payload(rows: list[dict]) -> dict | None:
 
 def test_operator_flow_kickoff_completes_and_persists(state_db, monkeypatch):
     module, db_path = state_db
-    # Force noop routing so the Phase 5 explore triggers don't flip this
-    # Phase 1 routing test (empty fixture DB looks 'stale' to the explorer).
-    monkeypatch.setattr(module, "_decide_explore_or_noop", lambda *, db_path: ("noop", None))
+    # PM-agent era: morning_review only routes to "fix_bug" or "noop".
+    # Conftest sets JUDAS_PM_AGENT_INHIBIT=1 and pops MINIMAX_API_KEY so the
+    # PM agent short-circuits; no symptoms in the empty fixture DB means
+    # routing falls to "noop". The Phase-1 _decide_explore_or_noop monkeypatch
+    # is no longer needed.
     flow = module.OperatorFlow()
 
     start = time.monotonic()

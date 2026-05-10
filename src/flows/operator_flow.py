@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -176,70 +175,76 @@ class OperatorFlow(Flow[OperatorState]):
 
     @start()
     def morning_review(self) -> str:
-        """Run live-review on all active strategies; route based on decisions."""
+        """PM agent runs the morning review.
+
+        The agent has the loose "make money" mandate and acts via the tool
+        palette (atomic registry helpers + deterministic broker path).
+        Actions happen *inside* run_pm_decision via tool calls, so this step
+        does not need a separate retire_step. We still route to ``fix_bug``
+        when symptom detection finds something for the autofix harness; the
+        PM agent doesn't write code.
+        """
         self.state.cycle_count += 1
         self.state.last_run_utc = datetime.now(timezone.utc).isoformat()
 
-        # Lazy import so Phase-1 tests that don't seed a DB still pass.
-        from src.research.live_review import review_all_active_strategies
+        from src.research import pm_agent
 
         db_path = _resolve_judas_db_path()
         try:
-            results = review_all_active_strategies(db_path=db_path)
-        except Exception:  # noqa: BLE001
-            log.exception("operator.morning_review.failed")
-            results = []
+            pm_result = pm_agent.run_pm_decision(db_path=db_path)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("operator.morning_review.pm_agent_failed")
+            pm_result = None
 
-        retire_list = []
-        review_summary = []
-        for metrics, decision in results:
-            entry = {
-                "strategy_id": metrics.strategy_id,
-                "strategy_name": metrics.strategy_name,
-                "action": decision.action,
-                "reason": decision.reason,
-                "confidence": decision.confidence,
-                "fallback_used": decision.fallback_used,
-            }
-            review_summary.append(entry)
-            if decision.action == "retire":
-                retire_list.append(
-                    {
-                        "strategy_id": metrics.strategy_id,
-                        "metrics": asdict(metrics),
-                        "reason": decision.reason,
-                    }
-                )
-
-        if retire_list:
-            self.state.decision = "retire"
-            self.state.findings = {
-                "retire_list": retire_list,
-                "review_summary": review_summary,
+        pm_payload: dict | None
+        if pm_result is None:
+            pm_payload = {
+                "success": False,
+                "actions_taken": [],
+                "narrative": "PM agent crashed — see logs.",
+                "turns_used": 0,
+                "elapsed_s": 0.0,
+                "fallback_used": True,
+                "error": "pm_agent crashed",
             }
         else:
-            pending_symptoms = _detect_pending_symptoms(db_path=db_path)
-            if pending_symptoms:
-                self.state.decision = "fix_bug"
-                self.state.findings = {
-                    "review_summary": review_summary,
-                    "pending_symptoms": [
-                        {
-                            "category": s.category,
-                            "hash": s.hash,
-                            "summary": s.summary,
-                            "evidence": s.evidence,
-                        }
-                        for s in pending_symptoms
-                    ],
-                }
-            else:
-                decision, reason = _decide_explore_or_noop(db_path=db_path)
-                self.state.decision = decision
-                self.state.findings = {
-                    "review_summary": review_summary,
-                    "explore_reason": reason if decision == "explore" else None,
-                }
+            pm_payload = {
+                "success": pm_result.success,
+                "actions_taken": [
+                    {
+                        "action": a.action,
+                        "target_id": a.target_id,
+                        "payload": a.payload,
+                        "rationale": a.rationale,
+                        "tool_result": a.tool_result,
+                    }
+                    for a in pm_result.actions_taken
+                ],
+                "narrative": pm_result.narrative,
+                "turns_used": pm_result.turns_used,
+                "elapsed_s": pm_result.elapsed_s,
+                "fallback_used": pm_result.fallback_used,
+                "error": pm_result.error,
+            }
+
+        pending_symptoms = _detect_pending_symptoms(db_path=db_path)
+        if pending_symptoms:
+            self.state.decision = "fix_bug"
+            self.state.findings = {
+                "pm_result": pm_payload,
+                "pending_symptoms": [
+                    {
+                        "category": s.category,
+                        "hash": s.hash,
+                        "summary": s.summary,
+                        "evidence": s.evidence,
+                    }
+                    for s in pending_symptoms
+                ],
+            }
+        else:
+            self.state.decision = "noop"
+            self.state.findings = {"pm_result": pm_payload}
 
         log.info(
             "operator.morning_review.complete",
@@ -247,8 +252,8 @@ class OperatorFlow(Flow[OperatorState]):
                 "cycle_count": self.state.cycle_count,
                 "last_run_utc": self.state.last_run_utc,
                 "decision": self.state.decision,
-                "n_reviewed": len(review_summary),
-                "n_retire": len(retire_list),
+                "n_actions": len(pm_payload["actions_taken"]),
+                "fallback_used": pm_payload["fallback_used"],
             },
         )
         return self.state.decision
@@ -261,45 +266,26 @@ class OperatorFlow(Flow[OperatorState]):
 
     @listen("retire")
     def retire_step(self) -> None:
-        """Atomically retire each strategy flagged in findings.retire_list,
-        then ALWAYS run the daily brief — the operator's primary surface
-        cannot go dark on a retire day.
+        """No-op shim — kept for routing fallback compatibility.
+
+        The PM agent (Phase 6+) takes its own retire actions via the
+        ``retire_strategy`` tool inside ``run_pm_decision``. If anything
+        routes here with a non-empty retire_list, it means a caller bypassed
+        the PM agent — log loud and still write the brief.
         """
         findings = self.state.findings or {}
-        retire_list = findings.get("retire_list", [])
+        retire_list = findings.get("retire_list") or []
+        if retire_list:
+            log.warning(
+                "operator.retire_step.bypassed_pm_agent",
+                extra={"n_retire": len(retire_list)},
+            )
+        else:
+            log.info("operator.retire_step.noop")
         try:
-            if not retire_list:
-                log.info("operator.retire_step.empty")
-            else:
-                from src import strategy_registry
-
-                retire_fn = getattr(strategy_registry, "retire_strategy", None)
-                if retire_fn is None:
-                    log.warning("operator.retire_step.registry_missing_retire_strategy")
-                else:
-                    for entry in retire_list:
-                        sid = entry.get("strategy_id")
-                        try:
-                            demotion_id = retire_fn(
-                                strategy_id=int(sid),
-                                reason=str(entry.get("reason", "auto-demotion")),
-                                metrics_snapshot=entry.get("metrics", {}),
-                            )
-                            log.info(
-                                "operator.retire_step.retired",
-                                extra={"strategy_id": sid, "demotion_id": demotion_id},
-                            )
-                        except Exception:  # noqa: BLE001
-                            log.exception(
-                                "operator.retire_step.failed",
-                                extra={"strategy_id": sid},
-                            )
-        finally:
-            # Always run the brief — even if retire failed.
-            try:
-                self.write_brief_step()
-            except Exception:  # noqa: BLE001
-                log.exception("operator.retire_step.brief_failed")
+            self.write_brief_step()
+        except Exception:  # noqa: BLE001
+            log.exception("operator.retire_step.brief_failed")
 
     @listen("explore")
     def explore_step(self) -> None:
@@ -662,9 +648,13 @@ class OperatorFlow(Flow[OperatorState]):
             return
 
         db_path = _resolve_judas_db_path()
+        findings = self.state.findings or {}
+        pm_result = findings.get("pm_result")
         try:
             brief_date = _yesterday_et()
-            composed = compose_daily_brief(db_path=db_path, brief_date=brief_date)
+            composed = compose_daily_brief(
+                db_path=db_path, brief_date=brief_date, pm_result=pm_result,
+            )
             brief_id = persist_daily_brief(
                 db_path=db_path,
                 brief_date=brief_date,

@@ -151,9 +151,14 @@ def _backtest_expectancy(params_json: str | None) -> dict | None:
 
 
 def compose_daily_brief(
-    *, db_path: str, brief_date: str | None = None
+    *, db_path: str, brief_date: str | None = None, pm_result: dict | None = None,
 ) -> dict:
-    """Compose a daily brief for ``brief_date`` (ET, YYYY-MM-DD)."""
+    """Compose a daily brief for ``brief_date`` (ET, YYYY-MM-DD).
+
+    If ``pm_result`` is provided (the dict-form of ``PMDecisionResult``), a
+    "PM Decisions" section is rendered into the markdown surfacing the
+    narrative + bullet list of actions taken.
+    """
     if brief_date is None:
         brief_date = _yesterday_et()
 
@@ -311,14 +316,50 @@ def compose_daily_brief(
         "recommended_actions": recommended,
     }
 
-    content_md = _render_markdown(brief_date=brief_date, summary=summary)
+    if pm_result is not None:
+        summary["pm_result"] = pm_result
+
+    content_md = _render_markdown(
+        brief_date=brief_date, summary=summary, pm_result=pm_result,
+    )
     return {"summary": summary, "content_md": content_md}
 
 
-def _render_markdown(*, brief_date: str, summary: dict) -> str:
+def _render_markdown(
+    *, brief_date: str, summary: dict, pm_result: dict | None = None
+) -> str:
     lines: list[str] = []
     lines.append(f"# Daily Brief — {brief_date}")
     lines.append("")
+
+    if pm_result is not None:
+        lines.append("## PM Decisions")
+        lines.append("")
+        narrative = str(pm_result.get("narrative") or "").strip()
+        if narrative:
+            lines.append(narrative)
+            lines.append("")
+        actions = pm_result.get("actions_taken") or []
+        if actions:
+            lines.append("### Actions taken")
+            lines.append("")
+            for a in actions:
+                name = a.get("action", "?")
+                tid = a.get("target_id")
+                rationale = (a.get("rationale") or "").strip()
+                payload = a.get("payload") or {}
+                bullet = f"- **{name}**"
+                if tid is not None:
+                    bullet += f" (id={tid})"
+                if "symbol" in payload:
+                    bullet += f" {payload.get('symbol')}"
+                if rationale:
+                    bullet += f" — {rationale}"
+                lines.append(bullet)
+            lines.append("")
+        else:
+            lines.append("_No actions taken this cycle._")
+            lines.append("")
 
     lines.append("## Performance")
     lines.append("")

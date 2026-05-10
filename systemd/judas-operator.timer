@@ -1,11 +1,10 @@
 [Unit]
-Description=Judas Operator Flow timer — hourly (PM agent cycle)
+Description=Judas Operator Flow timer — every 30 minutes
 
 [Timer]
-# Hourly. The Operator's job is to look at live positions, the strategy
-# registry, and the delegation queue every hour and decide what to do.
-# Session-status gates inside each agent handle market-hours filtering.
-OnCalendar=*-*-* *:00:00 UTC
+# Every 30 min. The Operator must stay on top of live positions and the
+# delegation queue. Session-status gates filter market-hours.
+OnCalendar=*-*-* *:00,30:00 UTC
 Persistent=false
 Unit=judas-operator.service
 

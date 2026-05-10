@@ -195,17 +195,22 @@ def _max_consec_losers(pnls_recent_first: list[float]) -> int:
 
 
 def _deterministic_decide(metrics: StrategyMetrics) -> Decision:
-    if metrics.n_closed_trades < 5:
-        return Decision(
-            action="keep",
-            reason=f"insufficient data ({metrics.n_closed_trades} closed trades)",
-            confidence=0.5,
-            fallback_used=True,
-        )
+    """Deterministic fallback. Only fires when the LLM path is unavailable.
 
+    Design note (revised 2026-05-10 after operator feedback):
+      The previous version protected `n_closed_trades < 5` strategies with
+      "keep — insufficient data". That was wrong. Workshop-seeded strategies
+      aren't sacred — demotions are cheap (one-click reactivate via
+      auto_demotions), promotions are gated. The system should bias toward
+      retire + easy rollback, not toward protecting stale slots in the
+      active set. This rule now mirrors the reasoning M2.7 would do: a
+      strategy with no closed trades AND no recent fire activity is a
+      candidate for retire, not a candidate for indefinite protection.
+    """
     pf = metrics.pf_20
     pf_finite = not (pf is None or math.isnan(pf))
 
+    # Performance-based retire (highest confidence)
     if (pf_finite and pf < 0.9) or metrics.max_consec_losers >= 6:
         return Decision(
             action="retire",
@@ -217,6 +222,22 @@ def _deterministic_decide(metrics: StrategyMetrics) -> Decision:
             fallback_used=True,
         )
 
+    # Inactive slot — never fired or stale. Retire and let it reactivate
+    # via the dashboard if the operator disagrees.
+    if metrics.n_closed_trades == 0:
+        days = metrics.days_since_last_fire
+        if days is None or days >= 7:
+            return Decision(
+                action="retire",
+                reason=(
+                    f"inactive: 0 closed trades, days_since_last_fire={days}. "
+                    "Retire is cheap; reactivate via auto_demotions if needed."
+                ),
+                confidence=0.7,
+                fallback_used=True,
+            )
+
+    # Stale + marginal → retune
     stale = (metrics.days_since_last_fire or 0) >= 14
     if pf_finite and pf < 1.1 and stale:
         return Decision(
@@ -229,10 +250,15 @@ def _deterministic_decide(metrics: StrategyMetrics) -> Decision:
             fallback_used=True,
         )
 
+    # Healthy or recently fired with too few trades to judge — keep watching.
     return Decision(
         action="keep",
-        reason=f"healthy: pf_20={pf:.2f}",
-        confidence=0.7,
+        reason=(
+            f"healthy: pf_20={pf} n_closed_trades={metrics.n_closed_trades}"
+            if pf_finite
+            else f"observing: n_closed_trades={metrics.n_closed_trades}"
+        ),
+        confidence=0.6,
         fallback_used=True,
     )
 

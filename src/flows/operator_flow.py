@@ -261,40 +261,45 @@ class OperatorFlow(Flow[OperatorState]):
 
     @listen("retire")
     def retire_step(self) -> None:
-        """Atomically retire each strategy flagged in findings.retire_list."""
+        """Atomically retire each strategy flagged in findings.retire_list,
+        then ALWAYS run the daily brief — the operator's primary surface
+        cannot go dark on a retire day.
+        """
         findings = self.state.findings or {}
         retire_list = findings.get("retire_list", [])
-        if not retire_list:
-            log.info("operator.retire_step.empty")
-            return
+        try:
+            if not retire_list:
+                log.info("operator.retire_step.empty")
+            else:
+                from src import strategy_registry
 
-        # Imported lazily so worker D can land its impl independently.
-        from src import strategy_registry
-
-        retire_fn = getattr(strategy_registry, "retire_strategy", None)
-        if retire_fn is None:
-            log.warning("operator.retire_step.registry_missing_retire_strategy")
-            return
-
-        for entry in retire_list:
-            sid = entry.get("strategy_id")
+                retire_fn = getattr(strategy_registry, "retire_strategy", None)
+                if retire_fn is None:
+                    log.warning("operator.retire_step.registry_missing_retire_strategy")
+                else:
+                    for entry in retire_list:
+                        sid = entry.get("strategy_id")
+                        try:
+                            demotion_id = retire_fn(
+                                strategy_id=int(sid),
+                                reason=str(entry.get("reason", "auto-demotion")),
+                                metrics_snapshot=entry.get("metrics", {}),
+                            )
+                            log.info(
+                                "operator.retire_step.retired",
+                                extra={"strategy_id": sid, "demotion_id": demotion_id},
+                            )
+                        except Exception:  # noqa: BLE001
+                            log.exception(
+                                "operator.retire_step.failed",
+                                extra={"strategy_id": sid},
+                            )
+        finally:
+            # Always run the brief — even if retire failed.
             try:
-                demotion_id = retire_fn(
-                    strategy_id=int(sid),
-                    reason=str(entry.get("reason", "auto-demotion")),
-                    metrics_snapshot=entry.get("metrics", {}),
-                )
-                log.info(
-                    "operator.retire_step.retired",
-                    extra={
-                        "strategy_id": sid,
-                        "demotion_id": demotion_id,
-                    },
-                )
+                self.write_brief_step()
             except Exception:  # noqa: BLE001
-                log.exception(
-                    "operator.retire_step.failed", extra={"strategy_id": sid}
-                )
+                log.exception("operator.retire_step.brief_failed")
 
     @listen("explore")
     def explore_step(self) -> None:
@@ -346,10 +351,19 @@ class OperatorFlow(Flow[OperatorState]):
 
     @listen("fix_bug")
     def fix_bug_step(self) -> None:
-        """Phase 3a — record detected symptoms in auto_fixes; do NOT fix.
-
-        Workers I/J replace this step in Phase 3b/3c. Keep minimal.
+        """Record detected symptoms in auto_fixes, then dispatch one autofix
+        attempt; ALWAYS write the daily brief at the end so the operator's
+        primary surface never goes dark on a fix-bug day.
         """
+        try:
+            self._do_fix_bug_step()
+        finally:
+            try:
+                self.write_brief_step()
+            except Exception:  # noqa: BLE001
+                log.exception("operator.fix_bug_step.brief_failed")
+
+    def _do_fix_bug_step(self) -> None:
         import sqlite3
 
         findings = self.state.findings or {}

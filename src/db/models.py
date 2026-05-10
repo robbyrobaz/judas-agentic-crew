@@ -135,6 +135,28 @@ CREATE TABLE IF NOT EXISTS daily_briefs (
 );
 """
 
+_CREATE_AUTO_FIXES = """
+CREATE TABLE IF NOT EXISTS auto_fixes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at_utc TEXT NOT NULL,
+    finished_at_utc TEXT,
+    symptom_category TEXT NOT NULL,
+    symptom_hash TEXT NOT NULL,
+    symptom_summary TEXT NOT NULL,
+    branch_name TEXT,
+    worktree_path TEXT,
+    prompt TEXT,
+    diff_summary TEXT,
+    files_changed_json TEXT,
+    test_result TEXT,
+    test_output_tail TEXT,
+    pushed INTEGER DEFAULT 0,
+    operator_decision TEXT,
+    operator_decision_at_utc TEXT,
+    status TEXT NOT NULL DEFAULT 'detected'
+);
+"""
+
 _INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_signals_ts_utc  ON signals(ts_utc);",
     "CREATE INDEX IF NOT EXISTS ix_signals_symbol  ON signals(symbol);",
@@ -156,6 +178,10 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_signals_strategy ON signals(strategy_id, strategy_family, strategy_version);",
     "CREATE INDEX IF NOT EXISTS ix_trades_strategy ON trades(strategy_id, strategy_family, strategy_version);",
     "CREATE INDEX IF NOT EXISTS idx_daily_briefs_date ON daily_briefs(brief_date DESC);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_auto_fixes_active_symptom "
+    "ON auto_fixes(symptom_hash) WHERE operator_decision IS NULL;",
+    "CREATE INDEX IF NOT EXISTS idx_auto_fixes_started ON auto_fixes(started_at_utc DESC);",
+    "CREATE INDEX IF NOT EXISTS idx_auto_fixes_status ON auto_fixes(status);",
 ]
 
 _MIGRATIONS = [
@@ -185,6 +211,7 @@ def init_db(db_path: str | Path) -> None:
         conn.execute(_CREATE_ACTIVE_STRATEGIES)
         conn.execute(_CREATE_AUTO_DEMOTIONS)
         conn.execute(_CREATE_DAILY_BRIEFS)
+        conn.execute(_CREATE_AUTO_FIXES)
         for table, column, ddl in _MIGRATIONS:
             if not _column_exists(conn, table, column):
                 conn.execute(ddl)

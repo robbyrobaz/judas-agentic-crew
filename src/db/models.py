@@ -108,6 +108,22 @@ CREATE TABLE IF NOT EXISTS active_strategies (
 );
 """
 
+_CREATE_AUTO_DEMOTIONS = """
+CREATE TABLE IF NOT EXISTS auto_demotions (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_utc                   TEXT    NOT NULL,
+    strategy_id              INTEGER NOT NULL,
+    symbol                   TEXT    NOT NULL,
+    strategy_family          TEXT    NOT NULL,
+    version                  INTEGER NOT NULL,
+    params_json              TEXT    NOT NULL,
+    metrics_snapshot_json    TEXT    NOT NULL,
+    reason                   TEXT    NOT NULL,
+    reactivated_at_utc       TEXT,
+    reactivated_strategy_id  INTEGER
+);
+"""
+
 _INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_signals_ts_utc  ON signals(ts_utc);",
     "CREATE INDEX IF NOT EXISTS ix_signals_symbol  ON signals(symbol);",
@@ -123,6 +139,9 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_active_symbol ON active_strategies(symbol);",
     "CREATE INDEX IF NOT EXISTS ix_active_family ON active_strategies(strategy_family);",
     "CREATE INDEX IF NOT EXISTS ix_active_state ON active_strategies(state);",
+    "CREATE INDEX IF NOT EXISTS ix_demotions_ts ON auto_demotions(ts_utc);",
+    "CREATE INDEX IF NOT EXISTS ix_demotions_strategy ON auto_demotions(strategy_id);",
+    "CREATE INDEX IF NOT EXISTS ix_demotions_symbol ON auto_demotions(symbol);",
     "CREATE INDEX IF NOT EXISTS ix_signals_strategy ON signals(strategy_id, strategy_family, strategy_version);",
     "CREATE INDEX IF NOT EXISTS ix_trades_strategy ON trades(strategy_id, strategy_family, strategy_version);",
 ]
@@ -152,6 +171,7 @@ def init_db(db_path: str | Path) -> None:
         conn.execute(_CREATE_RESEARCH_EXPERIMENTS)
         conn.execute(_CREATE_STRATEGY_CANDIDATES)
         conn.execute(_CREATE_ACTIVE_STRATEGIES)
+        conn.execute(_CREATE_AUTO_DEMOTIONS)
         for table, column, ddl in _MIGRATIONS:
             if not _column_exists(conn, table, column):
                 conn.execute(ddl)

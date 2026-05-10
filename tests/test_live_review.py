@@ -221,12 +221,13 @@ def test_morning_review_invokes_pm_agent_and_routes(tmp_path, monkeypatch):
 
     calls: list[dict] = []
 
-    from src.research import pm_agent
+    from src.research import operator_agent
 
     def fake_run(**kwargs):
         calls.append(kwargs)
-        return pm_agent.PMDecisionResult(
+        return operator_agent.OperatorDecisionResult(
             success=True,
+            delegations=[],
             actions_taken=[],
             narrative="fake PM cycle",
             turns_used=0,
@@ -236,7 +237,8 @@ def test_morning_review_invokes_pm_agent_and_routes(tmp_path, monkeypatch):
             error=None,
         )
 
-    monkeypatch.setattr(pm_agent, "run_pm_decision", fake_run, raising=True)
+    monkeypatch.setattr(operator_agent, "run_operator_decision", fake_run,
+                        raising=True)
 
     flow = module.OperatorFlow()
     flow.kickoff(inputs={"id": module.OPERATOR_FLOW_ID})

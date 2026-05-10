@@ -333,11 +333,28 @@ def _render_markdown(
     lines.append("")
 
     if pm_result is not None:
-        lines.append("## PM Decisions")
+        lines.append("## Operator Decisions")
         lines.append("")
         narrative = str(pm_result.get("narrative") or "").strip()
         if narrative:
             lines.append(narrative)
+            lines.append("")
+        delegations = pm_result.get("delegations") or []
+        if delegations:
+            lines.append("### Delegations issued")
+            lines.append("")
+            for d in delegations:
+                team = d.get("team", "?")
+                act = d.get("action", "?")
+                urg = d.get("urgency", "normal")
+                rat = (d.get("rationale") or "").strip()
+                tid = d.get("task_id")
+                bullet = f"- **{team}** -> {act} ({urg})"
+                if tid is not None:
+                    bullet += f" [task #{tid}]"
+                if rat:
+                    bullet += f" — {rat}"
+                lines.append(bullet)
             lines.append("")
         actions = pm_result.get("actions_taken") or []
         if actions:

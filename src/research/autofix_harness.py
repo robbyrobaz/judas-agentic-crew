@@ -449,5 +449,246 @@ def _tool_schemas() -> list[dict]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Main loop
+# ---------------------------------------------------------------------------
 
-# run_harness is added in the next commit (loop logic).
+
+def _call_llm(
+    *,
+    messages: list[dict],
+    tools: list[dict],
+    model: str,
+    timeout_s: int,
+) -> Any:
+    """Wrap litellm so tests can monkeypatch this single seam."""
+    import litellm  # type: ignore[import-not-found]
+
+    return litellm.completion(
+        model=model,
+        messages=messages,
+        tools=tools,
+        tool_choice="auto",
+        timeout=timeout_s,
+        temperature=0.0,
+    )
+
+
+def _extract_message(response: Any) -> dict:
+    """Normalize litellm response to a plain dict message."""
+    try:
+        choice = response["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError):
+        choice = getattr(response, "choices", [None])[0]
+        choice = getattr(choice, "message", None) or {}
+    if hasattr(choice, "model_dump"):
+        return choice.model_dump()
+    if hasattr(choice, "to_dict"):
+        return choice.to_dict()
+    if isinstance(choice, dict):
+        return dict(choice)
+    return {"role": "assistant", "content": str(choice)}
+
+
+def _tool_calls_from(message: dict) -> list[dict]:
+    raw = message.get("tool_calls") or []
+    out: list[dict] = []
+    for tc in raw:
+        if isinstance(tc, dict):
+            out.append(tc)
+        elif hasattr(tc, "model_dump"):
+            out.append(tc.model_dump())
+        elif hasattr(tc, "to_dict"):
+            out.append(tc.to_dict())
+    return out
+
+
+def run_harness(
+    *,
+    prompt: str,
+    worktree_path: str,
+    allowlist: list[str],
+    denylist: list[str],
+    turn_budget: int = 30,
+    time_budget_s: int = 1800,
+    pytest_args: list[str] | None = None,
+    minimax_model: str = "minimax/MiniMax-M2.7",
+) -> HarnessResult:
+    """Run M2.7 against a git worktree to fix a focused symptom.
+
+    See module docstring + PHASE3_DESIGN.md §"Autofix executor" for design.
+    """
+    start = time.time()
+
+    if not os.environ.get("MINIMAX_API_KEY"):
+        return HarnessResult(
+            success=False,
+            files_changed=[],
+            diff_summary="",
+            diff_text=None,
+            test_passed=False,
+            test_output_tail="",
+            turns_used=0,
+            elapsed_s=time.time() - start,
+            error="MINIMAX_API_KEY not set",
+            raw_messages=[],
+        )
+
+    if not Path(worktree_path).is_dir():
+        return HarnessResult(
+            success=False,
+            files_changed=[],
+            diff_summary="",
+            diff_text=None,
+            test_passed=False,
+            test_output_tail="",
+            turns_used=0,
+            elapsed_s=time.time() - start,
+            error=f"worktree_path does not exist: {worktree_path}",
+            raw_messages=[],
+        )
+
+    tools = _make_tools(
+        worktree_path=worktree_path, allowlist=allowlist, denylist=denylist
+    )
+    schemas = _tool_schemas()
+
+    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
+        turn_budget=turn_budget,
+        time_budget_s=time_budget_s,
+        allowlist=", ".join(allowlist),
+        denylist=", ".join(denylist),
+    )
+    messages: list[dict] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+
+    turn = 0
+    error: str | None = None
+    while turn < turn_budget:
+        elapsed = time.time() - start
+        if elapsed >= time_budget_s:
+            error = f"time budget exhausted after {elapsed:.1f}s"
+            break
+        remaining = max(1, int(time_budget_s - elapsed))
+
+        try:
+            response = _call_llm(
+                messages=messages,
+                tools=schemas,
+                model=minimax_model,
+                timeout_s=min(remaining, 300),
+            )
+        except Exception as exc:  # noqa: BLE001 — defensive on the LLM seam
+            error = f"llm call failed: {exc}"
+            break
+
+        msg = _extract_message(response)
+        # Append assistant message verbatim so the model sees its own context.
+        messages.append(msg)
+        turn += 1
+
+        tool_calls = _tool_calls_from(msg)
+        if not tool_calls:
+            # Model finished talking — stop.
+            break
+
+        for tc in tool_calls:
+            fn = (tc.get("function") or {})
+            name = fn.get("name")
+            arg_str = fn.get("arguments") or "{}"
+            try:
+                args = json.loads(arg_str) if isinstance(arg_str, str) else dict(arg_str)
+            except json.JSONDecodeError:
+                args = {}
+            tool_fn = tools.get(name)
+            if tool_fn is None:
+                result: Any = {"error": f"unknown tool {name!r}"}
+            else:
+                try:
+                    result = tool_fn(**args)
+                except TypeError as exc:
+                    result = {"error": f"bad args: {exc}"}
+                except Exception as exc:  # noqa: BLE001
+                    result = {"error": f"tool failed: {exc}"}
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", ""),
+                    "name": name or "",
+                    "content": json.dumps(result, default=str),
+                }
+            )
+
+    elapsed_s = time.time() - start
+
+    # After the loop, observe final state of the worktree.
+    files_changed: list[str] = []
+    diff_summary = ""
+    diff_text: str | None = None
+    test_passed = False
+    test_output_tail = ""
+
+    try:
+        st = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        for line in (st.stdout or "").splitlines():
+            if line.strip():
+                files_changed.append(line[3:])
+
+        ds = subprocess.run(
+            ["git", "diff", "--stat"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        diff_summary = (ds.stdout or "").strip()
+
+        full_diff = subprocess.run(
+            ["git", "diff"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        out = full_diff.stdout or ""
+        if out:
+            if len(out) > _DIFF_TEXT_CAP_BYTES:
+                diff_text = out[:_DIFF_TEXT_CAP_BYTES] + "\n<truncated>"
+            else:
+                diff_text = out
+    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        error = error or f"git introspection failed: {exc}"
+
+    if files_changed and not error:
+        test_result = tools["run_tests"](pytest_args)
+        test_passed = bool(test_result.get("passed"))
+        test_output_tail = test_result.get("output_tail", "")
+    elif error is None and not files_changed:
+        error = "no patch produced"
+
+    success = bool(files_changed) and test_passed and error is None
+
+    if not success and error is None:
+        if not test_passed and files_changed:
+            error = "pytest failed"
+
+    return HarnessResult(
+        success=success,
+        files_changed=files_changed,
+        diff_summary=diff_summary,
+        diff_text=diff_text,
+        test_passed=test_passed,
+        test_output_tail=test_output_tail,
+        turns_used=turn,
+        elapsed_s=elapsed_s,
+        error=error,
+        raw_messages=messages,
+    )

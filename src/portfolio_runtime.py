@@ -529,16 +529,24 @@ def _save_signal_and_trade(db_path: str, fire: ActiveFire, order: dict[str, Any]
     return {"signal_id": signal_id, "trade_id": trade_id}
 
 
-def _gate_fire(db_path: str, fire: ActiveFire, *, max_open_positions: int, max_trades_per_day: int) -> str | None:
+def _gate_fire(
+    db_path: str,
+    fire: ActiveFire,
+    *,
+    max_open_positions: int,
+    max_trades_per_day: int,
+    skip_strategy_open_check: bool = False,
+) -> str | None:
     from src.db.models import get_conn
 
     with get_conn(db_path) as conn:
-        open_for_strategy = conn.execute(
-            "SELECT COUNT(*) FROM trades WHERE status = 'open' AND strategy_id = ?",
-            (fire.strategy_id,),
-        ).fetchone()[0]
-        if int(open_for_strategy) > 0:
-            return "already_open_for_strategy"
+        if not skip_strategy_open_check:
+            open_for_strategy = conn.execute(
+                "SELECT COUNT(*) FROM trades WHERE status = 'open' AND strategy_id = ?",
+                (fire.strategy_id,),
+            ).fetchone()[0]
+            if int(open_for_strategy) > 0:
+                return "already_open_for_strategy"
 
         open_total = conn.execute(
             "SELECT COUNT(*) FROM trades WHERE status = 'open'",
@@ -556,6 +564,108 @@ def _gate_fire(db_path: str, fire: ActiveFire, *, max_open_positions: int, max_t
         if int(today) >= max_trades_per_day:
             return f"max_trades_per_day ({today}/{max_trades_per_day})"
     return None
+
+
+async def _cancel_order_async(*, parent_order_id: int, host: str, port: int, client_id: int) -> None:
+    """Best-effort cancellation of a previously placed parent order.
+
+    Used by the pair-atomicity rollback path. We connect with a fresh
+    client and walk ``ib.openTrades()`` looking for the matching order id
+    so we can call ``ib.cancelOrder`` on the live Order instance.
+    """
+    ib = IB()
+    await ib.connectAsync(host, port, clientId=client_id, timeout=15)
+    try:
+        # openTrades() returns Trade objects with .order.orderId set.
+        for trade in ib.openTrades():
+            if int(getattr(trade.order, "orderId", -1)) == int(parent_order_id):
+                ib.cancelOrder(trade.order)
+        await asyncio.sleep(0.5)
+    finally:
+        ib.disconnect()
+
+
+def cancel_order(*, parent_order_id: int, host: str, port: int, client_id: int) -> None:
+    asyncio.run(_cancel_order_async(
+        parent_order_id=parent_order_id, host=host, port=port, client_id=client_id,
+    ))
+
+
+def _delete_signal_and_trade(db_path: str, signal_id: int | None, trade_id: int | None) -> None:
+    """Roll back rows written by ``_save_signal_and_trade``.
+
+    Used when a pair leg fails after its sibling has already been
+    persisted -- we must not leave an orphan single-leg pair in the DB.
+    """
+    if signal_id is None and trade_id is None:
+        return
+    from src.db.models import get_conn
+
+    with get_conn(db_path) as conn:
+        if trade_id is not None:
+            conn.execute("DELETE FROM trades WHERE id = ?", (trade_id,))
+        if signal_id is not None:
+            conn.execute("DELETE FROM signals WHERE id = ?", (signal_id,))
+
+
+def _place_fire_with_record(
+    *,
+    db_path: str,
+    fire: ActiveFire,
+    host: str,
+    port: int,
+    client_id: int,
+    max_open_positions: int,
+    max_trades_per_day: int,
+    place_orders: bool,
+    placed_so_far: int,
+    max_new_trades: int,
+    skip_strategy_open_check: bool = False,
+) -> dict[str, Any]:
+    """Gate, optionally place, and persist a single ActiveFire.
+
+    Returns a dict with the decision/order/save metadata so callers can
+    decide whether to roll back a sibling leg.
+    """
+    decision = "SKIP"
+    order: dict[str, Any] | None = None
+    place_error: str | None = None
+    gate_reason = _gate_fire(
+        db_path,
+        fire,
+        max_open_positions=max_open_positions,
+        max_trades_per_day=max_trades_per_day,
+        skip_strategy_open_check=skip_strategy_open_check,
+    )
+    if gate_reason is None and placed_so_far < max_new_trades and place_orders:
+        side = "BUY" if fire.direction == "long" else "SELL"
+        try:
+            order = place_bracket(
+                symbol=fire.symbol,
+                side=side,
+                quantity=fire.qty,
+                stop_price=fire.stop,
+                target_price=fire.target,
+                host=host,
+                port=port,
+                client_id=client_id,
+            )
+            decision = "TRADE"
+        except Exception as exc:  # noqa: BLE001 - record and surface
+            place_error = str(exc)
+            log.error("place_bracket failed for %s: %s", fire.symbol, exc, exc_info=True)
+    elif gate_reason is None and not place_orders:
+        fire.features["skip_reason"] = "eval_only_no_orders"
+    elif gate_reason is not None:
+        fire.features["skip_reason"] = gate_reason
+    saved = _save_signal_and_trade(db_path, fire, order, decision)
+    return {
+        "decision": decision,
+        "order": order,
+        "gate_reason": gate_reason,
+        "place_error": place_error,
+        **saved,
+    }
 
 
 def run_portfolio_scan(
@@ -587,42 +697,126 @@ def run_portfolio_scan(
     fired: list[dict[str, Any]] = []
     placed = 0
     for row in active:
-        for fire in evaluate_active_strategy(row, bars_by_sym):
-            decision = "SKIP"
-            order = None
-            gate_reason = _gate_fire(
-                db_path,
-                fire,
-                max_open_positions=max_open_positions,
-                max_trades_per_day=max_trades_per_day,
-            )
-            if gate_reason is None and placed < max_new_trades and place_orders:
-                side = "BUY" if fire.direction == "long" else "SELL"
-                order = place_bracket(
-                    symbol=fire.symbol,
-                    side=side,
-                    quantity=fire.qty,
-                    stop_price=fire.stop,
-                    target_price=fire.target,
+        engine = str(row["params"].get("execution_engine", ""))
+        fires = evaluate_active_strategy(row, bars_by_sym)
+        is_pair = engine == "buffet_pair" and len(fires) == 2
+
+        if not is_pair:
+            for fire in fires:
+                outcome = _place_fire_with_record(
+                    db_path=db_path,
+                    fire=fire,
                     host=host,
                     port=port,
                     client_id=exec_client_id,
+                    max_open_positions=max_open_positions,
+                    max_trades_per_day=max_trades_per_day,
+                    place_orders=place_orders,
+                    placed_so_far=placed,
+                    max_new_trades=max_new_trades,
                 )
-                decision = "TRADE"
-                placed += 1
-            elif gate_reason is None and not place_orders:
-                fire.features["skip_reason"] = "eval_only_no_orders"
-            elif gate_reason is not None:
-                fire.features["skip_reason"] = gate_reason
-            saved = _save_signal_and_trade(db_path, fire, order, decision)
+                if outcome["decision"] == "TRADE":
+                    placed += 1
+                fired.append(
+                    {
+                        "strategy_name": fire.strategy_name,
+                        "symbol": fire.symbol,
+                        "direction": fire.direction,
+                        "decision": outcome["decision"],
+                        "order": outcome["order"],
+                        "signal_id": outcome.get("signal_id"),
+                        "trade_id": outcome.get("trade_id"),
+                    }
+                )
+            continue
+
+        # Pair path: place leg A, then leg B. If leg B fails to place or
+        # is gated out after leg A has been transmitted, cancel leg A's
+        # IBKR order AND delete leg A's signal/trade rows so we never
+        # leave a single-leg orphan.
+        leg_a, leg_b = fires
+        outcome_a = _place_fire_with_record(
+            db_path=db_path,
+            fire=leg_a,
+            host=host,
+            port=port,
+            client_id=exec_client_id,
+            max_open_positions=max_open_positions,
+            max_trades_per_day=max_trades_per_day,
+            place_orders=place_orders,
+            placed_so_far=placed,
+            max_new_trades=max_new_trades,
+        )
+        leg_a_traded = outcome_a["decision"] == "TRADE"
+        if leg_a_traded:
+            placed += 1
+
+        outcome_b = _place_fire_with_record(
+            db_path=db_path,
+            fire=leg_b,
+            host=host,
+            port=port,
+            client_id=exec_client_id,
+            max_open_positions=max_open_positions,
+            max_trades_per_day=max_trades_per_day,
+            place_orders=place_orders,
+            placed_so_far=placed,
+            max_new_trades=max_new_trades,
+            # Leg A of the same pair row may have just been recorded as
+            # an open trade with the same strategy_id; that's expected
+            # for pairs. Bypass the per-strategy open check here.
+            skip_strategy_open_check=True,
+        )
+        leg_b_traded = outcome_b["decision"] == "TRADE"
+
+        # Atomicity rule: if leg A traded but leg B did NOT trade (gated,
+        # errored, or place_orders disabled), unwind leg A.
+        if leg_a_traded and not leg_b_traded:
+            log.warning(
+                "pair %s: leg A %s traded but leg B %s did not (gate=%s err=%s); rolling back leg A",
+                row["params"].get("strategy_name"),
+                leg_a.symbol,
+                leg_b.symbol,
+                outcome_b.get("gate_reason"),
+                outcome_b.get("place_error"),
+            )
+            order_a = outcome_a["order"]
+            if order_a and order_a.get("parent_order_id") is not None:
+                try:
+                    cancel_order(
+                        parent_order_id=int(order_a["parent_order_id"]),
+                        host=host,
+                        port=port,
+                        client_id=exec_client_id,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.error(
+                        "leg A cancel failed for pair %s: %s",
+                        row["params"].get("strategy_name"),
+                        exc,
+                        exc_info=True,
+                    )
+            _delete_signal_and_trade(
+                db_path,
+                outcome_a.get("signal_id"),
+                outcome_a.get("trade_id"),
+            )
+            placed = max(0, placed - 1)
+            outcome_a["decision"] = "ROLLED_BACK"
+            outcome_a["order"] = None
+            outcome_a["signal_id"] = None
+            outcome_a["trade_id"] = None
+
+        for fire, outcome in ((leg_a, outcome_a), (leg_b, outcome_b)):
             fired.append(
                 {
                     "strategy_name": fire.strategy_name,
                     "symbol": fire.symbol,
                     "direction": fire.direction,
-                    "decision": decision,
-                    "order": order,
-                    **saved,
+                    "decision": outcome["decision"],
+                    "order": outcome["order"],
+                    "signal_id": outcome.get("signal_id"),
+                    "trade_id": outcome.get("trade_id"),
                 }
             )
     return {

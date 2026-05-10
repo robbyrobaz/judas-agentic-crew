@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
-from ib_async import ContFuture, Future, IB, util
+from ib_async import ContFuture, Future, IB, LimitOrder, MarketOrder, StopOrder, util
 
 from src.db.models import init_db
 from src.strategy_registry import list_active_strategies
@@ -377,6 +377,47 @@ def fetch_bars(symbols: set[str], host: str, port: int, client_id: int) -> dict[
     return asyncio.get_event_loop().run_until_complete(_fetch_bars_async(symbols, host, port, client_id))
 
 
+def _build_bracket_orders(
+    *,
+    action: str,
+    quantity: int,
+    stop_price: float,
+    target_price: float,
+) -> tuple[MarketOrder, StopOrder, LimitOrder]:
+    """Construct an explicit MKT-parent bracket.
+
+    The previous implementation called ``ib.bracketOrder(limitPrice=0.0)``
+    which builds three LMT orders and then mutated the parent into a MKT
+    order in place. That left a stale ``lmtPrice=0.0`` attribute on the
+    parent and depended on order-of-attribute-mutation for correctness.
+    Build the three orders explicitly so each leg has the exact type and
+    fields it needs, and parent the children explicitly via ``parentId``.
+
+    The caller assigns ``parentId`` after IBKR returns an ``orderId`` for
+    the parent (ib_async assigns a client-side id when the parent is
+    constructed; we wire that through after ``placeOrder``). Transmit
+    flags follow the IBKR bracket convention: only the LAST child set
+    ``transmit=True`` so the broker activates the whole bracket atomically.
+    """
+    opposite = "SELL" if action == "BUY" else "BUY"
+    parent = MarketOrder(action, quantity)
+    parent.transmit = False
+    parent.tif = "GTC"
+    parent.outsideRth = True
+
+    take_profit = LimitOrder(opposite, quantity, target_price)
+    take_profit.transmit = False
+    take_profit.tif = "GTC"
+    take_profit.outsideRth = True
+
+    stop_loss = StopOrder(opposite, quantity, stop_price)
+    stop_loss.transmit = True
+    stop_loss.tif = "GTC"
+    stop_loss.outsideRth = True
+
+    return parent, take_profit, stop_loss
+
+
 async def _place_bracket_async(
     *,
     symbol: str,
@@ -402,23 +443,16 @@ async def _place_bracket_async(
         if not fq:
             raise ValueError(f"could not qualify front month for {symbol}")
         contract = fq[0]
-        bracket = ib.bracketOrder(
+        parent, tp, sl = _build_bracket_orders(
             action=side,
             quantity=quantity,
-            limitPrice=0.0,
-            takeProfitPrice=target_price,
-            stopLossPrice=stop_price,
+            stop_price=stop_price,
+            target_price=target_price,
         )
-        parent, tp, sl = bracket
-        parent.orderType = "MKT"
-        parent.lmtPrice = 0.0
-        parent.transmit = False
-        tp.transmit = False
-        sl.transmit = True
-        for order in bracket:
-            order.outsideRth = True
-            order.tif = "GTC"
         parent_t = ib.placeOrder(contract, parent)
+        # Wire children to the parent now that IBKR has assigned an orderId.
+        tp.parentId = parent.orderId
+        sl.parentId = parent.orderId
         tp_t = ib.placeOrder(contract, tp)
         sl_t = ib.placeOrder(contract, sl)
         await asyncio.sleep(1)

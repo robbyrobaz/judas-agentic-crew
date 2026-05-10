@@ -171,6 +171,22 @@ CREATE TABLE IF NOT EXISTS custom_strategies (
 );
 """
 
+_CREATE_FINDINGS = """
+CREATE TABLE IF NOT EXISTS findings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at_utc TEXT NOT NULL,
+    author TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    strategy_id INTEGER,
+    strategy_name TEXT,
+    symbol TEXT,
+    refs_json TEXT,
+    supersedes_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'active'
+);
+"""
+
 _CREATE_AGENT_TASKS = """
 CREATE TABLE IF NOT EXISTS agent_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -223,6 +239,11 @@ _INDEXES = [
     "ON custom_strategies(active);",
     "CREATE INDEX IF NOT EXISTS idx_agent_tasks_open "
     "ON agent_tasks(team, status, urgency, requested_at_utc);",
+    "CREATE INDEX IF NOT EXISTS idx_findings_strategy_id ON findings(strategy_id);",
+    "CREATE INDEX IF NOT EXISTS idx_findings_strategy_name ON findings(strategy_name);",
+    "CREATE INDEX IF NOT EXISTS idx_findings_symbol ON findings(symbol);",
+    "CREATE INDEX IF NOT EXISTS idx_findings_recent ON findings(created_at_utc DESC);",
+    "CREATE INDEX IF NOT EXISTS idx_findings_author ON findings(author);",
 ]
 
 _MIGRATIONS = [
@@ -255,6 +276,7 @@ def init_db(db_path: str | Path) -> None:
         conn.execute(_CREATE_AUTO_FIXES)
         conn.execute(_CREATE_CUSTOM_STRATEGIES)
         conn.execute(_CREATE_AGENT_TASKS)
+        conn.execute(_CREATE_FINDINGS)
         for table, column, ddl in _MIGRATIONS:
             if not _column_exists(conn, table, column):
                 conn.execute(ddl)

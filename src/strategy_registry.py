@@ -168,64 +168,212 @@ def create_candidate(
 
 def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStrategy:
     with get_conn(_ensure_db()) as conn:
-        candidate = conn.execute(
-            "SELECT * FROM strategy_candidates WHERE id = ?",
-            (candidate_id,),
-        ).fetchone()
-        if not candidate:
-            raise ValueError(f"Candidate {candidate_id} not found")
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            candidate = conn.execute(
+                "SELECT * FROM strategy_candidates WHERE id = ?",
+                (candidate_id,),
+            ).fetchone()
+            if not candidate:
+                raise ValueError(f"Candidate {candidate_id} not found")
 
-        symbol = str(candidate["symbol"])
-        family = str(candidate["strategy_family"])
-        current = conn.execute(
-            """
-            SELECT *
-            FROM active_strategies
-            WHERE symbol = ? AND strategy_family = ? AND state = 'active'
-            ORDER BY version DESC, id DESC
-            LIMIT 1
-            """,
-            (symbol, family),
-        ).fetchone()
-        next_version = (int(current["version"]) + 1) if current else 1
+            # Validate params_json before doing anything destructive.
+            _validate_params_json(candidate["params_json"])
 
-        if current:
+            symbol = str(candidate["symbol"])
+            family = str(candidate["strategy_family"])
+            current = conn.execute(
+                """
+                SELECT *
+                FROM active_strategies
+                WHERE symbol = ? AND strategy_family = ? AND state = 'active'
+                ORDER BY version DESC, id DESC
+                LIMIT 1
+                """,
+                (symbol, family),
+            ).fetchone()
+            next_version = (int(current["version"]) + 1) if current else 1
+
+            # Insert new active row FIRST, then retire previous — guarantees
+            # external readers never see zero active rows for this (symbol, family).
+            cur = conn.execute(
+                """
+                INSERT INTO active_strategies
+                    (symbol, strategy_family, version, params_json, metrics_json, source_candidate_id,
+                     state, activated_at_utc, notes)
+                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                """,
+                (
+                    symbol,
+                    family,
+                    next_version,
+                    candidate["params_json"],
+                    candidate["metrics_json"],
+                    candidate_id,
+                    _utc_now(),
+                    notes or "Automated paper promotion.",
+                ),
+            )
+            new_id = int(cur.lastrowid)
+
+            if current:
+                conn.execute(
+                    """
+                    UPDATE active_strategies
+                    SET state = 'retired', deactivated_at_utc = ?, notes = COALESCE(notes, '') || ?
+                    WHERE id = ?
+                    """,
+                    (_utc_now(), "\nSuperseded by automated promotion.", int(current["id"])),
+                )
+
+            conn.execute(
+                "UPDATE strategy_candidates SET status = 'promoted' WHERE id = ?",
+                (candidate_id,),
+            )
+            new_row = conn.execute(
+                "SELECT * FROM active_strategies WHERE id = ?",
+                (new_id,),
+            ).fetchone()
+            conn.commit()
+            return _row_to_active(new_row)
+        except Exception:
+            conn.rollback()
+            raise
+
+
+_REQUIRED_PARAM_KEYS = ("symbol",)
+_REQUIRED_PARAM_NAME_ALTERNATES = ("strategy_name", "strategy_family")
+
+
+def _validate_params_json(raw: str | None) -> dict[str, Any]:
+    """Parse + validate a candidate's params_json blob. Raise ValueError if bad."""
+    if raw is None or raw == "":
+        raise ValueError("params_json is empty")
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"params_json is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"params_json must decode to a dict, got {type(parsed).__name__}")
+    for key in _REQUIRED_PARAM_KEYS:
+        if key not in parsed:
+            raise ValueError(f"params_json missing required key: {key}")
+    if not any(alt in parsed for alt in _REQUIRED_PARAM_NAME_ALTERNATES):
+        raise ValueError(
+            "params_json must include one of: " + ", ".join(_REQUIRED_PARAM_NAME_ALTERNATES)
+        )
+    return parsed
+
+
+def retire_strategy(
+    *,
+    strategy_id: int,
+    reason: str,
+    metrics_snapshot: dict[str, Any],
+) -> int:
+    """Atomically retire an active_strategies row and insert an auto_demotions row.
+
+    Returns the auto_demotions.id created. Raises ValueError if not found or already retired.
+    """
+    with get_conn(_ensure_db()) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = conn.execute(
+                "SELECT * FROM active_strategies WHERE id = ? AND state = 'active'",
+                (int(strategy_id),),
+            ).fetchone()
+            if not row:
+                raise ValueError(
+                    f"active strategy {strategy_id} not found or not active"
+                )
+            now = _utc_now()
             conn.execute(
                 """
                 UPDATE active_strategies
-                SET state = 'retired', deactivated_at_utc = ?, notes = COALESCE(notes, '') || ?
+                SET state = 'retired',
+                    deactivated_at_utc = ?,
+                    notes = COALESCE(notes, '') || ?
                 WHERE id = ?
                 """,
-                (_utc_now(), "\nSuperseded by automated promotion.", int(current["id"])),
+                (now, f"\nAuto-retired: {reason}", int(strategy_id)),
             )
+            cur = conn.execute(
+                """
+                INSERT INTO auto_demotions
+                    (ts_utc, strategy_id, symbol, strategy_family, version,
+                     params_json, metrics_snapshot_json, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    now,
+                    int(strategy_id),
+                    str(row["symbol"]),
+                    str(row["strategy_family"]),
+                    int(row["version"]),
+                    str(row["params_json"] or "{}"),
+                    json.dumps(metrics_snapshot or {}),
+                    reason,
+                ),
+            )
+            demotion_id = int(cur.lastrowid)
+            conn.commit()
+            return demotion_id
+        except Exception:
+            conn.rollback()
+            raise
 
-        cur = conn.execute(
-            """
-            INSERT INTO active_strategies
-                (symbol, strategy_family, version, params_json, metrics_json, source_candidate_id,
-                 state, activated_at_utc, notes)
-            VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
-            """,
-            (
-                symbol,
-                family,
-                next_version,
-                candidate["params_json"],
-                candidate["metrics_json"],
-                candidate_id,
-                _utc_now(),
-                notes or "Automated paper promotion.",
-            ),
-        )
-        conn.execute(
-            "UPDATE strategy_candidates SET status = 'promoted' WHERE id = ?",
-            (candidate_id,),
-        )
-        new_row = conn.execute(
-            "SELECT * FROM active_strategies WHERE id = ?",
-            (int(cur.lastrowid),),
-        ).fetchone()
-    return _row_to_active(new_row)
+
+def reactivate_demoted(*, demotion_id: int) -> int:
+    """Re-insert active_strategies row from preserved auto_demotions snapshot.
+
+    Returns the new active_strategies.id. Raises ValueError if not found or already reactivated.
+    """
+    with get_conn(_ensure_db()) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = conn.execute(
+                "SELECT * FROM auto_demotions WHERE id = ?",
+                (int(demotion_id),),
+            ).fetchone()
+            if not row:
+                raise ValueError(f"auto_demotion {demotion_id} not found")
+            if row["reactivated_at_utc"]:
+                raise ValueError(
+                    f"auto_demotion {demotion_id} already reactivated at {row['reactivated_at_utc']}"
+                )
+            now = _utc_now()
+            new_version = int(row["version"]) + 1
+            cur = conn.execute(
+                """
+                INSERT INTO active_strategies
+                    (symbol, strategy_family, version, params_json, metrics_json,
+                     state, activated_at_utc, notes)
+                VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+                """,
+                (
+                    str(row["symbol"]),
+                    str(row["strategy_family"]),
+                    new_version,
+                    str(row["params_json"]),
+                    str(row["metrics_snapshot_json"]),
+                    now,
+                    f"Reactivated from demotion #{int(row['id'])}",
+                ),
+            )
+            new_id = int(cur.lastrowid)
+            conn.execute(
+                """
+                UPDATE auto_demotions
+                SET reactivated_at_utc = ?, reactivated_strategy_id = ?
+                WHERE id = ?
+                """,
+                (now, new_id, int(demotion_id)),
+            )
+            conn.commit()
+            return new_id
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def list_active_strategies() -> list[dict[str, Any]]:

@@ -15,7 +15,7 @@ from waitress import serve
 from src.agents.judas_agents import build_llm
 from src.config import load_config
 from src.db.models import get_conn, init_db
-from src.strategy_registry import list_active_strategies
+from src.strategy_registry import list_active_strategies, reactivate_demoted
 from src.tools.session_tools import session_status_tool
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -448,6 +448,44 @@ def create_app() -> Flask:
         symbol = str((request.get_json(silent=True) or {}).get("symbol", "MGC")).upper()
         code, output = _run_subprocess([str(REPO_ROOT / ".venv" / "bin" / "python"), "scripts/run_research.py", "--symbol", symbol, "--log-level", "INFO"])
         return jsonify({"ok": code == 0, "output": _format_research_output(symbol, code == 0, output), "raw_output": output})
+
+    @app.get("/api/demotions")
+    def demotions() -> Any:
+        with get_conn(_db_path()) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, ts_utc, strategy_id, symbol, strategy_family, version,
+                       reason, reactivated_at_utc, reactivated_strategy_id
+                FROM auto_demotions
+                WHERE ts_utc >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 days')
+                ORDER BY ts_utc DESC
+                """
+            ).fetchall()
+        return jsonify({
+            "demotions": [
+                {
+                    "id": int(row["id"]),
+                    "ts_utc": str(row["ts_utc"]),
+                    "strategy_id": int(row["strategy_id"]),
+                    "symbol": str(row["symbol"]),
+                    "strategy_family": str(row["strategy_family"]),
+                    "version": int(row["version"]),
+                    "reason": str(row["reason"]),
+                    "reactivated": row["reactivated_at_utc"] is not None,
+                    "reactivated_at_utc": row["reactivated_at_utc"],
+                    "reactivated_strategy_id": row["reactivated_strategy_id"],
+                }
+                for row in rows
+            ]
+        })
+
+    @app.post("/api/demotions/<int:demotion_id>/reactivate")
+    def reactivate(demotion_id: int) -> Any:
+        try:
+            new_id = reactivate_demoted(demotion_id=demotion_id)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, "new_strategy_id": new_id})
 
     @app.get("/", defaults={"path": ""})
     @app.get("/<path:path>")

@@ -423,18 +423,54 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
         return [_row_to_dict(r) for r in rows]
 
     def get_open_positions() -> list[dict]:
-        # Surface DB-recorded open trades. The caller (PM) can cross-reference
-        # against IBKR via the deterministic reconcile job — we don't open new
-        # IBKR sessions just to enumerate.
-        with _connect(db_path) as conn:
-            rows = conn.execute(
-                "SELECT id, strategy_id, symbol, direction, qty, entry_fill, "
-                "stop_price, target_price, status, opened_at "
-                "FROM trades WHERE status = 'open' ORDER BY opened_at DESC "
-                "LIMIT ?",
-                (_OUTPUT_ROW_CAP,),
-            ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        # Query LIVE IBKR positions, not the local trades table. The agentic-
+        # crew's `trades` table is unreliable — legacy PM_AGENT fills from
+        # before the Phase-10 team refactor never wrote back, so the DB shows
+        # zero rows while IBKR has live positions bleeding money. Operator
+        # gets the broker-of-record view here. Falls back to DB only if the
+        # IBKR query fails.
+        try:
+            from ib_async import IB
+            ib = IB()
+            ib.connect("127.0.0.1", 4002, clientId=199, timeout=8)
+            try:
+                positions = []
+                for p in ib.positions():
+                    if p.contract.secType != "FUT":
+                        continue
+                    if p.position == 0:
+                        continue
+                    mult = float(p.contract.multiplier or 1)
+                    avg_price = (p.avgCost or 0) / mult if mult else p.avgCost
+                    positions.append({
+                        "symbol": p.contract.symbol,
+                        "local_symbol": p.contract.localSymbol,
+                        "direction": "long" if p.position > 0 else "short",
+                        "qty": abs(int(p.position)),
+                        "avg_price": round(float(avg_price), 4),
+                        "contract_month": p.contract.lastTradeDateOrContractMonth,
+                        "account": p.account,
+                        "source": "ibkr_live",
+                    })
+                return positions
+            finally:
+                ib.disconnect()
+        except Exception as exc:  # noqa: BLE001
+            # Fall back to DB on IBKR failure; mark source so the agent
+            # can see this view may be stale.
+            with _connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT id, strategy_id, symbol, direction, qty, entry_fill, "
+                    "stop_price, target_price, status, opened_at "
+                    "FROM trades WHERE status = 'open' ORDER BY opened_at DESC "
+                    "LIMIT ?",
+                    (_OUTPUT_ROW_CAP,),
+                ).fetchall()
+            out = [_row_to_dict(r) for r in rows]
+            for r in out:
+                r["source"] = "db_fallback"
+                r["_ibkr_query_error"] = str(exc)
+            return out
 
     def query_db(*, sql: str) -> dict:
         ok, err = _is_safe_select(sql)

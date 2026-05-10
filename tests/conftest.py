@@ -18,3 +18,15 @@ def pytest_configure(config):
     workshop = Path("/home/rob/judas-futures-workshop")
     if workshop.exists():
         os.environ.setdefault("JUDAS_WORKSHOP_PATH", str(workshop))
+
+    # Safety defaults for the entire test suite — never reach real M2.7 or
+    # the live IBKR paper account. Tests that need the LLM / broker / autofix
+    # paths must opt-in via monkeypatch.setenv / delenv.
+    #   - MINIMAX_API_KEY popped: pm_agent / live_review / explore enter
+    #     deterministic-fallback or no-op modes.
+    #   - JUDAS_AUTOFIX_INHIBIT=1: fix_bug_step records symptoms only.
+    #   - JUDAS_PM_AGENT_INHIBIT=1: short-circuits run_pm_decision so the
+    #     agent loop never spins up under pytest.
+    os.environ.pop("MINIMAX_API_KEY", None)
+    os.environ.setdefault("JUDAS_AUTOFIX_INHIBIT", "1")
+    os.environ.setdefault("JUDAS_PM_AGENT_INHIBIT", "1")

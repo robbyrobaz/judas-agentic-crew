@@ -350,6 +350,12 @@ def test_morning_review_routes_to_explore_on_stale_active_set(tmp_path, monkeypa
     assert reason == "stale_active_set"
 
 
+@pytest.mark.skip(
+    reason="PM-agent era: morning_review no longer routes to 'explore'. "
+    "explore_step remains a legacy listener but the router never triggers "
+    "it — the PM agent decides whether to run experiments via tool calls "
+    "inside run_pm_decision instead."
+)
 def test_explore_step_falls_through_on_error(tmp_path, monkeypatch):
     crewai = pytest.importorskip("crewai")
     if tuple(int(p) for p in crewai.__version__.split(".")[:2]) < (1, 8):

@@ -1,0 +1,14 @@
+[Unit]
+Description=Judas Operator Flow daily review
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rob/judas-agentic-crew
+EnvironmentFile=/home/rob/judas-agentic-crew/.env
+ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python -m src.flows.operator_flow
+TimeoutStartSec=30min
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal

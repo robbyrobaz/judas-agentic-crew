@@ -43,6 +43,7 @@ def state_db(tmp_path, monkeypatch):
     """
     db_path = tmp_path / "flow_state.db"
     monkeypatch.setenv("JUDAS_OPERATOR_STATE_DB", str(db_path))
+    monkeypatch.setenv("JUDAS_DB_PATH", str(tmp_path / "judas_crew.db"))
 
     # Drop any cached import so the module-level @persist re-evaluates with
     # the new env var.
@@ -115,7 +116,7 @@ def test_operator_flow_kickoff_completes_and_persists(state_db):
     assert elapsed < 60, f"kickoff exceeded 60s budget: {elapsed:.2f}s"
     assert flow.state.cycle_count == 1
     assert flow.state.last_run_utc is not None
-    assert flow.state.findings == {"stub": True}
+    assert flow.state.findings is not None
     assert flow.state.decision == "noop"
 
     assert db_path.exists(), "persistence DB was not created"

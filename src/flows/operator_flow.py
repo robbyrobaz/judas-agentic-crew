@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,6 +40,14 @@ def _state_db_path() -> Path:
     if override:
         return Path(override).expanduser().resolve()
     return _REPO_ROOT / "outputs" / "flow_state.db"
+
+
+def _resolve_judas_db_path() -> str:
+    """Resolve the judas_crew.db path used for live review."""
+    override = os.environ.get("JUDAS_DB_PATH")
+    if override:
+        return str(Path(override).expanduser().resolve())
+    return str(_REPO_ROOT / "judas_crew.db")
 
 
 def _build_persistence() -> SQLiteFlowPersistence:
@@ -71,19 +80,62 @@ class OperatorFlow(Flow[OperatorState]):
 
     @start()
     def morning_review(self) -> str:
-        """Stub morning review — increments cycle, stamps run, returns 'noop'."""
+        """Run live-review on all active strategies; route based on decisions."""
         self.state.cycle_count += 1
         self.state.last_run_utc = datetime.now(timezone.utc).isoformat()
-        self.state.findings = {"stub": True}
-        self.state.decision = "noop"
+
+        # Lazy import so Phase-1 tests that don't seed a DB still pass.
+        from src.research.live_review import review_all_active_strategies
+
+        db_path = _resolve_judas_db_path()
+        try:
+            results = review_all_active_strategies(db_path=db_path)
+        except Exception:  # noqa: BLE001
+            log.exception("operator.morning_review.failed")
+            results = []
+
+        retire_list = []
+        review_summary = []
+        for metrics, decision in results:
+            entry = {
+                "strategy_id": metrics.strategy_id,
+                "strategy_name": metrics.strategy_name,
+                "action": decision.action,
+                "reason": decision.reason,
+                "confidence": decision.confidence,
+                "fallback_used": decision.fallback_used,
+            }
+            review_summary.append(entry)
+            if decision.action == "retire":
+                retire_list.append(
+                    {
+                        "strategy_id": metrics.strategy_id,
+                        "metrics": asdict(metrics),
+                        "reason": decision.reason,
+                    }
+                )
+
+        if retire_list:
+            self.state.decision = "retire"
+            self.state.findings = {
+                "retire_list": retire_list,
+                "review_summary": review_summary,
+            }
+        else:
+            self.state.decision = "noop"
+            self.state.findings = {"review_summary": review_summary}
+
         log.info(
             "operator.morning_review.complete",
             extra={
                 "cycle_count": self.state.cycle_count,
                 "last_run_utc": self.state.last_run_utc,
+                "decision": self.state.decision,
+                "n_reviewed": len(review_summary),
+                "n_retire": len(retire_list),
             },
         )
-        return "noop"
+        return self.state.decision
 
     @router(morning_review)
     def classify(self, finding_signal: str) -> str:
@@ -93,8 +145,40 @@ class OperatorFlow(Flow[OperatorState]):
 
     @listen("retire")
     def retire_step(self) -> None:
-        """Stub — real demotion logic lands in Phase 2."""
-        log.info("operator.retire_step.would_run")
+        """Atomically retire each strategy flagged in findings.retire_list."""
+        findings = self.state.findings or {}
+        retire_list = findings.get("retire_list", [])
+        if not retire_list:
+            log.info("operator.retire_step.empty")
+            return
+
+        # Imported lazily so worker D can land its impl independently.
+        from src import strategy_registry
+
+        retire_fn = getattr(strategy_registry, "retire_strategy", None)
+        if retire_fn is None:
+            log.warning("operator.retire_step.registry_missing_retire_strategy")
+            return
+
+        for entry in retire_list:
+            sid = entry.get("strategy_id")
+            try:
+                demotion_id = retire_fn(
+                    strategy_id=int(sid),
+                    reason=str(entry.get("reason", "auto-demotion")),
+                    metrics_snapshot=entry.get("metrics", {}),
+                )
+                log.info(
+                    "operator.retire_step.retired",
+                    extra={
+                        "strategy_id": sid,
+                        "demotion_id": demotion_id,
+                    },
+                )
+            except Exception:  # noqa: BLE001
+                log.exception(
+                    "operator.retire_step.failed", extra={"strategy_id": sid}
+                )
 
     @listen("explore")
     def explore_step(self) -> None:

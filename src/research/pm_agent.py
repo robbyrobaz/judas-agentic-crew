@@ -110,6 +110,52 @@ _OUTPUT_ROW_CAP = 200
 _OUTPUT_BYTES_CAP = 16 * 1024
 
 
+# Repo root resolved once for path-safety checks. Tests can override via the
+# ``JUDAS_REPO_ROOT`` env var.
+def _repo_root() -> Path:
+    override = os.environ.get("JUDAS_REPO_ROOT")
+    if override:
+        return Path(override).resolve()
+    # src/research/pm_agent.py -> src/research -> src -> repo
+    return Path(__file__).resolve().parents[2]
+
+
+_FORBIDDEN_PATH_PREFIXES = ("/etc", "/proc", "/sys", "/dev", "/root")
+_WEB_TIMEOUT_S = 15
+_WEB_SNIPPET_CAP = 280
+_WEB_FETCH_DEFAULT_CAP = 16_000
+_YT_DEFAULT_CAP = 32_000
+
+
+def _safe_resolve(path_str: str) -> tuple[Path | None, str | None]:
+    """Resolve ``path_str`` against the repo root. Reject anything outside.
+
+    Returns ``(resolved_path, None)`` on success, ``(None, error)`` otherwise.
+    Code-level safety (per advisor): use ``Path.resolve()`` and
+    ``.relative_to(repo_root)`` so symlinks, ``..``, and absolute paths are
+    handled uniformly. Reject ``~`` BEFORE resolving since ``Path`` doesn't
+    expand it but a string-match would miss surprises.
+    """
+    if not isinstance(path_str, str) or not path_str:
+        return None, "path must be non-empty string"
+    if path_str.startswith("~"):
+        return None, "tilde paths not allowed"
+    if any(path_str.startswith(p) for p in _FORBIDDEN_PATH_PREFIXES):
+        return None, f"forbidden system path: {path_str}"
+    root = _repo_root()
+    p = Path(path_str)
+    candidate = p if p.is_absolute() else (root / p)
+    try:
+        resolved = candidate.resolve()
+    except (OSError, RuntimeError) as exc:
+        return None, f"resolve failed: {exc}"
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        return None, "path resolves outside repo root"
+    return resolved, None
+
+
 # ---------------------------------------------------------------------------
 # query_db safety — strip comments + leading whitespace, allow only one SELECT
 # ---------------------------------------------------------------------------
@@ -398,6 +444,246 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
                 out_rows.pop()
         return {"ok": True, "rows": out_rows, "n_rows": len(out_rows)}
 
+    # ---- web / external knowledge ---------------------------------------
+
+    def web_search(*, query: str, max_results: int = 5) -> dict:
+        if not isinstance(query, str) or not query.strip():
+            return {"ok": False, "error": "query required"}
+        try:
+            n = int(max_results)
+        except (TypeError, ValueError):
+            n = 5
+        n = max(1, min(n, 20))
+        try:
+            try:
+                from ddgs import DDGS  # type: ignore[import-not-found]
+            except ImportError:
+                try:
+                    from duckduckgo_search import DDGS  # type: ignore[import-not-found]
+                except ImportError:
+                    return {"ok": False, "error": "duckduckgo-search not installed"}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"ddg import failed: {exc}"}
+        try:
+            with DDGS() as ddg:
+                raw = list(ddg.text(query, max_results=n))
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"ddg search failed: {exc}"}
+        out = []
+        for r in raw[:n]:
+            title = str(r.get("title") or "")[:200]
+            url = str(r.get("href") or r.get("url") or "")
+            snippet = str(r.get("body") or r.get("snippet") or "")
+            if len(snippet) > _WEB_SNIPPET_CAP:
+                snippet = snippet[:_WEB_SNIPPET_CAP]
+            out.append({"title": title, "url": url, "snippet": snippet})
+        return {"ok": True, "results": out}
+
+    def web_fetch(*, url: str, max_chars: int = _WEB_FETCH_DEFAULT_CAP) -> dict:
+        if not isinstance(url, str) or not url.strip():
+            return {"ok": False, "error": "url required"}
+        u = url.strip()
+        if not (u.startswith("http://") or u.startswith("https://")):
+            return {"ok": False, "error": "only http(s) URLs allowed"}
+        try:
+            cap = int(max_chars)
+        except (TypeError, ValueError):
+            cap = _WEB_FETCH_DEFAULT_CAP
+        cap = max(1024, min(cap, 200_000))
+        try:
+            import requests  # type: ignore[import-not-found]
+        except ImportError:
+            return {"ok": False, "error": "requests not installed"}
+        try:
+            resp = requests.get(
+                u, timeout=_WEB_TIMEOUT_S,
+                headers={"User-Agent": "judas-pm-agent/1.0"},
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"http failed: {exc}"}
+        ctype = resp.headers.get("content-type", "")
+        text = resp.text or ""
+        if "html" in ctype.lower() or text.lstrip().startswith("<"):
+            try:
+                from bs4 import BeautifulSoup  # type: ignore[import-not-found]
+                soup = BeautifulSoup(text, "html.parser")
+                for tag in soup(["script", "style", "noscript"]):
+                    tag.decompose()
+                text = soup.get_text(separator="\n").strip()
+                # Collapse runs of whitespace
+                text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+            except Exception as exc:  # noqa: BLE001
+                log.warning("bs4 parse failed: %s", exc)
+        if len(text) > cap:
+            text = text[:cap]
+        return {
+            "ok": True,
+            "status_code": int(resp.status_code),
+            "content_type": ctype,
+            "text": text,
+        }
+
+    _YT_ID_RX = re.compile(r"(?:v=|youtu\.be/|/embed/|/shorts/)([A-Za-z0-9_-]{11})")
+
+    def fetch_youtube_transcript(*, url_or_id: str, max_chars: int = _YT_DEFAULT_CAP) -> dict:
+        if not isinstance(url_or_id, str) or not url_or_id.strip():
+            return {"ok": False, "error": "url_or_id required"}
+        s = url_or_id.strip()
+        try:
+            cap = int(max_chars)
+        except (TypeError, ValueError):
+            cap = _YT_DEFAULT_CAP
+        cap = max(1024, min(cap, 500_000))
+        # Bare ID?
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", s):
+            video_id = s
+        else:
+            m = _YT_ID_RX.search(s)
+            if not m:
+                return {"ok": False, "error": "could not parse youtube video id"}
+            video_id = m.group(1)
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore[import-not-found]
+        except ImportError:
+            return {"ok": False, "error": "youtube-transcript-api not installed"}
+        try:
+            api = YouTubeTranscriptApi()
+            try:
+                fetched = api.fetch(video_id)
+            except AttributeError:
+                # Older API: classmethod get_transcript
+                fetched = YouTubeTranscriptApi.get_transcript(video_id)  # type: ignore[attr-defined]
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"youtube fetch failed: {exc}"}
+
+        # Normalize: instance fetch returns FetchedTranscript (iterable of
+        # FetchedTranscriptSnippet with .text); legacy returns list[dict].
+        chunks: list[str] = []
+        try:
+            for snip in fetched:
+                if hasattr(snip, "text"):
+                    chunks.append(str(snip.text))
+                elif isinstance(snip, dict):
+                    chunks.append(str(snip.get("text", "")))
+                else:
+                    chunks.append(str(snip))
+        except TypeError:
+            return {"ok": False, "error": "transcript not iterable"}
+        transcript = " ".join(c for c in chunks if c).strip()
+        truncated = False
+        if len(transcript) > cap:
+            transcript = transcript[:cap]
+            truncated = True
+        return {
+            "ok": True,
+            "video_id": video_id,
+            "title": "",
+            "transcript": transcript,
+            "truncated": truncated,
+        }
+
+    # ---- peer filesystem reads ------------------------------------------
+
+    def read_file(*, path: str, max_bytes: int = 65536) -> dict:
+        resolved, err = _safe_resolve(path)
+        if err:
+            return {"ok": False, "error": err}
+        try:
+            cap = int(max_bytes)
+        except (TypeError, ValueError):
+            cap = 65536
+        cap = max(256, min(cap, 1_000_000))
+        if not resolved.exists():
+            return {"ok": False, "error": f"path does not exist: {path}"}
+        if not resolved.is_file():
+            return {"ok": False, "error": f"not a file: {path}"}
+        try:
+            raw = resolved.read_bytes()
+        except OSError as exc:
+            return {"ok": False, "error": f"read failed: {exc}"}
+        truncated = False
+        if len(raw) > cap:
+            raw = raw[:cap]
+            truncated = True
+        # Binary heuristic: presence of NUL byte in the first 8KB.
+        if b"\x00" in raw[:8192]:
+            return {"ok": False, "error": "binary file rejected"}
+        try:
+            content = raw.decode("utf-8", errors="replace")
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"decode failed: {exc}"}
+        return {
+            "ok": True,
+            "path": str(resolved.relative_to(_repo_root())),
+            "content": content,
+            "truncated": truncated,
+        }
+
+    def list_files(*, path: str = ".", glob: str = "**/*", max_results: int = 200) -> dict:
+        resolved, err = _safe_resolve(path)
+        if err:
+            return {"ok": False, "error": err}
+        if not resolved.exists() or not resolved.is_dir():
+            return {"ok": False, "error": f"not a directory: {path}"}
+        try:
+            cap = int(max_results)
+        except (TypeError, ValueError):
+            cap = 200
+        cap = max(1, min(cap, 1000))
+        out: list[dict] = []
+        root = _repo_root()
+        try:
+            for entry in resolved.glob(glob):
+                if not entry.is_file():
+                    continue
+                try:
+                    entry_resolved = entry.resolve()
+                    entry_resolved.relative_to(root)
+                except (ValueError, OSError):
+                    continue
+                try:
+                    st = entry.stat()
+                except OSError:
+                    continue
+                out.append({
+                    "path": str(entry_resolved.relative_to(root)),
+                    "size": int(st.st_size),
+                    "mtime": float(st.st_mtime),
+                })
+                if len(out) >= cap:
+                    break
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"glob failed: {exc}"}
+        return {"ok": True, "files": out}
+
+    def read_research_artifact(*, experiment_id: int, kind: str = "json") -> dict:
+        try:
+            eid = int(experiment_id)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "experiment_id must be int"}
+        with _connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT artifacts_json FROM research_experiments WHERE id = ?",
+                (eid,),
+            ).fetchone()
+        if row is None:
+            return {"ok": False, "error": f"experiment {eid} not found"}
+        try:
+            artifacts = json.loads(row["artifacts_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            return {"ok": False, "error": "artifacts_json malformed"}
+        if not isinstance(artifacts, dict):
+            return {"ok": False, "error": "artifacts not a dict"}
+        target = artifacts.get(kind)
+        if not target:
+            return {"ok": False, "error": f"no '{kind}' artifact for experiment {eid}",
+                    "available_kinds": sorted(artifacts.keys())}
+        # Reuse read_file for path-safety + cap.
+        sub = read_file(path=str(target))
+        if not sub.get("ok"):
+            return sub
+        return {"ok": True, "path": sub.get("path"), "content": sub.get("content")}
+
     # ---- backtesting tools ----------------------------------------------
 
     def run_judas_threshold_sweep(*, symbol: str, **kwargs) -> dict:
@@ -668,6 +954,147 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
             "version": old_version + 1,
         }
 
+    # ---- custom strategy invention --------------------------------------
+
+    def run_custom_backtest_tool(*, code: str, symbol: str, days: int = 90) -> dict:
+        sym = str(symbol).upper()
+        if sym not in _VALID_SYMBOLS:
+            return {"ok": False, "error": f"unknown symbol: {sym}"}
+        if not isinstance(code, str) or not code.strip():
+            return {"ok": False, "error": "code required"}
+        from src.research import custom_strategy_runtime as csr
+
+        try:
+            metrics = csr.run_custom_backtest(
+                code=code, symbol=sym, days=int(days), db_path=db_path,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"backtest failed: {type(exc).__name__}: {exc}"}
+        return {"ok": True, "metrics": metrics}
+
+    def propose_custom_strategy_tool(
+        *,
+        name: str,
+        symbol: str,
+        code: str,
+        rationale: str,
+        backtest_metrics: dict | None = None,
+    ) -> dict:
+        from src.db.models import init_db as _init
+        from src.research import custom_strategy_runtime as csr
+
+        if not isinstance(name, str) or not name.strip():
+            return {"ok": False, "error": "name required"}
+        sym = str(symbol).upper()
+        if sym not in _VALID_SYMBOLS:
+            return {"ok": False, "error": f"unknown symbol: {sym}"}
+        if not isinstance(code, str) or not code.strip():
+            return {"ok": False, "error": "code required"}
+        if not isinstance(rationale, str) or not rationale.strip():
+            return {"ok": False, "error": "rationale required"}
+        # Validate compilation + presence of evaluate.
+        fn, meta = csr._compile_and_load(code)
+        if fn is None:
+            return {"ok": False, "error": f"code validation failed: {meta.get('error')}"}
+        _init(db_path)
+        conn = _connect(db_path)
+        try:
+            existing = conn.execute(
+                "SELECT id FROM custom_strategies WHERE name = ? AND retired_at_utc IS NULL",
+                (name,),
+            ).fetchone()
+            if existing is not None:
+                return {"ok": False, "error": f"name already in use: {name}"}
+            cur = conn.execute(
+                """
+                INSERT INTO custom_strategies
+                    (created_at_utc, name, symbol, code, rationale,
+                     backtest_metrics_json, active, retired_at_utc)
+                VALUES (?, ?, ?, ?, ?, ?, 1, NULL)
+                """,
+                (
+                    _utc_now(), name, sym, code, rationale,
+                    json.dumps(backtest_metrics or {}, default=str),
+                ),
+            )
+            cid = int(cur.lastrowid)
+            conn.commit()
+        except sqlite3.IntegrityError as exc:
+            return {"ok": False, "error": f"db integrity: {exc}"}
+        finally:
+            conn.close()
+        return {"ok": True, "custom_strategy_id": cid}
+
+    def list_custom_strategies_tool() -> list[dict]:
+        with _connect(db_path) as conn:
+            rows = conn.execute(
+                "SELECT id, created_at_utc, name, symbol, rationale, "
+                "backtest_metrics_json, active "
+                "FROM custom_strategies "
+                "WHERE active = 1 AND retired_at_utc IS NULL "
+                "ORDER BY id DESC LIMIT ?",
+                (_OUTPUT_ROW_CAP,),
+            ).fetchall()
+        out: list[dict] = []
+        for r in rows:
+            try:
+                m = json.loads(r["backtest_metrics_json"] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                m = {}
+            out.append({
+                "id": int(r["id"]),
+                "created_at_utc": str(r["created_at_utc"]),
+                "name": str(r["name"]),
+                "symbol": str(r["symbol"]),
+                "rationale": str(r["rationale"]),
+                "backtest_metrics": m,
+                "active": int(r["active"]),
+            })
+        return out
+
+    def retire_custom_strategy_tool(*, id: int, reason: str) -> dict:
+        try:
+            cid = int(id)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "id must be int"}
+        if not isinstance(reason, str) or not reason.strip():
+            return {"ok": False, "error": "reason required"}
+        from src.db.models import init_db as _init
+        _init(db_path)
+        conn = _connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT id, name, symbol FROM custom_strategies "
+                "WHERE id = ? AND active = 1 AND retired_at_utc IS NULL",
+                (cid,),
+            ).fetchone()
+            if row is None:
+                return {"ok": False, "error": f"custom strategy {cid} not active"}
+            now = _utc_now()
+            conn.execute(
+                "UPDATE custom_strategies SET active = 0, retired_at_utc = ? WHERE id = ?",
+                (now, cid),
+            )
+            cur = conn.execute(
+                """
+                INSERT INTO auto_demotions
+                    (ts_utc, strategy_id, symbol, strategy_family, version,
+                     params_json, metrics_snapshot_json, reason)
+                VALUES (?, ?, ?, 'custom', 1, ?, ?, ?)
+                """,
+                (
+                    now, cid, str(row["symbol"]),
+                    json.dumps({"custom_strategy_id": cid, "name": str(row["name"])}),
+                    "{}",
+                    f"retire_custom_strategy: {reason}",
+                ),
+            )
+            demotion_id = int(cur.lastrowid)
+            conn.commit()
+        finally:
+            conn.close()
+        return {"ok": True, "custom_strategy_id": cid, "demotion_id": demotion_id}
+
     def place_paper_order(
         *,
         symbol: str,
@@ -786,6 +1213,19 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
         "promote_candidate": _safe_tool(promote_candidate_tool),
         "modify_strategy_params": _safe_tool(modify_strategy_params_tool),
         "place_paper_order": _safe_tool(place_paper_order),
+        # Phase 9 — external knowledge
+        "web_search": _safe_tool(web_search),
+        "web_fetch": _safe_tool(web_fetch),
+        "fetch_youtube_transcript": _safe_tool(fetch_youtube_transcript),
+        # Phase 9 — peer filesystem
+        "read_file": _safe_tool(read_file),
+        "list_files": _safe_tool(list_files),
+        "read_research_artifact": _safe_tool(read_research_artifact),
+        # Phase 9 — custom strategy invention
+        "run_custom_backtest": _safe_tool(run_custom_backtest_tool),
+        "propose_custom_strategy": _safe_tool(propose_custom_strategy_tool),
+        "list_custom_strategies": _safe_tool(list_custom_strategies_tool),
+        "retire_custom_strategy": _safe_tool(retire_custom_strategy_tool),
     }
 
 
@@ -798,6 +1238,9 @@ _ACTION_TOOL_NAMES = {
     "place_paper_order",
     "run_judas_threshold_sweep",
     "run_walk_forward",
+    "run_custom_backtest",
+    "propose_custom_strategy",
+    "retire_custom_strategy",
 }
 
 
@@ -1029,6 +1472,159 @@ def _tool_schemas() -> list[dict]:
                         "symbol", "side", "quantity",
                         "stop_price", "target_price", "rationale",
                     ],
+                },
+            },
+        },
+        # ---- Phase 9: external knowledge ---------------------------------
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "DuckDuckGo search; returns title/url/snippet (snippets capped 280 chars).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "max_results": {"type": "integer", "default": 5},
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "web_fetch",
+                "description": "Fetch an http(s) URL; HTML auto-extracted to text. Capped to max_chars.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"},
+                        "max_chars": {"type": "integer", "default": 16000},
+                    },
+                    "required": ["url"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "fetch_youtube_transcript",
+                "description": "Fetch transcript for a YouTube URL or 11-char id.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url_or_id": {"type": "string"},
+                        "max_chars": {"type": "integer", "default": 32000},
+                    },
+                    "required": ["url_or_id"],
+                },
+            },
+        },
+        # ---- Phase 9: peer filesystem ------------------------------------
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": "Read a UTF-8 text file from inside the repo. Binary rejected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "max_bytes": {"type": "integer", "default": 65536},
+                    },
+                    "required": ["path"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_files",
+                "description": "List files under a repo-relative path matching glob.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "default": "."},
+                        "glob": {"type": "string", "default": "**/*"},
+                        "max_results": {"type": "integer", "default": 200},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_research_artifact",
+                "description": "Read an artifact attached to a research_experiments row.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "experiment_id": {"type": "integer"},
+                        "kind": {"type": "string", "default": "json"},
+                    },
+                    "required": ["experiment_id"],
+                },
+            },
+        },
+        # ---- Phase 9: custom strategy invention --------------------------
+        {
+            "type": "function",
+            "function": {
+                "name": "run_custom_backtest",
+                "description": (
+                    "Run a sandboxed backtest of agent-authored Python "
+                    "strategy code (must define evaluate(bars, params))."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string"},
+                        "symbol": {"type": "string", "enum": sym_enum},
+                        "days": {"type": "integer", "default": 90},
+                    },
+                    "required": ["code", "symbol"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "propose_custom_strategy",
+                "description": "Register a new custom strategy from agent-authored code.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "symbol": {"type": "string", "enum": sym_enum},
+                        "code": {"type": "string"},
+                        "rationale": {"type": "string"},
+                        "backtest_metrics": {"type": "object"},
+                    },
+                    "required": ["name", "symbol", "code", "rationale", "backtest_metrics"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_custom_strategies",
+                "description": "List active custom strategies registered by the agent.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "retire_custom_strategy",
+                "description": "Mark a custom strategy retired (writes auto_demotions audit row).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "integer"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["id", "reason"],
                 },
             },
         },

@@ -101,6 +101,88 @@ def _fetch_brief_decisions(brief_date: str) -> list[dict[str, Any]]:
     ]
 
 
+def _decide_recommended(brief_date: str, action_index: int, *, decision: str) -> Any:
+    """Apply or reject a recommended action by index. Idempotent per (brief_date, action_index)."""
+    with get_conn(_db_path()) as conn:
+        try:
+            row = conn.execute(
+                """
+                SELECT summary_json FROM daily_briefs
+                WHERE brief_date = ?
+                ORDER BY created_at_utc DESC
+                LIMIT 1
+                """,
+                (brief_date,),
+            ).fetchone()
+        except Exception:
+            return jsonify({"ok": False, "error": "daily_briefs not initialized"}), 404
+        if not row:
+            return jsonify({"ok": False, "error": "brief not found"}), 404
+        summary = _json_loads(row["summary_json"], {})
+        actions = summary.get("recommended_actions") or []
+        if action_index < 0 or action_index >= len(actions):
+            return jsonify({"ok": False, "error": "action_index out of range"}), 400
+        action = actions[action_index]
+
+        _ensure_brief_decisions_table(conn)
+        existing = conn.execute(
+            """
+            SELECT decision, result FROM brief_action_decisions
+            WHERE brief_date = ? AND action_index = ?
+            """,
+            (brief_date, action_index),
+        ).fetchone()
+        if existing:
+            return jsonify({
+                "ok": True,
+                "action": action,
+                "result": existing["result"],
+                "decision": existing["decision"],
+                "already_decided": True,
+            })
+
+    result_text = "no-op"
+    if decision == "apply":
+        atype = str(action.get("type") or "").lower()
+        if atype == "retire":
+            demotion_id = action.get("demotion_id")
+            sid = action.get("strategy_id")
+            if demotion_id is not None:
+                result_text = f"already retired (demotion_id={demotion_id})"
+            elif sid is not None:
+                try:
+                    new_demotion = strategy_registry.retire_strategy(
+                        strategy_id=int(sid),
+                        reason=str(action.get("reason") or "operator-applied"),
+                        metrics_snapshot={"source": "daily_brief", "brief_date": brief_date},
+                    )
+                    result_text = f"retired strategy {sid}; demotion_id={new_demotion}"
+                except Exception as exc:
+                    return jsonify({"ok": False, "error": str(exc)}), 400
+            else:
+                return jsonify({"ok": False, "error": "missing strategy_id"}), 400
+        elif atype == "review":
+            result_text = "review acknowledged"
+        else:
+            result_text = f"unknown action type: {atype}"
+    else:
+        result_text = "rejected"
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with get_conn(_db_path()) as conn:
+        _ensure_brief_decisions_table(conn)
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO brief_action_decisions
+                (brief_date, action_index, decision, action_json, result, decided_at_utc)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (brief_date, action_index, decision, json.dumps(action), result_text, now),
+        )
+        conn.commit()
+    return jsonify({"ok": True, "action": action, "result": result_text, "decision": decision})
+
+
 def _fetch_recent_signals(limit: int = 10) -> list[dict[str, Any]]:
     with get_conn(_db_path()) as conn:
         rows = conn.execute(
@@ -605,6 +687,14 @@ def create_app() -> Flask:
                 return jsonify({"ok": False, "error": "not found"}), 404
             conn.commit()
         return jsonify({"ok": True})
+
+    @app.post("/api/briefs/<brief_date>/recommended/<int:action_index>/apply")
+    def apply_recommended(brief_date: str, action_index: int) -> Any:
+        return _decide_recommended(brief_date, action_index, decision="apply")
+
+    @app.post("/api/briefs/<brief_date>/recommended/<int:action_index>/reject")
+    def reject_recommended(brief_date: str, action_index: int) -> Any:
+        return _decide_recommended(brief_date, action_index, decision="reject")
 
     @app.get("/", defaults={"path": ""})
     @app.get("/<path:path>")

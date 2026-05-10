@@ -2,11 +2,92 @@
 
 **Status:** active spec.
 
-- **Phases 0, 1, 2, 4, 5 implemented and pushed to `master` 2026-05-10** (~75 min wall clock end-to-end via parallel worker agents).
-- **Phase 3 design** pushed as `PHASE3_DESIGN.md`; **code build deferred until operator returns** to gate the autofix-merge path (per advisor: design review is not authorization to build autonomously).
+- **Phases 0–9 shipped on `master`.** 135 tests passing.
+- **Phase 10 (this revision)** makes the agentic-team architecture explicit. Prior framing of "one PM agent with a fat tool palette" is **superseded**. The Operator is a manager that *delegates* to specialist agents — it does not directly call retire/promote/place_paper_order/web/youtube. Each specialist has its own loose mandate, its own cadence, and its own bounded budget. This is what the operator has been asking for since day 1; earlier phases collapsed it into a monolith and Phase 10 fixes that.
 - **Phase 6 (HITL shrinkage)** is policy + threshold tuning — implemented incrementally as track record accumulates, not a single deliverable.
-- Test count: 57 passing. Smoke-tested OperatorFlow end-to-end: deterministic path completes in <60s, persists state, writes daily_briefs + Markdown.
 - Original status: written 2026-05-09 after day-1 launch surfaced rough edges (3-hour CrewAI hierarchical loop, dry-run weekend-flatten on the workshop side, broker `dry_run` default-trap).
+
+---
+
+## The Agentic Team (Phase 10 — the actual architecture)
+
+```
+                      Operator (manager) — every 4h, ~20 turns
+                          │  brain. decides what should happen.
+                          │  tools = DELEGATIONS, not actions.
+                          │
+            ┌─────────────┼─────────────┬─────────────┐
+            ▼             ▼             ▼             ▼
+        Researcher     Trader      Registrar       Coder
+        ─────────      ──────      ─────────       ─────
+        long-cycle     short       short           on-demand
+        ingest web/yt  ~10 turns   ~5 turns        ~30 turns
+        backtest       executes    atomic retire/  Phase 3 autofix
+        propose        a single    promote/        already built
+        candidates     trade       modify
+```
+
+**Operator's tool palette is delegations + reads. NOT actions:**
+- `delegate_to_researcher(topic, urgency, rationale)` — queues a research task
+- `delegate_to_trader(symbol, side, qty, stop, target, rationale)` — queues a trade
+- `delegate_to_registrar(action, target_id, params, reason)` — queues a registry mutation
+- `delegate_to_coder(symptom, context)` — triggers Phase 3 autofix
+- Reads: `get_active_set`, `get_recent_pnl`, `get_briefs`, `get_outstanding_delegations`, `get_recent_trades`, `get_research_queue`, `get_workshop_leaderboard`, `query_db`
+
+**Specialists run on their own cadence and consume from a shared `agent_tasks` table:**
+
+| Specialist | Mandate (loose) | Tools | Cadence |
+|---|---|---|---|
+| Researcher | "Find strategy ideas, backtest, propose candidates." | web_search / web_fetch / fetch_youtube_transcript / search_youtube_trading_videos / read_file / list_files / read_research_artifact / run_judas_threshold_sweep / run_walk_forward / run_custom_backtest / propose_candidate / propose_custom_strategy / claim_task / complete_task | hourly weekends, nightly weekdays (existing `judas-research.timer`) + immediate fire on operator delegation |
+| Trader | "Execute this trade safely. Manage the bracket. Report fills." | place_bracket (deterministic broker wrapper) / cancel_order / get_open_positions / get_fills / claim_task / complete_task | poll every 5 min for open trade tasks (`judas-trader.timer`) + immediate fire on delegation |
+| Registrar | "Perform this registry mutation atomically with full audit trail." | retire_strategy / promote_candidate / modify_strategy_params / reactivate_demoted / claim_task / complete_task | poll every 5 min (`judas-registrar.timer`) + immediate fire |
+| Coder | "Fix this bug." | Phase 3 autofix harness as-is | triggered by operator delegation; runs only when market closed + zero open positions + autofix.disable absent |
+
+**Shared `agent_tasks` table:**
+
+```sql
+CREATE TABLE IF NOT EXISTS agent_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    requested_at_utc TEXT NOT NULL,
+    requester TEXT NOT NULL,                -- 'operator' | 'pm_agent' | 'human' | etc
+    team TEXT NOT NULL,                     -- 'researcher' | 'trader' | 'registrar' | 'coder'
+    action TEXT NOT NULL,                   -- team-specific verb (e.g. 'place_trade', 'retire')
+    payload_json TEXT NOT NULL,             -- structured args
+    rationale TEXT NOT NULL,
+    urgency TEXT NOT NULL DEFAULT 'normal', -- normal | high | low
+    status TEXT NOT NULL DEFAULT 'open',    -- open | claimed | done | abandoned | failed
+    claimed_at_utc TEXT,
+    claimed_by TEXT,
+    completed_at_utc TEXT,
+    result_json TEXT,                       -- specialist's response: ids, metrics, narrative
+    parent_task_id INTEGER                  -- chained delegations
+);
+CREATE INDEX IF NOT EXISTS idx_agent_tasks_open
+    ON agent_tasks(team, status, urgency, requested_at_utc);
+```
+
+**Each specialist has its own runner script + systemd service/timer:**
+- `scripts/run_researcher.py` → `systemd/judas-researcher.{service,timer}`
+- `scripts/run_trader.py` → `systemd/judas-trader.{service,timer}`
+- `scripts/run_registrar.py` → `systemd/judas-registrar.{service,timer}`
+- (Coder is fired by Phase 3 autofix infra already.)
+
+**The Operator's flow becomes a Manager:**
+- `morning_review` calls `run_operator_decision` (renamed from `run_pm_decision`).
+- Operator emits delegations, specialists pick them up, the brief reports what got delegated and what came back.
+- The legacy "PM agent" name retires; the agent is now `operator_agent` and its mandate is unchanged ("$5K paper, make money") but its toolkit is delegations only.
+
+**Each specialist also has its own loose mandate prompt — no narrowing.** Full agency within scope. Code-enforced safety only:
+- Trader can't violate sleeve cap (existing risk path).
+- Registrar can't bypass the atomic registry (existing `BEGIN IMMEDIATE`).
+- Researcher can't touch the live registry except through `propose_candidate` / `propose_custom_strategy`.
+- Coder can't touch deny-listed files (existing post-commit hook).
+- All four respect `kill.flag` and the new `JUDAS_<TEAM>_INHIBIT=1` env knob.
+
+**Operator UX additions to dashboard (Phase 7 already designed for this):**
+- "Delegations" panel showing open `agent_tasks` rows with team, action, urgency.
+- Each specialist's most recent runs and outcomes.
+- Chat-to-specialist: type "@trader: cancel the MNQ short" → inserts a high-urgency task for Trader to claim immediately.
 
 **Goal in one sentence:** an autonomous, paper-only futures lab on the IBKR paper account `DUH860616` that explores, validates, promotes, retires, and self-heals its own bugs within a bounded $5,000 sleeve — surfacing only big calls to the operator.
 

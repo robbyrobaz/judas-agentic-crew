@@ -283,6 +283,9 @@ def test_write_brief_step_via_flow(tmp_path, monkeypatch):
         ):
             del sys.modules[name]
     of = importlib.import_module("src.flows.operator_flow")
+    # Force noop routing so the Phase 5 explore triggers don't flip this
+    # test's expectation of decision == "noop".
+    monkeypatch.setattr(of, "_decide_explore_or_noop", lambda *, db_path: ("noop", None))
 
     # Force morning_review to return "noop" path (no active strategies seeded
     # so review_all_active_strategies returns []).

@@ -266,6 +266,8 @@ def test_morning_review_routes_to_noop_when_clean(tmp_path, monkeypatch):
     monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
 
     module = _reload_operator_flow()
+    # Force noop routing so Phase 5 explore triggers don't flip this test.
+    monkeypatch.setattr(module, "_decide_explore_or_noop", lambda *, db_path: ("noop", None))
 
     flow = module.OperatorFlow()
     flow.kickoff(inputs={"id": module.OPERATOR_FLOW_ID})

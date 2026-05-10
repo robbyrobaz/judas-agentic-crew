@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import itertools
 import json
+import logging
 import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -17,6 +18,8 @@ from src.config import load_config
 from src.tools.db_tools import db_save_research_experiment_tool
 from src.tools.judas_detector import run_judas_detection_rich
 from src.strategy_registry import create_candidate, list_active_strategies, promote_candidate
+
+log = logging.getLogger(__name__)
 
 
 def _workshop_root() -> Path:
@@ -842,27 +845,61 @@ def judas_backtest_tool(input_json: str) -> str:
 
 @tool("judas_parameter_sweep_tool")
 def judas_parameter_sweep_tool(input_json: str) -> str:
-    """Run a deterministic Judas 1H parameter sweep and rank the results."""
+    """Run a deterministic Judas 1H parameter sweep and rank the results.
+
+    Pass an explicit `grid` dict to override the trimmed default. Use
+    `max_combinations` (default 64) to cap the cartesian product — sweeps
+    that would exceed the cap are truncated and a warning is logged so the
+    tool always returns within a bounded wall-clock budget.
+
+    Set `bars_lookback` to limit the bar slice (default = full cached bars)
+    for fast tests. Set `db_path` (or `JUDAS_DB_PATH` env) to redirect the
+    research_experiments write target.
+    """
     data = json.loads(input_json) if isinstance(input_json, str) else input_json
     symbol = str(data.get("symbol", "MGC")).upper()
     bars = _load_bars(symbol)
+    bars_lookback = _safe_int(data.get("bars_lookback", 0), 0)
+    if bars_lookback and bars_lookback > 0:
+        bars = bars.tail(bars_lookback).reset_index(drop=True)
+    # Trimmed default: completes in a few minutes on a 60D MGC slice.
+    # The 2026-05-09 timeout was caused by a 1728-combo default grid that
+    # could not finish within the 45-min timer, so zero rows were ever
+    # persisted. The explicit `grid` argument is still available for
+    # operator-driven exhaustive sweeps.
     default_grid = {
-        "target_r": [1.5, 2.0, 2.5],
-        "stop_buffer_ticks": [2, 3],
-        "min_sweep_ticks": [3, 5],
-        "min_displacement_strength": [1.0, 1.25, 1.5, 1.75],
-        "min_displacement_body_ratio": [0.4, 0.5, 0.6],
-        "max_sweep_age_bars": [1, 2],
-        "require_fvg": [False, True],
-        "session_filter": ["all", "ny_open", "power_hour"],
+        "target_r": [1.5, 2.0],
+        "stop_buffer_ticks": [2],
+        "min_sweep_ticks": [3],
+        "min_displacement_strength": [1.0, 1.5],
+        "min_displacement_body_ratio": [0.5],
+        "max_sweep_age_bars": [2],
+        "require_fvg": [False],
+        "session_filter": ["all", "ny_open"],
     }
     grid = data.get("grid", default_grid)
     min_trades = _safe_int(data.get("min_trades", 3), 3)
+    max_combinations = _safe_int(data.get("max_combinations", 64), 64)
     keys = list(grid.keys())
-    values = [grid[k] for k in keys]
+    values = [list(grid[k]) for k in keys]
+    total_combos = 1
+    for v in values:
+        total_combos *= max(len(v), 1)
+    truncated = False
+    if max_combinations > 0 and total_combos > max_combinations:
+        truncated = True
+        log.warning(
+            "judas_parameter_sweep: grid %d combos exceeds max_combinations=%d; truncating",
+            total_combos,
+            max_combinations,
+        )
 
     experiments: list[dict[str, Any]] = []
+    evaluated = 0
     for combo in itertools.product(*values):
+        if max_combinations > 0 and evaluated >= max_combinations:
+            break
+        evaluated += 1
         params = dict(zip(keys, combo, strict=False))
         result = _evaluate_judas_variant(bars, symbol, params)
         metrics = result["metrics"]
@@ -916,6 +953,9 @@ def judas_parameter_sweep_tool(input_json: str) -> str:
         {
             "symbol": symbol,
             "experiment_count": len(ranked),
+            "evaluated_combinations": evaluated,
+            "total_grid_combinations": total_combos,
+            "truncated": truncated,
             "top_results": top_ranked,
             "json_path": str(json_path),
             "csv_path": str(csv_path),

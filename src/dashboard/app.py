@@ -15,6 +15,7 @@ from waitress import serve
 from src.agents.judas_agents import build_llm
 from src.config import load_config
 from src.db.models import get_conn, init_db
+from src import strategy_registry
 from src.strategy_registry import list_active_strategies, reactivate_demoted
 from src.tools.session_tools import session_status_tool
 
@@ -56,6 +57,48 @@ def _format_scalar(value: Any) -> str:
             return f"{float(value):,.2f}".rstrip("0").rstrip(".")
         return f"{float(value):,.3f}".rstrip("0").rstrip(".")
     return str(value)
+
+
+_BRIEF_DECISIONS_DDL = """
+CREATE TABLE IF NOT EXISTS brief_action_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brief_date TEXT NOT NULL,
+    action_index INTEGER NOT NULL,
+    decision TEXT NOT NULL,
+    action_json TEXT,
+    result TEXT,
+    decided_at_utc TEXT NOT NULL,
+    UNIQUE(brief_date, action_index)
+)
+"""
+
+
+def _ensure_brief_decisions_table(conn) -> None:
+    conn.execute(_BRIEF_DECISIONS_DDL)
+
+
+def _fetch_brief_decisions(brief_date: str) -> list[dict[str, Any]]:
+    with get_conn(_db_path()) as conn:
+        _ensure_brief_decisions_table(conn)
+        rows = conn.execute(
+            """
+            SELECT action_index, decision, action_json, result, decided_at_utc
+            FROM brief_action_decisions
+            WHERE brief_date = ?
+            ORDER BY action_index ASC
+            """,
+            (brief_date,),
+        ).fetchall()
+    return [
+        {
+            "action_index": int(row["action_index"]),
+            "decision": str(row["decision"]),
+            "action": _json_loads(row["action_json"], {}),
+            "result": row["result"],
+            "decided_at_utc": str(row["decided_at_utc"]),
+        }
+        for row in rows
+    ]
 
 
 def _fetch_recent_signals(limit: int = 10) -> list[dict[str, Any]]:
@@ -486,6 +529,82 @@ def create_app() -> Flask:
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         return jsonify({"ok": True, "new_strategy_id": new_id})
+
+    @app.get("/api/briefs")
+    def list_briefs() -> Any:
+        """List daily briefs from the last 30 days, most recent first."""
+        with get_conn(_db_path()) as conn:
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT id, brief_date, created_at_utc, summary_json, acknowledged_at_utc
+                    FROM daily_briefs
+                    WHERE brief_date >= date('now', '-30 days')
+                    ORDER BY brief_date DESC, created_at_utc DESC
+                    """
+                ).fetchall()
+            except Exception:
+                # Table may not exist until Worker E's migration lands.
+                return jsonify({"briefs": []})
+        return jsonify({
+            "briefs": [
+                {
+                    "id": int(row["id"]),
+                    "brief_date": str(row["brief_date"]),
+                    "created_at_utc": str(row["created_at_utc"]),
+                    "summary": _json_loads(row["summary_json"], {}),
+                    "acknowledged_at_utc": row["acknowledged_at_utc"],
+                }
+                for row in rows
+            ]
+        })
+
+    @app.get("/api/briefs/<brief_date>")
+    def get_brief(brief_date: str) -> Any:
+        with get_conn(_db_path()) as conn:
+            try:
+                row = conn.execute(
+                    """
+                    SELECT id, brief_date, created_at_utc, content_md, summary_json,
+                           acknowledged_at_utc
+                    FROM daily_briefs
+                    WHERE brief_date = ?
+                    ORDER BY created_at_utc DESC
+                    LIMIT 1
+                    """,
+                    (brief_date,),
+                ).fetchone()
+            except Exception:
+                return jsonify({"error": "daily_briefs not initialized"}), 404
+        if not row:
+            return jsonify({"error": f"no brief for {brief_date}"}), 404
+        decisions = _fetch_brief_decisions(brief_date)
+        return jsonify({
+            "id": int(row["id"]),
+            "brief_date": str(row["brief_date"]),
+            "created_at_utc": str(row["created_at_utc"]),
+            "content_md": row["content_md"] or "",
+            "summary": _json_loads(row["summary_json"], {}),
+            "acknowledged_at_utc": row["acknowledged_at_utc"],
+            "decisions": decisions,
+        })
+
+    @app.post("/api/briefs/<brief_date>/ack")
+    def ack_brief(brief_date: str) -> Any:
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with get_conn(_db_path()) as conn:
+            cur = conn.execute(
+                """
+                UPDATE daily_briefs
+                SET acknowledged_at_utc = COALESCE(acknowledged_at_utc, ?)
+                WHERE brief_date = ?
+                """,
+                (now, brief_date),
+            )
+            if cur.rowcount == 0:
+                return jsonify({"ok": False, "error": "not found"}), 404
+            conn.commit()
+        return jsonify({"ok": True})
 
     @app.get("/", defaults={"path": ""})
     @app.get("/<path:path>")

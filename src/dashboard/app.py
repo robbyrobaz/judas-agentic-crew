@@ -696,6 +696,94 @@ def create_app() -> Flask:
     def reject_recommended(brief_date: str, action_index: int) -> Any:
         return _decide_recommended(brief_date, action_index, decision="reject")
 
+    @app.get("/api/autofixes")
+    def list_autofixes() -> Any:
+        status_filter = (request.args.get("status") or "open").lower()
+        with get_conn(_db_path()) as conn:
+            try:
+                if status_filter == "all":
+                    rows = conn.execute(
+                        """
+                        SELECT id, started_at_utc, finished_at_utc, symptom_category,
+                               symptom_summary, branch_name, status, test_result,
+                               pushed, operator_decision
+                        FROM auto_fixes
+                        ORDER BY started_at_utc DESC, id DESC
+                        LIMIT 50
+                        """
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """
+                        SELECT id, started_at_utc, finished_at_utc, symptom_category,
+                               symptom_summary, branch_name, status, test_result,
+                               pushed, operator_decision
+                        FROM auto_fixes
+                        WHERE operator_decision IS NULL
+                        ORDER BY started_at_utc DESC, id DESC
+                        LIMIT 50
+                        """
+                    ).fetchall()
+            except Exception:
+                return jsonify({"autofixes": []})
+        return jsonify({
+            "autofixes": [
+                {
+                    "id": int(row["id"]),
+                    "started_at_utc": row["started_at_utc"],
+                    "finished_at_utc": row["finished_at_utc"],
+                    "symptom_category": row["symptom_category"],
+                    "symptom_summary": row["symptom_summary"],
+                    "branch_name": row["branch_name"],
+                    "status": row["status"],
+                    "test_result": row["test_result"],
+                    "pushed": bool(row["pushed"]) if row["pushed"] is not None else False,
+                    "operator_decision": row["operator_decision"],
+                }
+                for row in rows
+            ]
+        })
+
+    @app.get("/api/autofixes/<int:autofix_id>")
+    def get_autofix(autofix_id: int) -> Any:
+        with get_conn(_db_path()) as conn:
+            try:
+                row = conn.execute(
+                    """
+                    SELECT id, started_at_utc, finished_at_utc, symptom_category,
+                           symptom_hash, symptom_summary, branch_name, worktree_path,
+                           prompt, diff_summary, files_changed_json, test_result,
+                           test_output_tail, pushed, operator_decision,
+                           operator_decision_at_utc, status
+                    FROM auto_fixes
+                    WHERE id = ?
+                    """,
+                    (autofix_id,),
+                ).fetchone()
+            except Exception:
+                return jsonify({"error": "auto_fixes not initialized"}), 404
+        if not row:
+            return jsonify({"error": f"no autofix with id {autofix_id}"}), 404
+        return jsonify({
+            "id": int(row["id"]),
+            "started_at_utc": row["started_at_utc"],
+            "finished_at_utc": row["finished_at_utc"],
+            "symptom_category": row["symptom_category"],
+            "symptom_hash": row["symptom_hash"],
+            "symptom_summary": row["symptom_summary"],
+            "branch_name": row["branch_name"],
+            "worktree_path": row["worktree_path"],
+            "prompt": row["prompt"],
+            "diff_summary": row["diff_summary"],
+            "files_changed": _json_loads(row["files_changed_json"], []),
+            "test_result": row["test_result"],
+            "test_output_tail": row["test_output_tail"],
+            "pushed": bool(row["pushed"]) if row["pushed"] is not None else False,
+            "operator_decision": row["operator_decision"],
+            "operator_decision_at_utc": row["operator_decision_at_utc"],
+            "status": row["status"],
+        })
+
     @app.get("/", defaults={"path": ""})
     @app.get("/<path:path>")
     def frontend(path: str) -> Any:

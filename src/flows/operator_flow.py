@@ -58,6 +58,42 @@ def _resolve_judas_db_path() -> str:
     return str(_REPO_ROOT / "judas_crew.db")
 
 
+def _open_autofix_hashes(*, db_path: str) -> set[str]:
+    """Return symptom_hashes for auto_fixes rows where operator_decision IS NULL."""
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+    except sqlite3.Error:
+        return set()
+    try:
+        try:
+            rows = conn.execute(
+                "SELECT symptom_hash FROM auto_fixes WHERE operator_decision IS NULL"
+            ).fetchall()
+        except sqlite3.Error:
+            return set()
+        return {row[0] for row in rows}
+    finally:
+        conn.close()
+
+
+def _detect_pending_symptoms(*, db_path: str) -> list:
+    """Return symptoms not already represented by an open auto_fixes row."""
+    try:
+        from src.research.symptoms import detect_all_symptoms
+    except Exception:  # noqa: BLE001
+        log.exception("operator.symptoms.import_failed")
+        return []
+    try:
+        symptoms = detect_all_symptoms(db_path=db_path, repo_root=str(_REPO_ROOT))
+    except Exception:  # noqa: BLE001
+        log.exception("operator.symptoms.detect_failed")
+        return []
+    open_hashes = _open_autofix_hashes(db_path=db_path)
+    return [s for s in symptoms if s.hash not in open_hashes]
+
+
 def _decide_explore_or_noop(*, db_path: str) -> tuple[str, str | None]:
     """Decide between 'explore' and 'noop' when there is no retire-list.
 
@@ -182,12 +218,28 @@ class OperatorFlow(Flow[OperatorState]):
                 "review_summary": review_summary,
             }
         else:
-            decision, reason = _decide_explore_or_noop(db_path=db_path)
-            self.state.decision = decision
-            self.state.findings = {
-                "review_summary": review_summary,
-                "explore_reason": reason if decision == "explore" else None,
-            }
+            pending_symptoms = _detect_pending_symptoms(db_path=db_path)
+            if pending_symptoms:
+                self.state.decision = "fix_bug"
+                self.state.findings = {
+                    "review_summary": review_summary,
+                    "pending_symptoms": [
+                        {
+                            "category": s.category,
+                            "hash": s.hash,
+                            "summary": s.summary,
+                            "evidence": s.evidence,
+                        }
+                        for s in pending_symptoms
+                    ],
+                }
+            else:
+                decision, reason = _decide_explore_or_noop(db_path=db_path)
+                self.state.decision = decision
+                self.state.findings = {
+                    "review_summary": review_summary,
+                    "explore_reason": reason if decision == "explore" else None,
+                }
 
         log.info(
             "operator.morning_review.complete",
@@ -294,8 +346,86 @@ class OperatorFlow(Flow[OperatorState]):
 
     @listen("fix_bug")
     def fix_bug_step(self) -> None:
-        """Stub — real autofix delegation lands in Phase 3."""
-        log.info("operator.fix_bug_step.would_run")
+        """Phase 3a — record detected symptoms in auto_fixes; do NOT fix.
+
+        Workers I/J replace this step in Phase 3b/3c. Keep minimal.
+        """
+        import sqlite3
+
+        findings = self.state.findings or {}
+        symptoms = findings.get("pending_symptoms") or []
+        if not symptoms:
+            # Re-detect defensively (covers callers that route here directly).
+            try:
+                fresh = _detect_pending_symptoms(db_path=_resolve_judas_db_path())
+                symptoms = [
+                    {
+                        "category": s.category,
+                        "hash": s.hash,
+                        "summary": s.summary,
+                        "evidence": s.evidence,
+                    }
+                    for s in fresh
+                ]
+            except Exception:  # noqa: BLE001
+                log.exception("operator.fix_bug_step.detect_failed")
+                symptoms = []
+
+        if not symptoms:
+            log.info("operator.fix_bug_step.no_symptoms")
+            return
+
+        from src.db.models import init_db
+
+        db_path = _resolve_judas_db_path()
+        try:
+            init_db(db_path)
+        except Exception:  # noqa: BLE001
+            log.exception("operator.fix_bug_step.init_db_failed")
+            return
+
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        inserted = 0
+        skipped = 0
+        try:
+            conn = sqlite3.connect(str(db_path))
+            try:
+                for sym in symptoms:
+                    try:
+                        conn.execute(
+                            """
+                            INSERT INTO auto_fixes (
+                                started_at_utc, symptom_category, symptom_hash,
+                                symptom_summary, status
+                            ) VALUES (?, ?, ?, ?, 'detected')
+                            """,
+                            (
+                                now,
+                                sym.get("category"),
+                                sym.get("hash"),
+                                sym.get("summary"),
+                            ),
+                        )
+                        inserted += 1
+                    except sqlite3.IntegrityError:
+                        # Unique partial index — already an open row for this hash.
+                        skipped += 1
+                conn.commit()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            log.exception("operator.fix_bug_step.db_failed")
+            return
+
+        log.info(
+            "operator.fix_bug_step.recorded",
+            extra={
+                "symptoms_total": len(symptoms),
+                "inserted": inserted,
+                "skipped_dupes": skipped,
+                "categories": sorted({s.get("category") for s in symptoms if s.get("category")}),
+            },
+        )
 
     @listen("noop")
     def write_brief_step(self) -> None:

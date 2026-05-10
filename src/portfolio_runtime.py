@@ -538,6 +538,36 @@ def place_bracket(**kwargs) -> dict[str, Any]:
     return asyncio.run(_place_bracket_async(**kwargs))
 
 
+async def _cancel_order_async(*, order_id: int, host: str, port: int, client_id: int) -> str:
+    """Cancel an open IBKR paper order by id. Tests monkeypatch this seam."""
+    ib = IB()
+    await ib.connectAsync(host, port, clientId=client_id, timeout=15)
+    try:
+        target = None
+        for trade in ib.openTrades():
+            if int(trade.order.orderId) == int(order_id):
+                target = trade
+                break
+        if target is None:
+            return "not_found"
+        ib.cancelOrder(target.order)
+        await asyncio.sleep(0.5)
+        return target.orderStatus.status or "Cancelled"
+    finally:
+        ib.disconnect()
+
+
+def cancel_order(*, order_id: int) -> str:
+    """Cancel an open paper order by id via the deterministic broker seam."""
+    from src.config import load_config
+
+    cfg = load_config()
+    return asyncio.run(_cancel_order_async(
+        order_id=order_id, host=cfg.ibkr.host, port=cfg.ibkr.port,
+        client_id=cfg.ibkr.exec_client_id,
+    ))
+
+
 def _save_signal_and_trade(db_path: str, fire: ActiveFire, order: dict[str, Any] | None, decision: str) -> dict[str, Any]:
     from src.db.models import get_conn
 

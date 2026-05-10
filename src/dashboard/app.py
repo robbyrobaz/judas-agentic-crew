@@ -237,6 +237,130 @@ def _fetch_recent_experiments(limit: int = 12) -> list[dict[str, Any]]:
         ]
 
 
+def _fetch_chat_active_strategies(limit: int = 30) -> list[dict[str, Any]]:
+    """Compact view of currently-active strategies for the chat prompt."""
+    try:
+        with get_conn(_db_path()) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, symbol, strategy_family, version, activated_at_utc,
+                       substr(notes, 1, 120) AS notes
+                FROM active_strategies
+                WHERE state = 'active'
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except Exception:
+        return []
+
+
+def _fetch_chat_open_delegations(limit: int = 15) -> list[dict[str, Any]]:
+    """Open / in-flight agent_tasks the team is working on."""
+    try:
+        with get_conn(_db_path()) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, requested_at_utc, requester, team, action, urgency,
+                       status, claimed_by, substr(rationale, 1, 200) AS rationale
+                FROM agent_tasks
+                WHERE status IN ('open', 'claimed')
+                ORDER BY
+                    CASE urgency WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+                    requested_at_utc DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except Exception:
+        return []
+
+
+def _fetch_chat_recent_demotions(limit: int = 5) -> list[dict[str, Any]]:
+    try:
+        with get_conn(_db_path()) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, ts_utc, symbol, strategy_family, version,
+                       substr(reason, 1, 200) AS reason, reactivated_at_utc
+                FROM auto_demotions
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except Exception:
+        return []
+
+
+def _fetch_chat_pending_candidates(limit: int = 5) -> list[dict[str, Any]]:
+    try:
+        with get_conn(_db_path()) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, ts_utc, symbol, strategy_family, decision,
+                       substr(rationale, 1, 200) AS rationale, status
+                FROM strategy_candidates
+                WHERE status = 'candidate'
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except Exception:
+        return []
+
+
+def _fetch_chat_recent_findings(limit: int = 10) -> list[dict[str, Any]]:
+    """Phase 11 shared findings memory — what the team has learned."""
+    try:
+        with get_conn(_db_path()) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, created_at_utc, author, title,
+                       substr(body, 1, 400) AS body, strategy_id, strategy_name,
+                       symbol, status
+                FROM findings
+                WHERE status = 'active'
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except Exception:
+        return []
+
+
+def _fetch_chat_recent_brief_meta(limit: int = 2) -> list[dict[str, Any]]:
+    """Brief metadata (no body — body lives in the JSON summary which we keep)."""
+    try:
+        with get_conn(_db_path()) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, brief_date, created_at_utc, summary_json,
+                       acknowledged_at_utc
+                FROM daily_briefs
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["summary"] = _json_loads(d.pop("summary_json", "{}"), {})
+            out.append(d)
+        return out
+    except Exception:
+        return []
+
+
 def _fetch_trading_stats() -> dict[str, Any]:
     phx = ZoneInfo("America/Phoenix")
     with get_conn(_db_path()) as conn:
@@ -438,6 +562,13 @@ def _build_chat_prompt(message: str) -> str:
     latest_signals = _fetch_recent_signals(limit=5)
     latest_trades = _fetch_recent_trades(limit=5)
     latest_experiments = _fetch_recent_experiments(limit=8)
+    # Phase 10/11 context — make the chat see what the agentic team sees.
+    active_strategies = _fetch_chat_active_strategies(limit=30)
+    open_delegations = _fetch_chat_open_delegations(limit=15)
+    recent_demotions = _fetch_chat_recent_demotions(limit=5)
+    pending_candidates = _fetch_chat_pending_candidates(limit=5)
+    recent_findings = _fetch_chat_recent_findings(limit=10)
+    recent_briefs_meta = _fetch_chat_recent_brief_meta(limit=2)
     # Truncate history aggressively. Long history was causing the model to
     # reference experiment ids it discussed days ago and ignore the
     # freshly-pulled rows directly above it. Keep only the immediate context.
@@ -467,14 +598,27 @@ def _build_chat_prompt(message: str) -> str:
 
     return (
         f"{OPERATOR_MANAGER_PROMPT}\n\n"
-        "You are replying inside the Judas dashboard. Be concise, concrete, and operational.\n"
+        "You are replying inside the Judas dashboard. Be concise, concrete, and operational. "
+        "You speak with the same context the agentic team sees — Operator + Researcher + "
+        "Trader + Registrar + Coder. The team works through delegations and shared findings; "
+        "the blocks below are exactly what an agent would consult.\n"
         "Never claim a live action happened unless it is present in the provided context.\n"
-        "Always treat the provided overview/experiments blocks as ground truth. "
-        "If chat history references stale ids that conflict with the fresh data, the fresh data wins.\n\n"
+        "Always treat the provided blocks as ground truth. If chat history references stale "
+        "ids that conflict with the fresh data, the fresh data wins.\n\n"
         "The operator is in America/Phoenix. When replying, use PHX time by default. "
         "The backend and DB may still use UTC internally. This repo is IBKR paper-only, not live.\n\n"
         f"{freshness}\n"
         f"Current overview:\n{json.dumps(overview, indent=2)}\n\n"
+        f"Active strategies ({len(active_strategies)}):\n{json.dumps(active_strategies, indent=2)}\n\n"
+        f"Open delegations (agent_tasks — what's queued for the specialists):\n"
+        f"{json.dumps(open_delegations, indent=2)}\n\n"
+        f"Recent demotions:\n{json.dumps(recent_demotions, indent=2)}\n\n"
+        f"Pending candidates (queue waiting for promotion):\n"
+        f"{json.dumps(pending_candidates, indent=2)}\n\n"
+        f"Team findings (shared agent memory — what the team has learned):\n"
+        f"{json.dumps(recent_findings, indent=2)}\n\n"
+        f"Recent daily briefs (meta only — body excluded for token budget):\n"
+        f"{json.dumps(recent_briefs_meta, indent=2)}\n\n"
         f"Recent signals:\n{json.dumps(latest_signals, indent=2)}\n\n"
         f"Recent trades:\n{json.dumps(latest_trades, indent=2)}\n\n"
         f"Recent experiments:\n{json.dumps(latest_experiments, indent=2)}\n\n"

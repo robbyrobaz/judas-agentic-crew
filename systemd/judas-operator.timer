@@ -1,8 +1,12 @@
 [Unit]
-Description=Judas Operator Flow timer — daily 06:00 America/New_York
+Description=Judas Operator Flow timer — every 4 hours (PM agent cycle)
 
 [Timer]
-OnCalendar=*-*-* 06:00:00 America/New_York
+# Operator wants several PM cycles per day so M2.7 sees fresh regime /
+# pnl / experiment state. 4-hour cadence = 6 cycles/day during the
+# dry-run observation window. Anchor includes one before NY open
+# (06:00 ET) and one after close (18:00 ET).
+OnCalendar=*-*-* 02,06,10,14,18,22:00:00 America/New_York
 Persistent=false
 Unit=judas-operator.service
 

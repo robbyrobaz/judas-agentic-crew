@@ -66,9 +66,14 @@ These are the rails. Encoded in code, not just prompt.
 │   • ~2% of Opus 4.7 cost per token; can run hot
 │   • Opus 4.7 reserved for high-stakes router decisions only
 │
-├─ Bug-fix delegation (Phase 3) ── Subprocess Claude Code OR Codex CLI
-│   • Single session per fix, branch-isolated git worktree
-│   • Escalate to Claude Code Agent Team for hard bugs only
+├─ Bug-fix delegation (Phase 3) ── Subprocess MiniMax M2.7 via a coding-agent harness
+│   • M2.7 is the primary autofix executor (SWE-Pro 56%, Terminal Bench
+│     57%, tool-calling 75.8%, ~2% of Opus cost — runs hot affordably).
+│   • Single session per fix, branch-isolated git worktree.
+│   • Harness: M2.7 inside the Hermes Agent harness OR a thin custom
+│     ReAct loop with shell + edit + git tools. Decided in Phase 3 design.
+│   • Claude Code / Codex CLI / Claude Code Agent Team available as
+│     escalation paths for bugs M2.7 cannot resolve in 2 attempts.
 │
 ├─ Persistence ─────────────────── judas_crew.db (SQLite, WAL mode)
 │                                  outputs/flow_state.db (Flow @persist)
@@ -313,7 +318,7 @@ Each phase has: **deliverables**, **exit criteria**, **owner**, **dependencies**
 
 ## Open Questions (resolved before P3)
 
-- Which subprocess: `claude code` or `codex` CLI for autofix? Lean Claude Code (Agent Teams available for hard bugs), but verify both authenticate non-interactively in a worktree.
+- Autofix executor: **MiniMax M2.7** (decided). Open question is the harness — Hermes Agent vs thin custom ReAct loop vs `litellm` + manual tool-call dispatch. Claude Code / Codex CLI reserved as escalation only.
 - Where does dashboard ack live? Existing dashboard `:8080`/`:8443` — new `/api/notifications` endpoints + UI panel.
 - Autofix prompt template — needs design pass; not a one-liner.
 - How does `@human_feedback` deliver questions when the operator is offline? — Polling table is the fallback; investigate native CrewAI webhook support first.

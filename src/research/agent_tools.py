@@ -364,6 +364,96 @@ def make_complete_task(*, db_path: str) -> Callable[..., dict]:
 # ---------------------------------------------------------------------------
 
 
+def flatten_position(*, symbol: str, side: str, qty: int) -> dict:
+    """Close an existing futures position with a single MARKET order — no
+    bracket children. This is the clean way to flatten a naked position
+    without orphaning stop/target orders that would re-open it.
+
+    Args:
+      symbol: 'MGC', 'MNQ', 'MCL', 'MBT', 'MET', 'DX', 'ZF', '6J'
+      side:   'close_long'  → places SELL  (closes a long)
+              'close_short' → places BUY   (closes a short)
+      qty: positive integer, contracts to close.
+
+    Returns: {ok, action, qty, symbol, parent_order_id, status, error}.
+    """
+    sym = str(symbol).upper()
+    if sym not in _VALID_SYMBOLS:
+        return {"ok": False, "error": f"unknown symbol: {sym}"}
+    s = str(side).lower().strip()
+    if s in ("close_long", "sell", "long"):
+        action = "SELL"
+    elif s in ("close_short", "buy", "short"):
+        action = "BUY"
+    else:
+        return {"ok": False, "error": "side must be close_long or close_short"}
+    try:
+        n = int(qty)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "qty must be int"}
+    if n <= 0:
+        return {"ok": False, "error": "qty must be > 0"}
+
+    # Confirm position exists before placing the close order, per the
+    # operator-chat's watchpoint: 'do not place any orders without first
+    # confirming position existence.'
+    try:
+        from ib_async import IB, Future, MarketOrder
+        ib = IB()
+        ib.connect("127.0.0.1", 4002, clientId=199, timeout=8)
+        try:
+            current = None
+            for p in ib.positions():
+                if (p.contract.secType == "FUT"
+                        and p.contract.symbol == sym
+                        and p.position != 0):
+                    current = p
+                    break
+            if current is None:
+                return {"ok": False, "error": f"no open {sym} position to flatten"}
+            # Sanity: side must match the actual position
+            held_dir = "long" if current.position > 0 else "short"
+            requested = "close_short" if action == "BUY" else "close_long"
+            if (requested == "close_long" and held_dir != "long") or \
+               (requested == "close_short" and held_dir != "short"):
+                return {
+                    "ok": False,
+                    "error": f"side mismatch: requested {requested} but position is {held_dir}",
+                }
+            held_qty = abs(int(current.position))
+            close_qty = min(n, held_qty)
+            # Re-qualify the front-month contract
+            cont = Future(current.contract.symbol,
+                          lastTradeDateOrContractMonth=current.contract.lastTradeDateOrContractMonth,
+                          exchange=current.contract.exchange)
+            q = ib.qualifyContracts(cont)
+            if not q:
+                return {"ok": False, "error": "could not qualify contract"}
+            order = MarketOrder(action, close_qty)
+            order.tif = "GTC"
+            order.outsideRth = True
+            trade = ib.placeOrder(q[0], order)
+            # Brief wait for status to flip from PendingSubmit
+            for _ in range(10):
+                ib.sleep(0.3)
+                st = trade.orderStatus.status
+                if st in ("Submitted", "PreSubmitted", "Filled"):
+                    break
+            return {
+                "ok": True,
+                "action": action,
+                "symbol": sym,
+                "qty": close_qty,
+                "parent_order_id": order.orderId,
+                "status": trade.orderStatus.status or "Submitted",
+                "local_symbol": q[0].localSymbol,
+            }
+        finally:
+            ib.disconnect()
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 def cancel_order(*, order_id: int) -> dict:
     """Best-effort cancel via the deterministic broker seam.
 
@@ -1099,6 +1189,7 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
         "fetch_youtube_transcript": _safe_tool(fetch_youtube_transcript),
         "place_bracket_order": pm_tools["place_paper_order"],  # alias
         "cancel_order": _safe_tool(cancel_order),
+        "flatten_position": _safe_tool(flatten_position),
         "get_fills": _safe_tool(make_get_fills(db_path=db_path)),
         "reactivate_demoted": _safe_tool(reactivate_demoted),
     }
@@ -1193,7 +1284,30 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
     all_tools: dict[str, Callable[..., Any]] = dict(pm_tools)
     all_tools.update(extras)
 
-    extra_schemas = _new_schemas()    # Schema for get_recent_trades:
+    extra_schemas = _new_schemas()
+    # Schema for flatten_position
+    extra_schemas.append({
+        "type": "function",
+        "function": {
+            "name": "flatten_position",
+            "description": (
+                "Close an existing futures position with a single MARKET order. "
+                "No bracket children — exits cleanly without orphaning stop/"
+                "target orders that would re-open the position. Use this for "
+                "delegate_to_trader actions whose intent is to close a position."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string"},
+                    "side": {"type": "string", "enum": ["close_long", "close_short"]},
+                    "qty": {"type": "integer", "minimum": 1},
+                },
+                "required": ["symbol", "side", "qty"],
+            },
+        },
+    })
+    # Schema for get_recent_trades:
     extra_schemas.append({
         "type": "function",
         "function": {

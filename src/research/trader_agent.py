@@ -41,7 +41,8 @@ summarising trades placed/cancelled this cycle.
 Always check the current time and market hours when reasoning about timing.
 """
 
-INCLUDE_TOOLS = {    "place_bracket_order", "cancel_order",
+INCLUDE_TOOLS = {
+    "place_bracket_order", "cancel_order", "flatten_position",
     "get_open_positions", "get_fills", "get_recent_pnl",
     "claim_task", "complete_task", "get_open_tasks",
     # shared findings memory

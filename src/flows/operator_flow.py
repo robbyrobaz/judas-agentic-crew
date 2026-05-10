@@ -15,12 +15,20 @@ import os
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from crewai.flow.flow import Flow, FlowState, listen, router, start
 from crewai.flow.persistence import persist
 from crewai.flow.persistence.sqlite import SQLiteFlowPersistence
 
 from src.logging_setup import configure_logging
+
+_ET_TZ = ZoneInfo("America/New_York")
+
+
+def _now_et() -> datetime:
+    """Module-level clock seam — tests monkeypatch this for weekend detection."""
+    return datetime.now(_ET_TZ)
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +56,58 @@ def _resolve_judas_db_path() -> str:
     if override:
         return str(Path(override).expanduser().resolve())
     return str(_REPO_ROOT / "judas_crew.db")
+
+
+def _decide_explore_or_noop(*, db_path: str) -> tuple[str, str | None]:
+    """Decide between 'explore' and 'noop' when there is no retire-list.
+
+    Triggers (any one fires explore):
+      a) No turnover in active_strategies for 7+ days.
+      b) Recent regime tag changed vs. the prior brief.
+      c) Last brief has non-empty surprises.
+      d) It's Saturday or Sunday in America/New_York.
+
+    Returns (decision, reason). reason is None when decision == 'noop'.
+    """
+    # (d) weekend short-circuit — no DB needed.
+    try:
+        weekday = _now_et().weekday()  # Mon=0..Sun=6
+    except Exception:  # noqa: BLE001 — extreme defensive
+        weekday = 0
+    if weekday >= 5:
+        return "explore", "weekend_research"
+
+    try:
+        from src.research.explore import gather_explore_context
+
+        ctx = gather_explore_context(db_path=db_path)
+    except Exception:  # noqa: BLE001
+        log.exception("operator.classify.context_failed")
+        return "noop", None
+
+    briefs = ctx.get("briefs_7d") or []
+    most_recent = briefs[0] if briefs else None
+    prior = briefs[1] if len(briefs) > 1 else None
+
+    # (c) surprises in last brief
+    if most_recent and (most_recent.get("n_surprises") or 0) > 0:
+        return "explore", "recent_surprises"
+
+    # (b) regime change since prior brief
+    if most_recent and prior:
+        cur_regime = (most_recent.get("regime") or {})
+        prev_regime = (prior.get("regime") or {})
+        if (
+            cur_regime.get("vol_regime") != prev_regime.get("vol_regime")
+            or cur_regime.get("trend") != prev_regime.get("trend")
+        ):
+            return "explore", "regime_change"
+
+    # (a) no turnover in 7d
+    if ctx.get("no_turnover_7d"):
+        return "explore", "stale_active_set"
+
+    return "noop", None
 
 
 def _build_persistence() -> SQLiteFlowPersistence:
@@ -122,8 +182,12 @@ class OperatorFlow(Flow[OperatorState]):
                 "review_summary": review_summary,
             }
         else:
-            self.state.decision = "noop"
-            self.state.findings = {"review_summary": review_summary}
+            decision, reason = _decide_explore_or_noop(db_path=db_path)
+            self.state.decision = decision
+            self.state.findings = {
+                "review_summary": review_summary,
+                "explore_reason": reason if decision == "explore" else None,
+            }
 
         log.info(
             "operator.morning_review.complete",
@@ -182,8 +246,51 @@ class OperatorFlow(Flow[OperatorState]):
 
     @listen("explore")
     def explore_step(self) -> None:
-        """Stub — real adaptive explorer lands in Phase 5."""
-        log.info("operator.explore_step.would_run")
+        """Run an exploratory experiment, then write the daily brief.
+
+        Errors must NOT crash the flow — fall through to write_brief_step.
+        """
+        findings = self.state.findings or {}
+        try:
+            from src.research.explore import (
+                gather_explore_context,
+                plan_experiment,
+                execute_plan,
+            )
+
+            db_path = _resolve_judas_db_path()
+            context = gather_explore_context(db_path=db_path)
+            plan = plan_experiment(context=context)
+            outcome = execute_plan(plan=plan, db_path=db_path)
+            experiment_record = {
+                "plan": plan.to_dict(),
+                "outcome": outcome,
+            }
+            log.info(
+                "operator.explore_step.complete",
+                extra={
+                    "tool": plan.tool,
+                    "symbol": plan.symbol,
+                    "fallback_used": plan.fallback_used,
+                    "ok": outcome.get("ok"),
+                    "experiment_id": outcome.get("experiment_id"),
+                    "candidate_id": outcome.get("candidate_id"),
+                    "explore_reason": findings.get("explore_reason"),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.exception("operator.explore_step.failed")
+            experiment_record = {
+                "plan": None,
+                "outcome": {"ok": False, "error": f"{type(exc).__name__}: {exc}"},
+            }
+
+        # Stash on state so the brief can mention what ran.
+        findings["experiment"] = experiment_record
+        self.state.findings = findings
+
+        # Always run the brief regardless of explore outcome.
+        self.write_brief_step()
 
     @listen("fix_bug")
     def fix_bug_step(self) -> None:

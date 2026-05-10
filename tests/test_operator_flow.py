@@ -105,8 +105,11 @@ def _find_state_payload(rows: list[dict]) -> dict | None:
     return candidates[-1][1]
 
 
-def test_operator_flow_kickoff_completes_and_persists(state_db):
+def test_operator_flow_kickoff_completes_and_persists(state_db, monkeypatch):
     module, db_path = state_db
+    # Force noop routing so the Phase 5 explore triggers don't flip this
+    # Phase 1 routing test (empty fixture DB looks 'stale' to the explorer).
+    monkeypatch.setattr(module, "_decide_explore_or_noop", lambda *, db_path: ("noop", None))
     flow = module.OperatorFlow()
 
     start = time.monotonic()

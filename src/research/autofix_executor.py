@@ -33,17 +33,12 @@ from typing import Iterable, Sequence
 # Allow / deny list (per PHASE3_DESIGN.md)
 # ---------------------------------------------------------------------------
 
+# Coder may touch ANY file by default. The denylist below is the real
+# safety rail — broker / risk / config / kill switches remain
+# write-protected. Anything else is fair game so the team can actually
+# fix bugs in main.py, portfolio_runtime.py, execution glue, etc.
 ALLOWLIST_PATTERNS: list[str] = [
-    "src/research/**",
-    "src/flows/**",
-    "src/tools/research_tools.py",
-    "src/tools/judas_detector.py",
-    "src/tools/db_tools.py",
-    "src/tools/session_tools.py",
-    "src/strategy_registry.py",
-    "src/dashboard/app.py",
-    "src/dashboard/templates/**",
-    "tests/**",
+    "**/*",
 ]
 
 DENYLIST_PATTERNS: list[str] = [

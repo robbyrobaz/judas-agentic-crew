@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -284,7 +285,12 @@ def _make_tools(
         return {"ok": True, "files_changed": changed, "error": None}
 
     def run_tests(args: list[str] | None = None) -> dict:
-        cmd = ["pytest", "-q"]
+        # Invoke pytest via the parent process's interpreter so the
+        # worktree shares the project's venv (with ib_async, etc.) — not
+        # whatever `pytest` resolves to on the system PATH. The worktree
+        # is a separate git checkout but the venv lives at the repo root
+        # and is shared across worktrees.
+        cmd = [sys.executable, "-m", "pytest", "-q"]
         if args:
             cmd.extend(args)
         try:

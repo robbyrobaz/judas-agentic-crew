@@ -47,6 +47,16 @@ def _symbol_meta(symbol: str) -> tuple[float, float]:
             tick = float(item.tick)
             tick_value = tick * float(item.dollar_per_point)
             return tick, tick_value
+    _FALLBACK = {
+        "MET": (0.10, 10.0),
+        "MBT": (0.25, 2.0),
+        "6J":  (0.000001, 12.5),
+        "MCL": (0.01, 10.0),
+        "ZF":  (0.005, 10.0),
+    }
+    sym = symbol.upper()
+    if sym in _FALLBACK:
+        t, d = _FALLBACK[sym]; return float(t), float(t * d)
     raise ValueError(f"Unknown symbol {symbol}")
 
 

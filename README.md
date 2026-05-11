@@ -81,7 +81,7 @@ The Operator is a **manager that delegates**. Specialists do the work.
 `reactivate_demoted`, `get_active_strategies`, `get_candidates_queue`,
 `get_strategy_detail`, `claim_task`, `complete_task`, `get_open_tasks`.
 
-**Coder** — Phase 3 autofix harness consumer (no direct LLM tool palette).
+**Coder** — Phase 3 autofix harness consumer (no direct LLM tool palette, no timer). Invoked synchronously when the Operator calls `delegate_to_coder(symptom, context)`; the call inserts the symptom on `auto_fixes` and runs worktree → M2.7 patch → pytest → commit + push inline, updating the `agent_tasks` row with the result.
 
 **Shared by all agents:** `record_finding`, `read_findings`,
 `retract_finding`, `get_strategy_dossier` — the team's persistent memory
@@ -355,14 +355,15 @@ Today's Brief panel sits at the top with Apply / Reject buttons on each recommen
 3. `retire_step` atomically: marks active row retired AND inserts `auto_demotions` row preserving full `params_json` snapshot.
 4. Operator can one-click reactivate via dashboard if they disagree — the snapshot is the source of truth.
 
-**Code-fix** (Phase 3, gated):
-1. Symptoms detected (tool failures, looping research, etc.) → `auto_fixes` row inserted with `status='detected'`.
-2. Trigger gates: `autofix.disable` absent + market closed + 0 open positions + < 3 fixes today.
-3. Worktree created at `/tmp/jac-autofix-<id>` on branch `autofix/<utc>-<slug>`.
-4. Post-commit deny-list hook installed (rejects any commit touching order-path files).
-5. M2.7 harness runs with tools: `read_file`, `list_files`, `grep`, `apply_patch`, `run_tests`, `git_status`, `git_diff`. 30 turn / 30 min budget.
-6. If patch + pytest passes → `git commit` (hook validates) → `git push origin autofix/<...>`.
-7. Operator reviews diff on GitHub, clicks Merge or Reject in dashboard.
+**Code-fix** (Phase 3 harness, Phase 10 dispatch — fully autonomous):
+1. Operator agent calls `delegate_to_coder(symptom, context)` — there is **no Coder timer** by design; the delegation IS the trigger. The same path is also driven by `OperatorFlow.fix_bug_step`'s symptom detector, via the shared `src/research/autofix_dispatch.py` module.
+2. `auto_fixes` row inserted with `status='detected'` (deduplicated by `symptom_hash`).
+3. Trigger gates: `autofix.disable` absent + market closed + 0 open positions. **No daily cap** — `MAX_AUTOFIXES_PER_DAY = 0` disables it; set it to a positive integer to re-enable a ceiling. `JUDAS_AUTOFIX_INHIBIT=1` short-circuits dispatch (used by tests).
+4. Worktree created at `/tmp/jac-autofix-<id>` on branch `autofix/<utc>-<slug>`.
+5. Post-commit deny-list hook installed (rejects any commit touching order-path files).
+6. M2.7 harness runs with tools: `read_file`, `list_files`, `grep`, `apply_patch`, `run_tests`, `git_status`, `git_diff`. 30 turn / 30 min budget.
+7. If patch + pytest passes → `git commit` (hook validates) → `git push origin autofix/<...>`.
+8. Operator reviews diff on GitHub, clicks Merge or Reject in dashboard.
 
 ---
 

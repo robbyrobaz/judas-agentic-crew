@@ -61,7 +61,11 @@ DENYLIST_PATTERNS: list[str] = [
     "systemd/**",
 ]
 
-MAX_AUTOFIXES_PER_DAY = 3
+# No daily ceiling — the system is fully autonomous and must be able to
+# drain its own bug backlog. Manual halt via `autofix.disable` (file) or
+# `JUDAS_AUTOFIX_INHIBIT=1` (env) remains.
+MAX_AUTOFIXES_PER_DAY = 0  # 0 = disabled
+
 
 
 # ---------------------------------------------------------------------------
@@ -214,9 +218,10 @@ def can_autofix(*, repo_root: str | Path | None = None) -> tuple[bool, str]:
 
     db_path = _db_path()
 
-    recent = _autofixes_in_last_24h(db_path)
-    if recent >= MAX_AUTOFIXES_PER_DAY:
-        return False, f"daily autofix budget exhausted ({recent}/{MAX_AUTOFIXES_PER_DAY})"
+    if MAX_AUTOFIXES_PER_DAY > 0:
+        recent = _autofixes_in_last_24h(db_path)
+        if recent >= MAX_AUTOFIXES_PER_DAY:
+            return False, f"daily autofix budget exhausted ({recent}/{MAX_AUTOFIXES_PER_DAY})"
 
     open_pos = _open_position_count(db_path)
     if open_pos > 0:

@@ -119,9 +119,18 @@ def test_can_autofix_blocked_by_recent_count(tmp_path, monkeypatch):
     monkeypatch.setattr(
         ax, "_now_utc", lambda: datetime(2026, 5, 9, 12, 0, tzinfo=timezone.utc)
     )
+    # Daily cap is opt-in (set MAX_AUTOFIXES_PER_DAY > 0). When enabled,
+    # `can_autofix` blocks once the recent count meets/exceeds it.
+    monkeypatch.setattr(ax, "MAX_AUTOFIXES_PER_DAY", 3)
     ok, reason = ax.can_autofix(repo_root=tmp_path)
     assert ok is False
     assert "budget" in reason.lower()
+
+    # With the cap disabled (default), three recent rows do NOT block.
+    monkeypatch.setattr(ax, "MAX_AUTOFIXES_PER_DAY", 0)
+    ok, reason = ax.can_autofix(repo_root=tmp_path)
+    assert ok is True
+    assert reason == "ok"
 
 
 # ---------------------------------------------------------------------------

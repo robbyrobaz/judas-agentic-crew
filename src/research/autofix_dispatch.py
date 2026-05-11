@@ -299,4 +299,81 @@ def dispatch_symptom(
     log.info("autofix_dispatch.delegate", extra={"autofix_id": autofix_id,
                                                  "category": category})
     result = run_one_autofix(db_path=db_path, target_autofix_id=autofix_id)
+    _publish_coder_report(
+        db_path=db_path, autofix_id=autofix_id, symptom=summary,
+        context=(context or "").strip(), result=result,
+    )
     return result
+
+
+# Local log file the coder writes its narrative to. Anyone (human or
+# agent) can tail it; the same content also lands in the findings table
+# so other agents see it during read_findings().
+_CODER_LOG = _REPO_ROOT / "logs" / "coder.log"
+
+
+def _publish_coder_report(*, db_path: str, autofix_id: int,
+                          symptom: str, context: str, result: dict) -> None:
+    """Write a coder-cycle report to logs/coder.log AND to the findings
+    table (author='coder') so the rest of the team can read what the
+    coder attempted, succeeded at, or failed on."""
+    status = str(result.get("status") or "unknown")
+    ok = bool(result.get("ok"))
+    branch = result.get("branch")
+    pushed = result.get("pushed")
+    test_passed = result.get("test_passed")
+    diff_summary = result.get("diff_summary")
+    files_changed = result.get("files_changed") or []
+    reason = result.get("reason") or result.get("error") or ""
+
+    title = (
+        f"Coder autofix #{autofix_id} — "
+        f"{('passed' if ok else 'failed')}: {symptom[:80]}"
+    )
+    body_lines = [
+        f"autofix_id: {autofix_id}",
+        f"status: {status}",
+        f"branch: {branch or '(none)'}",
+        f"pushed: {pushed}",
+        f"test_passed: {test_passed}",
+        f"files_changed: {files_changed}",
+        f"diff_summary: {(diff_summary or '')[:600]}",
+        f"reason: {reason[:600]}" if reason else "",
+        "",
+        f"symptom: {symptom}",
+        f"context: {context[:1200]}" if context else "",
+    ]
+    body = "\n".join(line for line in body_lines if line is not None)
+
+    # 1. Append to the shared log file.
+    try:
+        _CODER_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with _CODER_LOG.open("a", encoding="utf-8") as fh:
+            fh.write(f"\n===== {_now_utc()} =====\n")
+            fh.write(title + "\n")
+            fh.write(body + "\n")
+    except OSError:
+        log.exception("autofix_dispatch.coder_log_write_failed")
+
+    # 2. Record a finding so other agents see it in read_findings().
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute(
+                """
+                INSERT INTO findings (
+                    created_at_utc, author, title, body, refs_json
+                ) VALUES (?, 'coder', ?, ?, ?)
+                """,
+                (_now_utc(), title[:200], body,
+                 json.dumps({"autofix_id": autofix_id,
+                             "branch": branch,
+                             "pushed": pushed,
+                             "test_passed": test_passed,
+                             "status": status})),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        log.exception("autofix_dispatch.coder_finding_write_failed")

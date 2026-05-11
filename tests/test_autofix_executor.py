@@ -76,7 +76,10 @@ def test_can_autofix_blocked_by_disable_flag(tmp_path, monkeypatch):
     assert "disable" in reason.lower()
 
 
-def test_can_autofix_blocked_by_open_positions(tmp_path, monkeypatch):
+def test_can_autofix_allowed_with_open_positions(tmp_path, monkeypatch):
+    """Open positions and market-open state used to block autofix; the
+    deny-list (order-path files write-protected) is the real safety rail,
+    so the gate was removed for fully-autonomous self-heal."""
     db = tmp_path / "judas_crew.db"
     with sqlite3.connect(str(db)) as conn:
         conn.execute(
@@ -90,10 +93,11 @@ def test_can_autofix_blocked_by_open_positions(tmp_path, monkeypatch):
         )
         conn.commit()
     monkeypatch.setenv("JUDAS_DB_PATH", str(db))
-    monkeypatch.setattr(ax, "_market_closed_or_weekend", lambda: True)
+    # Even with the market open and a live position, the gate is OK now.
+    monkeypatch.setattr(ax, "_market_closed_or_weekend", lambda: False)
     ok, reason = ax.can_autofix(repo_root=tmp_path)
-    assert ok is False
-    assert "open positions" in reason
+    assert ok is True
+    assert reason == "ok"
 
 
 def test_can_autofix_blocked_by_recent_count(tmp_path, monkeypatch):

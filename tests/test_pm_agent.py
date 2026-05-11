@@ -402,20 +402,23 @@ def test_turn_budget_enforced(tmp_path, monkeypatch):
 
 
 def test_time_budget_enforced(tmp_path, monkeypatch):
+    """When a positive time_budget_s is set, the loop stops once exceeded.
+    time_budget_s=0 disables the cap (fully autonomous default)."""
+    import time as _time
     db = tmp_path / "j.db"
     init_db(str(db))
     monkeypatch.setenv("MINIMAX_API_KEY", "fake")
 
-    def loop_llm(**_kwargs):
+    def slow_llm(**_kwargs):
+        _time.sleep(0.05)
         return _fake_llm_response(tool_name="get_active_strategies", args={})
 
-    monkeypatch.setattr(pm_agent, "_call_llm", loop_llm)
+    monkeypatch.setattr(pm_agent, "_call_llm", slow_llm)
     result = pm_agent.run_pm_decision(
-        db_path=str(db), turn_budget=100, time_budget_s=0
+        db_path=str(db), turn_budget=100, time_budget_s=1
     )
-    # time budget exhausts immediately; either zero turns (caught at top of loop)
-    # or one turn (caught after first call).
-    assert result.turns_used <= 1
+    # Slow LLM (~50ms each) under 1s budget → caps out well below 100 turns.
+    assert result.turns_used < 100
     assert result.elapsed_s < 5.0
 
 

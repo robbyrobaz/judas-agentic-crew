@@ -52,7 +52,7 @@ INCLUDE_TOOLS = {    "retire_strategy", "promote_candidate", "modify_strategy_pa
 
 
 def run_registrar_decision(
-    *, db_path: str, turn_budget: int = 10, time_budget_s: int = 300,
+    *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
     minimax_model: str = "minimax/MiniMax-M2.7",
 ) -> AgentDecisionResult:
     """Run one Registrar cycle."""

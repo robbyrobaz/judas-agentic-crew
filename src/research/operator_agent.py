@@ -143,7 +143,7 @@ class OperatorDecisionResult:
 
 
 def run_operator_decision(
-    *, db_path: str, turn_budget: int = 20, time_budget_s: int = 900,
+    *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
     minimax_model: str = "minimax/MiniMax-M2.7",
 ) -> OperatorDecisionResult:
     """Run one Operator (manager) cycle."""

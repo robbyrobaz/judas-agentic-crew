@@ -509,8 +509,8 @@ def run_harness(
     worktree_path: str,
     allowlist: list[str],
     denylist: list[str],
-    turn_budget: int = 30,
-    time_budget_s: int = 1800,
+    turn_budget: int = 0,
+    time_budget_s: int = 0,
     pytest_args: list[str] | None = None,
     minimax_model: str = "minimax/MiniMax-M2.7",
 ) -> HarnessResult:
@@ -566,12 +566,17 @@ def run_harness(
 
     turn = 0
     error: str | None = None
-    while turn < turn_budget:
+    unlimited_turns = turn_budget is None or turn_budget <= 0
+    unlimited_time = time_budget_s is None or time_budget_s <= 0
+    while unlimited_turns or turn < turn_budget:
         elapsed = time.time() - start
-        if elapsed >= time_budget_s:
+        if not unlimited_time and elapsed >= time_budget_s:
             error = f"time budget exhausted after {elapsed:.1f}s"
             break
-        remaining = max(1, int(time_budget_s - elapsed))
+        if unlimited_time:
+            remaining = 300
+        else:
+            remaining = max(1, int(time_budget_s - elapsed))
 
         try:
             response = _call_llm(

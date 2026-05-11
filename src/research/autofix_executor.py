@@ -223,12 +223,11 @@ def can_autofix(*, repo_root: str | Path | None = None) -> tuple[bool, str]:
         if recent >= MAX_AUTOFIXES_PER_DAY:
             return False, f"daily autofix budget exhausted ({recent}/{MAX_AUTOFIXES_PER_DAY})"
 
-    open_pos = _open_position_count(db_path)
-    if open_pos > 0:
-        return False, f"{open_pos} open positions"
-
-    if not _market_closed_or_weekend():
-        return False, "market open"
+    # Other historical gates (open_pos > 0, market closed) were removed —
+    # fully autonomous self-heal. The order-path deny-list (ALLOWLIST /
+    # DENYLIST patterns enforced by the post-commit hook) is the real
+    # safety rail; the harness cannot commit changes to broker/risk/config
+    # files regardless of market or position state.
 
     return True, "ok"
 

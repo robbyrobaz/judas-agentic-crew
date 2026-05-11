@@ -93,7 +93,7 @@ def _record_symptom(*, db_path: str, category: str, summary: str) -> int | None:
 
 
 def run_coder_decision(
-    *, db_path: str, turn_budget: int = 30, time_budget_s: int = 1800,
+    *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
 ) -> CoderResult:
     """Run one Coder cycle.
 

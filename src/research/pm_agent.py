@@ -1739,8 +1739,8 @@ def _tool_calls_from(message: dict) -> list[dict]:
 def run_pm_decision(
     *,
     db_path: str,
-    turn_budget: int = 30,
-    time_budget_s: int = 1800,
+    turn_budget: int = 0,
+    time_budget_s: int = 0,
     minimax_model: str = "minimax/MiniMax-M2.7",
 ) -> PMDecisionResult:
     """Run one PM cycle. Pure function over ``db_path`` plus the LLM seam.
@@ -1797,12 +1797,18 @@ def run_pm_decision(
     error: str | None = None
     final_text = ""
 
-    while turn < turn_budget:
+    # turn_budget <= 0 disables the turn cap; same for time_budget_s.
+    unlimited_turns = turn_budget is None or turn_budget <= 0
+    unlimited_time = time_budget_s is None or time_budget_s <= 0
+    while unlimited_turns or turn < turn_budget:
         elapsed = time.time() - started
-        if elapsed >= time_budget_s:
+        if not unlimited_time and elapsed >= time_budget_s:
             error = f"time budget exhausted after {elapsed:.1f}s"
             break
-        remaining = max(1, int(time_budget_s - elapsed))
+        if unlimited_time:
+            remaining = 300
+        else:
+            remaining = max(1, int(time_budget_s - elapsed))
         try:
             response = _call_llm(
                 messages=messages,

@@ -358,10 +358,10 @@ Today's Brief panel sits at the top with Apply / Reject buttons on each recommen
 **Code-fix** (Phase 3 harness, Phase 10 dispatch — fully autonomous):
 1. Operator agent calls `delegate_to_coder(symptom, context)` — there is **no Coder timer** by design; the delegation IS the trigger. The same path is also driven by `OperatorFlow.fix_bug_step`'s symptom detector, via the shared `src/research/autofix_dispatch.py` module.
 2. `auto_fixes` row inserted with `status='detected'` (deduplicated by `symptom_hash`).
-3. Trigger gates: `autofix.disable` absent + market closed + 0 open positions. **No daily cap** — `MAX_AUTOFIXES_PER_DAY = 0` disables it; set it to a positive integer to re-enable a ceiling. `JUDAS_AUTOFIX_INHIBIT=1` short-circuits dispatch (used by tests).
+3. Trigger gates: `autofix.disable` absent. **All other limits removed** — no daily cap (`MAX_AUTOFIXES_PER_DAY = 0`), no market-closed gate, no open-positions gate. The order-path deny-list (write-protected files enforced by the post-commit hook) is the real safety rail; the harness physically cannot commit changes to broker/risk/config files regardless of market or position state. `JUDAS_AUTOFIX_INHIBIT=1` env still short-circuits dispatch (used by tests).
 4. Worktree created at `/tmp/jac-autofix-<id>` on branch `autofix/<utc>-<slug>`.
 5. Post-commit deny-list hook installed (rejects any commit touching order-path files).
-6. M2.7 harness runs with tools: `read_file`, `list_files`, `grep`, `apply_patch`, `run_tests`, `git_status`, `git_diff`. 30 turn / 30 min budget.
+6. M2.7 harness runs with tools: `read_file`, `list_files`, `grep`, `apply_patch`, `run_tests`, `git_status`, `git_diff`. **No turn/time cap by default** — defaults are `turn_budget=0` and `time_budget_s=0` (both disabled); pass positive values to re-enable. Same applies to every specialist agent (operator/trader/researcher/registrar/coder/pm) — they all run unlimited unless explicitly capped.
 7. If patch + pytest passes → `git commit` (hook validates) → `git push origin autofix/<...>`.
 8. Operator reviews diff on GitHub, clicks Merge or Reject in dashboard.
 

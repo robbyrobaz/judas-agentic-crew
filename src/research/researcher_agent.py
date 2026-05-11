@@ -61,7 +61,7 @@ INCLUDE_TOOLS = {    # reads
 
 
 def run_researcher_decision(
-    *, db_path: str, turn_budget: int = 40, time_budget_s: int = 2400,
+    *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
     minimax_model: str = "minimax/MiniMax-M2.7",
 ) -> AgentDecisionResult:
     """Run one Researcher cycle."""

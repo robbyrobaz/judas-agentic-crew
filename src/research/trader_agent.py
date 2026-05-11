@@ -52,7 +52,7 @@ INCLUDE_TOOLS = {
 
 
 def run_trader_decision(
-    *, db_path: str, turn_budget: int = 15, time_budget_s: int = 600,
+    *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
     minimax_model: str = "minimax/MiniMax-M2.7",
 ) -> AgentDecisionResult:
     """Run one Trader cycle."""

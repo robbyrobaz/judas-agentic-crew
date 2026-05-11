@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from src import strategy_registry
-from src.db.conn import get_conn
+from src.db.models import get_conn
 
 log = logging.getLogger(__name__)
 

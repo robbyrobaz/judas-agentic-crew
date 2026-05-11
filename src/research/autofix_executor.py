@@ -41,11 +41,15 @@ ALLOWLIST_PATTERNS: list[str] = [
     "**/*",
 ]
 
-# Coder has full access to the repo. Manual halt rails (autofix.disable,
-# kill.flag) live on disk and can be touched by hand if needed — but no
-# code-level gate restricts which files the coder can edit. Stop holding
-# the agent back.
-DENYLIST_PATTERNS: list[str] = []
+# Coder may touch ANY file by default. The denylist below is the real
+# safety rail — broker / risk / config / kill switches remain
+# write-protected. Anything else is fair game so the team can actually
+# fix bugs in main.py, portfolio_runtime.py, execution glue, etc.
+DENYLIST_PATTERNS: list[str] = [
+    "src/tools/ibkr_executor.py",
+    "src/risk/**",
+    "config.yaml",
+]
 
 # No daily ceiling — the system is fully autonomous and must be able to
 # drain its own bug backlog. Manual halt via `autofix.disable` (file) or

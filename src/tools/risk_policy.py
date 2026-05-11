@@ -22,9 +22,6 @@ def evaluate_risk_policy(
     runtime = load_config()
     cfg = runtime.risk
     params = strategy_params or {}
-    # Paper account — no daily loss floor by default. A strategy can still
-    # opt in to a per-strategy daily_loss_limit_dollars via its params.
-    daily_loss_limit = float(params.get("daily_loss_limit_dollars", -1.0e12))
     max_open_positions = int(params.get("max_open_positions", cfg.max_open_positions))
     max_trades_per_day = int(params.get("max_trades_per_day", cfg.max_trades_per_day))
     quality_score_min = int(params.get("quality_score_min", runtime.crew.min_quality_score))
@@ -38,7 +35,6 @@ def evaluate_risk_policy(
     checks: dict[str, object] = {
         "session_ok": bool(can_trade_now),
         "pattern_ok": bool(detector_output.get("pattern_found")),
-        "daily_loss_limit_ok": daily_pnl > daily_loss_limit,
         "positions_ok": open_count < max_open_positions,
         "trades_per_day_ok": trades_today < max_trades_per_day,
         "quality_ok": quality_score >= quality_score_min,
@@ -53,8 +49,6 @@ def evaluate_risk_policy(
         reasons.append("session gate failed")
     if not checks["pattern_ok"]:
         reasons.append("no valid Judas pattern found")
-    if not checks["daily_loss_limit_ok"]:
-        reasons.append(f"daily loss limit hit ({daily_pnl:.2f} <= {daily_loss_limit:.2f})")
     if not checks["positions_ok"]:
         reasons.append(f"max open positions reached ({open_count} >= {max_open_positions})")
     if not checks["trades_per_day_ok"]:

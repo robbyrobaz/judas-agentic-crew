@@ -64,7 +64,6 @@ def default_judas_params(symbol: str) -> dict[str, Any]:
         "quality_score_min": int(cfg.crew.min_quality_score),
         "max_trades_per_day": int(cfg.risk.max_trades_per_day),
         "max_open_positions": int(cfg.risk.max_open_positions),
-        "daily_loss_limit_dollars": float(cfg.risk.daily_loss_limit_dollars),
     }
 
 

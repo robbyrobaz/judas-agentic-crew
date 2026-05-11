@@ -150,7 +150,6 @@ def make_tasks(symbol: str = "MGC") -> tuple[list[Task], dict]:
             '  "reasoning": "Detailed explanation of decision and each risk check",\n'
             '  "risk_checks": {\n'
             '    "daily_pnl": float,\n'
-            '    "daily_loss_limit_ok": bool,\n'
             '    "open_count": int,\n'
             '    "positions_ok": bool,\n'
             '    "session_ok": bool,\n'

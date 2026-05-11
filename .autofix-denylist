@@ -1,12 +1,1 @@
-src/tools/ibkr_executor.py
-src/tools/ibkr_data.py
-src/config.py
-config.yaml
-src/risk/**
-.env
-.env.example
-autofix.disable
-kill.flag
-AGENTIC_OPERATOR_PLAN.md
-PHASE3_DESIGN.md
-systemd/**
+

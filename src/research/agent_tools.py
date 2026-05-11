@@ -523,68 +523,60 @@ _VALID_FINDING_STATUSES = {"active", "superseded", "retracted"}
 
 
 def make_record_finding(*, db_path: str, author: str) -> Callable[..., dict]:
-    """Record a finding into the shared memory log.
+    """Record a finding into CrewAI Memory (vector + composite scoring).
 
-    The ``author`` is bound at factory time (one of operator/researcher/
-    trader/registrar/coder/human). On supersedes, the prior row's
-    status is flipped to 'superseded' atomically with the insert.
+    Same tool signature as before — prompts didn't change. Importance
+    is inferred from author + content (human → 0.98, cycle-status pings
+    → 0.1, default → 0.6) so registrar 'queue empty' noise stops
+    drowning out human guidance and researcher discoveries.
+
+    `supersedes_id` is accepted for back-compat but is now a soft
+    pointer in metadata; CrewAI's consolidation flow handles dedup/
+    update on similar content automatically.
     """
+    from src.research import memory_backend
+
     def record_finding(*, title: str, body: str,
                        strategy_id: int | None = None,
                        strategy_name: str | None = None,
                        symbol: str | None = None,
                        refs: dict | None = None,
                        supersedes_id: int | None = None) -> dict:
-        if not isinstance(title, str) or not title.strip():
-            return {"ok": False, "error": "title required"}
-        if not isinstance(body, str) or not body.strip():
-            return {"ok": False, "error": "body required"}
-        sid = int(strategy_id) if strategy_id is not None else None
-        sup = int(supersedes_id) if supersedes_id is not None else None
-        refs_json = json.dumps(refs or {}, default=str) if refs else None
-        from src.db.models import init_db
-        init_db(db_path)
-        conn = _connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            superseded_id: int | None = None
-            if sup is not None:
-                row = conn.execute(
-                    "SELECT id FROM findings WHERE id = ?", (sup,),
-                ).fetchone()
-                if row is None:
-                    conn.rollback()
-                    return {"ok": False, "error": f"supersedes_id {sup} not found"}
-                conn.execute(
-                    "UPDATE findings SET status='superseded' WHERE id = ?",
-                    (sup,),
-                )
-                superseded_id = sup
-            cur = conn.execute(
-                """
-                INSERT INTO findings
-                  (created_at_utc, author, title, body, strategy_id,
-                   strategy_name, symbol, refs_json, supersedes_id, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
-                """,
-                (_utc_now(), author, title.strip(), body.strip(),
-                 sid, strategy_name, symbol, refs_json, sup),
-            )
-            fid = int(cur.lastrowid)
-            conn.commit()
-        except Exception as exc:  # noqa: BLE001
-            conn.rollback()
-            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-        finally:
-            conn.close()
-        out: dict = {"ok": True, "finding_id": fid}
-        if superseded_id is not None:
-            out["superseded_id"] = superseded_id
-        return out
+        merged_refs = dict(refs or {})
+        if supersedes_id is not None:
+            try:
+                merged_refs["supersedes_id"] = int(supersedes_id)
+            except (TypeError, ValueError):
+                pass
+        result = memory_backend.save_memory(
+            author=author, title=title, body=body,
+            strategy_id=strategy_id, strategy_name=strategy_name,
+            symbol=symbol, refs=merged_refs or None,
+        )
+        if not result.get("ok"):
+            return result
+        return {
+            "ok": True,
+            "finding_id": result.get("id"),
+            "importance": result.get("importance"),
+        }
     return record_finding
 
 
 def make_read_findings(*, db_path: str) -> Callable[..., list[dict]]:
+    """Search the team's persistent memory (CrewAI Memory backend).
+
+    Same signature as before; backed by composite scoring (importance +
+    semantic + recency) so human-authored guidance surfaces ahead of
+    registrar cycle-status pings.
+
+    `strategy_id`, `since_days`, and `include_status` are accepted for
+    back-compat but no longer drive a SQL filter — the memory ranks by
+    relevance, not date windows. `symbol`, `author`, `query`, and
+    `limit` are honored.
+    """
+    from src.research import memory_backend
+
     def read_findings(*, query: str | None = None,
                       strategy_id: int | None = None,
                       strategy_name: str | None = None,
@@ -593,102 +585,35 @@ def make_read_findings(*, db_path: str) -> Callable[..., list[dict]]:
                       since_days: int = 30,
                       include_status: list[str] | None = None,
                       limit: int = 20) -> list[dict]:
-        try:
-            n = int(limit)
-        except (TypeError, ValueError):
-            n = 20
-        n = max(1, min(n, 100))
-        try:
-            days = int(since_days)
-        except (TypeError, ValueError):
-            days = 30
-        days = max(1, days)
-        statuses = list(include_status) if include_status else ["active"]
-        statuses = [s for s in statuses if s in _VALID_FINDING_STATUSES] or ["active"]
-        from src.db.models import init_db
-        init_db(db_path)
-        clauses: list[str] = ["created_at_utc >= datetime('now', ?)"]
-        args: list[Any] = [f"-{days} days"]
-        if query:
-            clauses.append("(title LIKE ? OR body LIKE ?)")
-            like = f"%{query}%"
-            args.extend([like, like])
-        if strategy_id is not None:
-            clauses.append("strategy_id = ?")
-            args.append(int(strategy_id))
-        if strategy_name:
-            clauses.append("strategy_name = ?")
-            args.append(strategy_name)
-        if symbol:
-            clauses.append("symbol = ?")
-            args.append(symbol)
-        if author:
-            clauses.append("author = ?")
-            args.append(author)
-        placeholders = ",".join("?" for _ in statuses)
-        clauses.append(f"status IN ({placeholders})")
-        args.extend(statuses)
-        where = " AND ".join(clauses)
-        args.append(n)
-        with _connect(db_path) as conn:
-            rows = conn.execute(
-                f"""
-                SELECT id, created_at_utc, author, title, body, strategy_id,
-                       strategy_name, symbol, refs_json, supersedes_id, status
-                FROM findings
-                WHERE {where}
-                ORDER BY created_at_utc DESC, id DESC
-                LIMIT ?
-                """,
-                tuple(args),
-            ).fetchall()
-        out: list[dict] = []
-        for r in rows:
-            try:
-                refs = json.loads(r["refs_json"]) if r["refs_json"] else {}
-            except (TypeError, json.JSONDecodeError):
-                refs = {}
-            out.append({
-                "id": int(r["id"]),
-                "created_at_utc": str(r["created_at_utc"]),
-                "author": str(r["author"]),
-                "title": str(r["title"]),
-                "body": str(r["body"]),
-                "strategy_id": r["strategy_id"],
-                "strategy_name": r["strategy_name"],
-                "symbol": r["symbol"],
-                "refs": refs,
-                "supersedes_id": r["supersedes_id"],
-                "status": str(r["status"]),
-            })
-        return out
+        # If caller filters by strategy_id but not query, synthesize a
+        # query so the recall can semantically narrow to that strategy.
+        effective_query = query
+        if not effective_query and strategy_name:
+            effective_query = f"strategy {strategy_name}"
+        elif not effective_query and strategy_id is not None:
+            effective_query = f"strategy id {strategy_id}"
+        return memory_backend.search_memory(
+            query=effective_query, author=author, symbol=symbol, limit=limit,
+        )
     return read_findings
 
 
 def make_retract_finding(*, db_path: str, author: str) -> Callable[..., dict]:
-    def retract_finding(*, id: int, reason: str) -> dict:
-        try:
-            fid = int(id)
-        except (TypeError, ValueError):
-            return {"ok": False, "error": "id must be int"}
+    """Remove a memory by id from CrewAI Memory."""
+    from src.research import memory_backend
+
+    def retract_finding(*, id, reason: str) -> dict:
+        # `id` may be a UUID string (memory backend) or int (legacy
+        # findings table fallback). Accept either.
+        record_id = str(id) if id is not None else ""
+        if not record_id:
+            return {"ok": False, "error": "id required"}
         if not isinstance(reason, str) or not reason.strip():
             return {"ok": False, "error": "reason required"}
-        from src.db.models import init_db
-        init_db(db_path)
-        suffix = f" [retracted by {author}: {reason.strip()}]"
-        with _connect(db_path) as conn:
-            row = conn.execute(
-                "SELECT id, body FROM findings WHERE id = ?", (fid,),
-            ).fetchone()
-            if row is None:
-                return {"ok": False, "error": f"finding {fid} not found"}
-            new_body = str(row["body"]) + suffix
-            conn.execute(
-                "UPDATE findings SET status='retracted', body=? WHERE id=?",
-                (new_body, fid),
-            )
-            conn.commit()
-        return {"ok": True, "id": fid}
+        result = memory_backend.forget_memory(record_id=record_id)
+        if not result.get("ok"):
+            return result
+        return {"ok": True, "id": record_id, "removed": result.get("removed", 0)}
     return retract_finding
 
 
@@ -720,47 +645,22 @@ def make_get_strategy_dossier(*, db_path: str) -> Callable[..., dict]:
                     active = dict(arow)
                 family = strategy_name
 
-            # Findings: by id OR by name (whichever provided; OR them).
-            f_clauses: list[str] = []
-            f_args: list[Any] = []
-            if strategy_id is not None:
-                f_clauses.append("strategy_id = ?")
-                f_args.append(int(strategy_id))
-            if family:
-                f_clauses.append("strategy_name = ?")
-                f_args.append(family)
-            if not f_clauses:
-                findings_rows = []
-            else:
-                where_f = " OR ".join(f_clauses)
-                findings_rows = conn.execute(
-                    f"""
-                    SELECT id, created_at_utc, author, title, body, strategy_id,
-                           strategy_name, symbol, refs_json, supersedes_id, status
-                    FROM findings WHERE ({where_f}) AND status = 'active'
-                    ORDER BY created_at_utc DESC, id DESC LIMIT 20
-                    """,
-                    tuple(f_args),
-                ).fetchall()
+            # Findings now come from CrewAI Memory via the backend, not
+            # the legacy SQL table. Use the strategy name/id as a query
+            # so semantic recall surfaces related notes.
+            from src.research import memory_backend
+            mem_query: str | None = None
+            if family and strategy_id is not None:
+                mem_query = f"strategy {family} id {strategy_id}"
+            elif family:
+                mem_query = f"strategy {family}"
+            elif strategy_id is not None:
+                mem_query = f"strategy id {strategy_id}"
             findings: list[dict] = []
-            for r in findings_rows:
-                try:
-                    refs = json.loads(r["refs_json"]) if r["refs_json"] else {}
-                except (TypeError, json.JSONDecodeError):
-                    refs = {}
-                findings.append({
-                    "id": int(r["id"]),
-                    "created_at_utc": str(r["created_at_utc"]),
-                    "author": str(r["author"]),
-                    "title": str(r["title"]),
-                    "body": str(r["body"]),
-                    "strategy_id": r["strategy_id"],
-                    "strategy_name": r["strategy_name"],
-                    "symbol": r["symbol"],
-                    "refs": refs,
-                    "supersedes_id": r["supersedes_id"],
-                    "status": str(r["status"]),
-                })
+            if mem_query:
+                findings = memory_backend.search_memory(
+                    query=mem_query, limit=20,
+                )
 
             demotions: list[dict] = []
             if strategy_id is not None:

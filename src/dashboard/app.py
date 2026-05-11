@@ -324,22 +324,12 @@ def _fetch_chat_pending_candidates(limit: int = 5) -> list[dict[str, Any]]:
 
 
 def _fetch_chat_recent_findings(limit: int = 10) -> list[dict[str, Any]]:
-    """Phase 11 shared findings memory — what the team has learned."""
+    """Team's shared memory — backed by CrewAI Memory since 2026-05-11.
+    Composite scoring surfaces importance-weighted memories ahead of
+    raw recency."""
     try:
-        with get_conn(_db_path()) as conn:
-            rows = conn.execute(
-                """
-                SELECT id, created_at_utc, author, title,
-                       substr(body, 1, 400) AS body, strategy_id, strategy_name,
-                       symbol, status
-                FROM findings
-                WHERE status = 'active'
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-        return [dict(row) for row in rows]
+        from src.research import memory_backend
+        return memory_backend.search_memory(query=None, limit=limit)
     except Exception:
         return []
 

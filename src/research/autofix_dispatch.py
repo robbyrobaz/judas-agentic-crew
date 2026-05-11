@@ -392,25 +392,16 @@ def _publish_coder_report(*, db_path: str, autofix_id: int,
     except OSError:
         log.exception("autofix_dispatch.coder_log_write_failed")
 
-    # 2. Record a finding so other agents see it in read_findings().
+    # 2. Record into CrewAI Memory so other agents see it in read_findings().
     try:
-        conn = sqlite3.connect(str(db_path))
-        try:
-            conn.execute(
-                """
-                INSERT INTO findings (
-                    created_at_utc, author, title, body, refs_json
-                ) VALUES (?, 'coder', ?, ?, ?)
-                """,
-                (_now_utc(), title[:200], body,
-                 json.dumps({"autofix_id": autofix_id,
-                             "branch": branch,
-                             "pushed": pushed,
-                             "test_passed": test_passed,
-                             "status": status})),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    except sqlite3.Error:
+        from src.research import memory_backend
+        memory_backend.save_memory(
+            author="coder",
+            title=title[:200],
+            body=body,
+            refs={"autofix_id": autofix_id, "branch": branch,
+                  "pushed": pushed, "test_passed": test_passed,
+                  "status": status},
+        )
+    except Exception:  # noqa: BLE001
         log.exception("autofix_dispatch.coder_finding_write_failed")

@@ -450,12 +450,19 @@ class OperatorFlow(Flow[OperatorState]):
 
     def _try_run_one_autofix(self, *, db_path: str) -> None:
         """Pick the oldest 'detected' auto_fixes row and try to fix it via
-        worktree → M2.7 harness → commit+push. Updates the row with results.
+        worktree → M2.7 harness → commit+push. Delegates to the shared
+        autofix_dispatch module so the ``delegate_to_coder`` tool path and
+        this fix_bug_step path can't drift.
 
-        Inhibit via ``JUDAS_AUTOFIX_INHIBIT=1`` — the test suite sets this so
-        unit tests that exercise just the symptom-recording path don't pay
-        for a real harness invocation.
+        Inhibit via ``JUDAS_AUTOFIX_INHIBIT=1``.
         """
+        try:
+            from src.research.autofix_dispatch import run_one_autofix
+            run_one_autofix(db_path=db_path)
+        except Exception:  # noqa: BLE001
+            log.exception("operator.autofix.dispatch_failed")
+        return
+        # Legacy in-line implementation retained below for reference; unused.
         if os.environ.get("JUDAS_AUTOFIX_INHIBIT") == "1":
             log.info("operator.autofix.inhibited_by_env")
             return

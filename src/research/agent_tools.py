@@ -1235,9 +1235,51 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
 
         def delegate_to_coder(*, symptom: str, context: str,
                               urgency: str = "normal") -> dict:
-            return enq(team="coder", action="autofix_symptom",
-                       payload={"symptom": symptom, "context": context},
-                       rationale=symptom, urgency=urgency)
+            # 1. Record the delegation on agent_tasks so the team-eye-view
+            #    dashboard reflects what the Operator asked for.
+            enq_result = enq(team="coder", action="autofix_symptom",
+                             payload={"symptom": symptom, "context": context},
+                             rationale=symptom, urgency=urgency)
+            task_id = None
+            if isinstance(enq_result, dict):
+                task_id = enq_result.get("task_id") or enq_result.get("id")
+
+            # 2. Run the autofix harness inline. The Coder has no timer by
+            #    design (per AGENTIC_OPERATOR_PLAN.md) — the Operator's
+            #    delegation IS the trigger.
+            try:
+                from src.research.autofix_dispatch import dispatch_symptom
+                dispatch = dispatch_symptom(
+                    db_path=db_path, symptom=symptom, context=context,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger(__name__).exception(
+                    "delegate_to_coder.dispatch_failed")
+                dispatch = {"ok": False, "status": "error",
+                            "reason": f"dispatch raised: {exc}"}
+
+            # 3. Close out the agent_tasks row with the dispatch outcome so
+            #    the Operator sees status=done/failed on next read.
+            if task_id is not None:
+                try:
+                    with _connect(db_path) as conn:
+                        status = "done" if dispatch.get("ok") else "failed"
+                        conn.execute(
+                            "UPDATE agent_tasks SET status = ?, "
+                            "claimed_by = COALESCE(claimed_by, 'coder_inline'), "
+                            "claimed_at_utc = COALESCE(claimed_at_utc, ?), "
+                            "completed_at_utc = ?, result_json = ? "
+                            "WHERE id = ?",
+                            (status, _utc_now(), _utc_now(),
+                             json.dumps(dispatch), int(task_id)),
+                        )
+                        conn.commit()
+                except sqlite3.Error:
+                    logging.getLogger(__name__).exception(
+                        "delegate_to_coder.task_update_failed")
+
+            enq_result["dispatch"] = dispatch
+            return enq_result
 
         def get_outstanding_delegations(*, limit: int = 20) -> list[dict]:
             with _connect(db_path) as conn:

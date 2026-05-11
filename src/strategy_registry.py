@@ -194,8 +194,14 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
             ).fetchone()
             next_version = (int(current["version"]) + 1) if current else 1
 
-            # Insert new active row FIRST, then retire previous — guarantees
-            # external readers never see zero active rows for this (symbol, family).
+            # Insert new active row WITHOUT retiring any prior actives for
+            # this (symbol, family). Multiple strategies per symbol are
+            # explicitly allowed per the Operator's goals preamble —
+            # diversity reduces blow-up risk and increases dollar capture
+            # across regimes. Retiring should be a deliberate decision
+            # (negative P&L on a real sample, broken regime fit, etc.)
+            # via retire_strategy(), not an automatic side effect of
+            # promoting another candidate.
             cur = conn.execute(
                 """
                 INSERT INTO active_strategies
@@ -215,16 +221,6 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
                 ),
             )
             new_id = int(cur.lastrowid)
-
-            if current:
-                conn.execute(
-                    """
-                    UPDATE active_strategies
-                    SET state = 'retired', deactivated_at_utc = ?, notes = COALESCE(notes, '') || ?
-                    WHERE id = ?
-                    """,
-                    (_utc_now(), "\nSuperseded by automated promotion.", int(current["id"])),
-                )
 
             conn.execute(
                 "UPDATE strategy_candidates SET status = 'promoted' WHERE id = ?",

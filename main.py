@@ -157,32 +157,23 @@ def main() -> int:
         if args.doctor:
             return _run_doctor(symbol)
 
+        # Session gate intentionally NOT enforced at the top level. The
+        # individual strategy detectors (Judas, etc.) have their own
+        # session_filter param that decides whether THEY want to fire in
+        # the current window. Don't pre-empt that decision here by
+        # skipping the whole scan during maintenance breaks or off-window
+        # times — let the strategies see every hour and decide.
         session_status = _preflight_session_gate()
-        if not session_status.get("can_trade_now", False):
-            log.info(
-                "judas_crew.skipped_preflight",
-                extra={
-                    "symbol": symbol,
-                    "reason": session_status.get("reason"),
-                    "active_session": session_status.get("active_session"),
-                    "is_weekend": session_status.get("is_weekend"),
-                    "now_et": session_status.get("now_et"),
-                },
-            )
-            print(
-                json.dumps(
-                    {
-                        "status": "skipped",
-                        "symbol": symbol,
-                        "reason": session_status.get("reason"),
-                        "active_session": session_status.get("active_session"),
-                        "is_weekend": session_status.get("is_weekend"),
-                        "now_et": session_status.get("now_et"),
-                    },
-                    indent=2,
-                )
-            )
-            return 0
+        log.info(
+            "judas_crew.session_state",
+            extra={
+                "symbol": symbol,
+                "reason": session_status.get("reason"),
+                "can_trade_now_per_session_tool": session_status.get("can_trade_now"),
+                "active_session": session_status.get("active_session"),
+                "now_et": session_status.get("now_et"),
+            },
+        )
 
         runtime = args.runtime
         if runtime == "auto":
@@ -200,9 +191,9 @@ def main() -> int:
                 port=cfg.ibkr.port,
                 data_client_id=cfg.ibkr.data_client_id,
                 exec_client_id=cfg.ibkr.exec_client_id,
-                max_new_trades=max(4, cfg.risk.max_trades_per_day),
-                max_open_positions=max(4, cfg.risk.max_open_positions),
-                max_trades_per_day=max(6, cfg.risk.max_trades_per_day),
+                max_new_trades=cfg.risk.max_trades_per_day,
+                max_open_positions=cfg.risk.max_open_positions,
+                max_trades_per_day=cfg.risk.max_trades_per_day,
                 place_orders=not args.eval_only,
             )
             print(json.dumps({"status": "ok", "runtime": "portfolio", "result": result}, indent=2, default=str))

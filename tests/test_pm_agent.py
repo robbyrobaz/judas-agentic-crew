@@ -217,17 +217,17 @@ def test_promote_via_tool_atomic(tmp_path, monkeypatch):
     result = pm_agent.run_pm_decision(db_path=str(db), turn_budget=5, time_budget_s=30)
     assert result.success
 
+    # Multi-active is allowed (Operator goals: "multiple strategies per
+    # symbol are fine"). Prior active stays alongside the newly promoted
+    # row; retiring is a separate deliberate action.
     with sqlite3.connect(str(db)) as conn:
         active = conn.execute(
-            "SELECT id, version FROM active_strategies WHERE state='active'"
+            "SELECT id, version FROM active_strategies "
+            "WHERE state='active' ORDER BY version"
         ).fetchall()
-        retired = conn.execute(
-            "SELECT id FROM active_strategies WHERE id = ? AND state='retired'",
-            (sid,),
-        ).fetchall()
-    assert len(active) == 1
-    assert active[0][1] == 2  # version bump
-    assert len(retired) == 1
+    assert len(active) == 2  # both prior and new live side-by-side
+    versions = [row[1] for row in active]
+    assert max(versions) == 2  # the new one got version 2
 
 
 # ---------------------------------------------------------------------------

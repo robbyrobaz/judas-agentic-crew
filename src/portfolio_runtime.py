@@ -678,7 +678,7 @@ def _gate_fire(
     return None
 
 
-async def _cancel_order_async(*, parent_order_id: int, host: str, port: int, client_id: int) -> None:
+async def _cancel_order_pair_rollback_async(*, parent_order_id: int, host: str, port: int, client_id: int) -> None:
     """Best-effort cancellation of a previously placed parent order.
 
     Used by the pair-atomicity rollback path. We connect with a fresh

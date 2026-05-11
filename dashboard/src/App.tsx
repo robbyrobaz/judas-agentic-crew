@@ -401,16 +401,16 @@ function App() {
             </div>
           </main>
 
-          <aside className="xl:sticky xl:top-3 xl:h-[calc(100vh-1.5rem)]">
+          <aside className="min-w-0 xl:sticky xl:top-3 xl:h-[calc(100vh-1.5rem)]">
             <div className="flex h-full flex-col rounded-[22px] border border-line/70 bg-[#14352f] p-2.5 text-white shadow-panel">
               <div className="mb-2 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
                 <p className="text-xs font-semibold tracking-[0.18em] text-white/72">CHAT</p>
                 <p className="text-xs text-white/72">{overview ? formatPhxCompact(overview.now_phx) : "loading..."}</p>
               </div>
 
-              <div className="flex-1 overflow-hidden rounded-[18px] border border-white/10 bg-white/6 p-2.5">
-                <div className="flex h-full flex-col">
-                  <div className="flex-1 space-y-1.5 overflow-y-auto pr-1">
+              <div className="flex-1 min-w-0 overflow-hidden rounded-[18px] border border-white/10 bg-white/6 p-2.5">
+                <div className="flex h-full min-w-0 flex-col">
+                  <div className="flex-1 min-w-0 space-y-1.5 overflow-y-auto pr-1">
                     {chat.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-white/14 bg-white/6 p-2.5 text-xs leading-5 text-white/72">
                         Ask about stats, trades, research, or run doctor / research.
@@ -420,12 +420,12 @@ function App() {
                         <div
                           key={`${entry.role}-${index}`}
                           className={cn(
-                            "rounded-xl px-2.5 py-2 text-sm leading-5",
+                            "min-w-0 max-w-full overflow-hidden break-words rounded-xl px-2.5 py-2 text-sm leading-5",
                             entry.role === "assistant" ? "bg-white/10 text-white" : "bg-[#d58c3f] text-[#1d140a]",
                           )}
                         >
                           <p className="mb-0.5 text-[10px] uppercase tracking-[0.2em] opacity-70">{entry.role}</p>
-                          <div className="markdown-body markdown-dark">
+                          <div className="markdown-body markdown-dark min-w-0 max-w-full overflow-x-auto break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_code]:break-words [&_table]:max-w-full [&_table]:overflow-x-auto">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.content}</ReactMarkdown>
                           </div>
                         </div>

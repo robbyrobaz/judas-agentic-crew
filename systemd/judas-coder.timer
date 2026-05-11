@@ -1,0 +1,10 @@
+[Unit]
+Description=Coder cadence — every 5 minutes; consumes coder-team agent_tasks
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=false
+Unit=judas-coder.service
+
+[Install]
+WantedBy=timers.target

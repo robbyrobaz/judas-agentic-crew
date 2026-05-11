@@ -1,0 +1,14 @@
+[Unit]
+Description=JudasFutures Coder specialist (Phase 10)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rob/judas-agentic-crew
+EnvironmentFile=/home/rob/judas-agentic-crew/.env
+ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python /home/rob/judas-agentic-crew/scripts/run_coder.py
+TimeoutStartSec=45min
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal

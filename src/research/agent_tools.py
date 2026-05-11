@@ -378,7 +378,7 @@ def flatten_position(*, symbol: str, side: str, qty: int) -> dict:
     Returns: {ok, action, qty, symbol, parent_order_id, status, error}.
     """
     sym = str(symbol).upper()
-    if sym not in _VALID_SYMBOLS:
+    if sym not in _pm._VALID_SYMBOLS:
         return {"ok": False, "error": f"unknown symbol: {sym}"}
     s = str(side).lower().strip()
     if s in ("close_long", "sell", "long"):

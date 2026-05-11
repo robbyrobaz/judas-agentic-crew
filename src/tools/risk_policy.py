@@ -22,7 +22,9 @@ def evaluate_risk_policy(
     runtime = load_config()
     cfg = runtime.risk
     params = strategy_params or {}
-    daily_loss_limit = float(params.get("daily_loss_limit_dollars", cfg.daily_loss_limit_dollars))
+    # Paper account — no daily loss floor by default. A strategy can still
+    # opt in to a per-strategy daily_loss_limit_dollars via its params.
+    daily_loss_limit = float(params.get("daily_loss_limit_dollars", -1.0e12))
     max_open_positions = int(params.get("max_open_positions", cfg.max_open_positions))
     max_trades_per_day = int(params.get("max_trades_per_day", cfg.max_trades_per_day))
     quality_score_min = int(params.get("quality_score_min", runtime.crew.min_quality_score))

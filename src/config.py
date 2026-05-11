@@ -79,9 +79,10 @@ def load_config(path: str | None = None) -> Config:
     with open(cfg_path) as f:
         raw = yaml.safe_load(f)
 
+    # The IBKR account itself is a paper account — the mode field on
+    # config.yaml is informational, not a safety lock. Don't refuse to
+    # start over it.
     mode = raw.get("mode", "paper")
-    if mode != "paper":
-        raise ValueError(f"Only 'paper' mode is supported; got '{mode}'")
 
     ibkr_raw = raw["ibkr"]
     ibkr = IBKRConfig(

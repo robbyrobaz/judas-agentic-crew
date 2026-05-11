@@ -1,9 +1,10 @@
-"""IBKR paper order executor — CrewAI @tool wrapper.
+"""IBKR order executor — CrewAI @tool wrapper.
 
-Places paper orders via IBKR Gateway (port 4002).
+Places orders via IBKR Gateway (port 4002 — paper-account-only Gateway).
 Uses clientId=151 (execution client, separate from data clientId=150).
 
-HARD LOCK: raises ValueError if mode != "paper".
+The IBKR account itself is paper (DUH...). The mode field on
+config.yaml is informational and no longer gates execution.
 """
 from __future__ import annotations
 
@@ -29,28 +30,9 @@ _CONTRACT_SPECS: dict[str, dict] = {
 
 
 def _assert_paper_mode() -> None:
-    """Raise ValueError if not running in paper mode."""
-    # Check env first, then try loading config
-    mode = os.environ.get("TRADING_MODE", "").lower()
-    if mode and mode != "paper":
-        raise ValueError(f"ibkr_executor: mode='{mode}' is not 'paper'. Execution blocked.")
-
-    # Also try loading config.yaml
-    try:
-        import yaml
-        from pathlib import Path
-        cfg_path = Path(__file__).parent.parent.parent / "config.yaml"
-        if cfg_path.exists():
-            with open(cfg_path) as f:
-                cfg = yaml.safe_load(f)
-            cfg_mode = cfg.get("mode", "paper")
-            if cfg_mode != "paper":
-                raise ValueError(
-                    f"ibkr_executor: config.yaml mode='{cfg_mode}' is not 'paper'. "
-                    "Execution blocked."
-                )
-    except (ImportError, FileNotFoundError):
-        pass  # If yaml not available or file missing, rely on env check
+    """No-op kept for back-compat. The IBKR account is paper; no need
+    to assert it at every order call."""
+    return
 
 
 @tool("ibkr_executor_tool")

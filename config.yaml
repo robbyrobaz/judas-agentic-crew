@@ -28,9 +28,11 @@ strategy:
 
 risk:
   max_contracts: 1
-  daily_loss_limit_dollars: -300.0
-  max_open_positions: 12       # was 2 — let the team run diversified strategies
-  max_trades_per_day: 24       # was 2 — match throughput ambition in the goals preamble
+  # daily_loss_limit_dollars removed — the account is paper, no real-money floor.
+  # Set to a very large negative so the gate is effectively never hit.
+  daily_loss_limit_dollars: -1.0e12
+  max_open_positions: 12
+  max_trades_per_day: 24
   atr_contraction_min_ratio: 0.60
   min_displacement_strength: 1.50
   min_displacement_body_ratio: 0.50

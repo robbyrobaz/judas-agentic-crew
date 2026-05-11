@@ -731,28 +731,15 @@ function BriefPanel({
                   {action.reason ? ` — ${action.reason}` : ""}
                 </span>
                 <div className="ml-auto flex items-center gap-2">
-                  {prior ? (
-                    <span className="text-[11px] text-foreground/60">
-                      {prior.decision} {prior.result ? `· ${prior.result}` : ""}
-                    </span>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => onDecide(index, "apply")}
-                        disabled={busy === `apply:${index}`}
-                        className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
-                      >
-                        <Check size={12} /> Apply
-                      </button>
-                      <button
-                        onClick={() => onDecide(index, "reject")}
-                        disabled={busy === `reject:${index}`}
-                        className="inline-flex items-center gap-1 rounded-xl bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
-                      >
-                        <X size={12} /> Reject
-                      </button>
-                    </>
-                  )}
+                  {/* Auto-applied — no human approval required. The status
+                      tag shows what the system did. */}
+                  <span className="text-[11px] text-foreground/60">
+                    {prior ? (
+                      <>{prior.decision} {prior.result ? `· ${prior.result}` : ""}</>
+                    ) : (
+                      <>pending auto-apply</>
+                    )}
+                  </span>
                 </div>
               </div>
             );

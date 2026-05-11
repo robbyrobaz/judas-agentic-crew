@@ -265,13 +265,32 @@ def run_one_autofix(
                 extra={"autofix_id": autofix_id,
                        "branch": ctx.branch_name,
                        "pushed": push_result.get("pushed")})
+
+    # Auto-merge into master — no human approval click required. The
+    # order-path deny-list (enforced by the post-commit hook) already
+    # prevented the branch from touching broker/risk/config files.
+    merge_info: dict = {"attempted": False}
+    if push_result.get("pushed"):
+        try:
+            from src.research.auto_apply import auto_merge_autofix
+            merge_info = auto_merge_autofix(
+                db_path=db_path, autofix_id=autofix_id,
+                branch_name=ctx.branch_name,
+            )
+            merge_info["attempted"] = True
+        except Exception as exc:  # noqa: BLE001
+            log.exception("autofix_dispatch.auto_merge_failed")
+            merge_info = {"attempted": True, "ok": False,
+                          "reason": f"raised: {exc}"}
+
     return {"ok": True, "status": "completed",
             "autofix_id": autofix_id,
             "branch": ctx.branch_name,
             "pushed": bool(push_result.get("pushed")),
             "test_passed": bool(result.test_passed),
             "diff_summary": result.diff_summary,
-            "files_changed": result.files_changed}
+            "files_changed": result.files_changed,
+            "merge": merge_info}
 
 
 def dispatch_symptom(

@@ -489,4 +489,17 @@ def persist_daily_brief(
             extra={"brief_date": brief_date, "error": str(exc)},
         )
 
+    # Auto-apply every recommended action — no human-in-the-loop. The
+    # team is peer-level. Manual halt remains via JUDAS_AUTOAPPLY_INHIBIT=1
+    # or kill.flag.
+    try:
+        from src.research.auto_apply import auto_apply_brief_actions
+        auto_apply_brief_actions(
+            db_path=db_path, brief_date=brief_date,
+            actions=summary_json.get("recommended_actions") or [],
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("brief.auto_apply_failed",
+                      extra={"brief_date": brief_date})
+
     return brief_id

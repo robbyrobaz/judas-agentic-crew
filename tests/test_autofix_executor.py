@@ -165,14 +165,18 @@ def test_create_worktree_and_branch(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_install_denylist_hook_executes(tmp_path):
+def test_install_denylist_hook_executes(tmp_path, monkeypatch):
+    """When DENYLIST_PATTERNS is non-empty, the post-commit hook still
+    rejects matching files. The production default is empty (full
+    autonomous coder access) — exercise the hook with a one-off pattern
+    set to keep the behavior tested."""
+    monkeypatch.setattr(ax, "DENYLIST_PATTERNS", ["config.yaml"])
     repo = _init_repo(tmp_path / "repo")
     ctx = ax.create_autofix_worktree(
         autofix_id=1, symptom_slug="hook-test", repo_root=str(repo)
     )
     try:
         ax.install_denylist_hook(worktree_path=ctx.worktree_path)
-        # Touch a deny-listed file.
         cfg = Path(ctx.worktree_path) / "config.yaml"
         cfg.write_text("evil: true\n")
         _run(["git", "-C", ctx.worktree_path, "add", "config.yaml"])
@@ -180,10 +184,8 @@ def test_install_denylist_hook_executes(tmp_path):
             ["git", "-C", ctx.worktree_path, "commit", "-m", "naughty"],
             capture_output=True, text=True,
         )
-        # Commit object gets created, then post-commit hook rejects it.
         combined = proc.stdout + proc.stderr
         assert "DENIED" in combined, combined
-        # And the hook rolled the commit back via reset --soft.
         log = _run(["git", "-C", ctx.worktree_path, "log", "--oneline"]).stdout
         assert log.count("\n") == 1  # only the seed commit
     finally:

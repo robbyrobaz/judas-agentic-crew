@@ -96,6 +96,7 @@ def insert_symptom_row(
 
 def run_one_autofix(
     *, db_path: str, target_autofix_id: int | None = None,
+    operator_context: str | None = None,
 ) -> dict:
     """Run the autofix harness on one 'detected' auto_fixes row.
 
@@ -172,13 +173,24 @@ def run_one_autofix(
         return {"ok": False, "status": "error",
                 "autofix_id": autofix_id, "reason": f"worktree: {exc}"}
 
+    context_block = (
+        f"\n\n=== OPERATOR'S DIAGNOSTIC NOTES ===\n"
+        f"{operator_context.strip()}\n"
+        f"=== END OPERATOR'S NOTES ===\n"
+        if operator_context and operator_context.strip()
+        else ""
+    )
     prompt = (
         f"Symptom category: {symptom_category}\n"
-        f"Summary: {symptom_summary}\n\n"
-        f"Diagnose the root cause within the allowlisted files only. "
-        f"Apply the minimal patch that resolves the symptom and makes "
-        f"pytest pass. If the fix requires touching a denylisted file, "
-        f"explain why and stop.\n"
+        f"Summary: {symptom_summary}"
+        f"{context_block}\n"
+        f"Diagnose the root cause and apply a minimal patch that "
+        f"resolves the symptom and makes pytest pass. You have full "
+        f"repo access — edit any file you need. Don't add benign "
+        f"meta files (like .autofix-denylist) hoping pytest passes; "
+        f"that won't fix the actual symptom and will be rejected. "
+        f"Target the production code path the operator's notes "
+        f"describe.\n"
     )
 
     update_autofix(
@@ -306,8 +318,11 @@ def dispatch_symptom(
         log.info("autofix_dispatch.delegate.inhibited")
         return {"ok": False, "status": "inhibited",
                 "reason": "JUDAS_AUTOFIX_INHIBIT=1"}
-    summary = (symptom or "").strip()[:300] or "unspecified symptom"
-    evidence = f"{summary}\n{(context or '').strip()[:1500]}"
+    # Keep summary readable but don't strangle it — full operator context
+    # is piped to the harness via operator_context below.
+    summary = (symptom or "").strip()[:2000] or "unspecified symptom"
+    operator_context = (context or "").strip()
+    evidence = f"{summary}\n{operator_context[:1500]}"
     autofix_id = insert_symptom_row(
         db_path=db_path, category=category,
         summary=summary, evidence=evidence,
@@ -317,7 +332,10 @@ def dispatch_symptom(
                 "reason": "could not insert/find auto_fixes row"}
     log.info("autofix_dispatch.delegate", extra={"autofix_id": autofix_id,
                                                  "category": category})
-    result = run_one_autofix(db_path=db_path, target_autofix_id=autofix_id)
+    result = run_one_autofix(
+        db_path=db_path, target_autofix_id=autofix_id,
+        operator_context=operator_context,
+    )
     _publish_coder_report(
         db_path=db_path, autofix_id=autofix_id, symptom=summary,
         context=(context or "").strip(), result=result,

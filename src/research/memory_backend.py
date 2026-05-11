@@ -20,6 +20,7 @@ Key design choices (per Rob's mandate, 2026-05-11):
 """
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import re
@@ -36,11 +37,32 @@ _SCOPE = "findings"
 
 _MEMORY_LOCK = threading.Lock()
 _MEMORY_SINGLETON: Any = None
+_ATEXIT_REGISTERED = False
+
+
+def _shutdown_memory() -> None:
+    """Flush pending writes and release LanceDB/threadpool resources before
+    Python interpreter finalization. Without this, the threadpool inside
+    CrewAI Memory races with the GIL teardown and produces a fatal
+    PyGILState_Release on exit (which marks the systemd unit as failed)."""
+    global _MEMORY_SINGLETON
+    mem = _MEMORY_SINGLETON
+    if mem is None:
+        return
+    _MEMORY_SINGLETON = None
+    try:
+        mem.drain_writes()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mem.close()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _get_memory():
     """Lazy-init the singleton Memory instance."""
-    global _MEMORY_SINGLETON
+    global _MEMORY_SINGLETON, _ATEXIT_REGISTERED
     if _MEMORY_SINGLETON is not None:
         return _MEMORY_SINGLETON
     with _MEMORY_LOCK:
@@ -60,6 +82,9 @@ def _get_memory():
             recency_weight=0.1,
             recency_half_life_days=14,
         )
+        if not _ATEXIT_REGISTERED:
+            atexit.register(_shutdown_memory)
+            _ATEXIT_REGISTERED = True
         log.info("memory_backend.initialized",
                  extra={"storage_dir": str(_MEMORY_DIR)})
     return _MEMORY_SINGLETON

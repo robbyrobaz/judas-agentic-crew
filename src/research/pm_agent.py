@@ -847,6 +847,28 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         return {"ok": True, "new_strategy_id": int(new.id), "version": int(new.version)}
 
+    def insert_active_strategy_tool(
+        *, symbol: str, strategy_family: str,
+        params: dict | None = None, notes: str = "",
+    ) -> dict:
+        """Insert a brand-new active_strategies row from scratch.
+
+        Use this when no candidate exists yet (or you want to seed a new
+        (symbol, family) pair directly). Multiple actives per pair are
+        allowed; this does NOT retire anything.
+        """
+        from src import strategy_registry
+        try:
+            new = strategy_registry.insert_active_strategy(
+                symbol=symbol, strategy_family=strategy_family,
+                params=params, notes=notes or None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        return {"ok": True, "new_strategy_id": int(new.id),
+                "version": int(new.version), "symbol": new.symbol,
+                "strategy_family": new.strategy_family}
+
     def modify_strategy_params_tool(
         *, id: int, new_params: dict, rationale: str
     ) -> dict:
@@ -1262,6 +1284,7 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
         "retire_strategy": _safe_tool(retire_strategy_tool),
         "propose_candidate": _safe_tool(propose_candidate_tool),
         "promote_candidate": _safe_tool(promote_candidate_tool),
+        "insert_active_strategy": _safe_tool(insert_active_strategy_tool),
         "modify_strategy_params": _safe_tool(modify_strategy_params_tool),
         "place_paper_order": _safe_tool(place_paper_order),
         # Phase 9 — external knowledge
@@ -1479,6 +1502,28 @@ def _tool_schemas() -> list[dict]:
                         "notes": {"type": "string"},
                     },
                     "required": ["id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "insert_active_strategy",
+                "description": (
+                    "Create a brand-new active_strategies row from scratch. "
+                    "Use when no candidate exists or you want to seed a new "
+                    "(symbol, strategy_family) pair directly. Multiple "
+                    "actives per pair are allowed; this does NOT retire."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {"type": "string"},
+                        "strategy_family": {"type": "string"},
+                        "params": {"type": "object"},
+                        "notes": {"type": "string"},
+                    },
+                    "required": ["symbol", "strategy_family"],
                 },
             },
         },

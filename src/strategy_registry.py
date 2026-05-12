@@ -109,6 +109,49 @@ def _row_to_active(row) -> ActiveStrategy:
     )
 
 
+def insert_active_strategy(
+    *, symbol: str, strategy_family: str, params: dict[str, Any] | None = None,
+    notes: str | None = None,
+) -> ActiveStrategy:
+    """Create a brand-new active_strategies row from scratch.
+
+    Multiple actives per (symbol, family) are allowed — the next-version
+    number is computed from the current max for that pair, but no
+    previous row is retired. Use retire_strategy() deliberately when you
+    actually want to retire one.
+
+    If ``params`` is None, falls back to ``default_judas_params(symbol)``.
+    """
+    sym = symbol.upper()
+    fam = str(strategy_family)
+    use_params = params if params is not None else default_judas_params(sym)
+    # Ensure symbol/strategy_family inside params match the row.
+    use_params = {**use_params, "symbol": sym, "strategy_family": fam}
+    with get_conn(_ensure_db()) as conn:
+        prior = conn.execute(
+            "SELECT MAX(version) AS v FROM active_strategies "
+            "WHERE symbol = ? AND strategy_family = ?",
+            (sym, fam),
+        ).fetchone()
+        next_version = (int(prior["v"]) + 1) if (prior and prior["v"] is not None) else 1
+        cur = conn.execute(
+            """
+            INSERT INTO active_strategies
+                (symbol, strategy_family, version, params_json, metrics_json,
+                 state, activated_at_utc, notes)
+            VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+            """,
+            (sym, fam, next_version, json.dumps(use_params),
+             json.dumps({"inserted_directly": True}),
+             _utc_now(), notes or "Inserted by registrar."),
+        )
+        new_id = int(cur.lastrowid)
+        row = conn.execute(
+            "SELECT * FROM active_strategies WHERE id = ?", (new_id,),
+        ).fetchone()
+    return _row_to_active(row)
+
+
 def get_active_strategy(symbol: str, strategy_family: str = "judas_1h") -> ActiveStrategy | None:
     with get_conn(_ensure_db()) as conn:
         row = conn.execute(

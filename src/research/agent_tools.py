@@ -740,6 +740,7 @@ def make_get_strategy_dossier(*, db_path: str) -> Callable[..., dict]:
 # Tools that, when invoked, populate decision_result.actions_taken.
 _ACTION_TOOL_NAMES = {
     "retire_strategy", "promote_candidate", "modify_strategy_params",
+    "insert_active_strategy",
     "place_paper_order", "place_bracket_order", "cancel_order",
     "propose_candidate", "propose_custom_strategy", "retire_custom_strategy",
     "run_judas_threshold_sweep", "run_walk_forward", "run_custom_backtest",

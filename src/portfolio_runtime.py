@@ -293,6 +293,9 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
         elif strategy_type == "bollinger":
             result = _evaluate_bollinger(bars, params)
         else:
+            log.warning(
+                "evaluate_active_strategy: buffet_zoo strategy %s has unknown strategy_type %r",
+                strategy_name, strategy_type)
             return fires
         if result is None:
             return fires

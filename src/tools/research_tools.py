@@ -48,9 +48,10 @@ def _symbol_meta(symbol: str) -> tuple[float, float]:
             tick_value = tick * float(item.dollar_per_point)
             return tick, tick_value
     _FALLBACK = {
-        "MET": (0.10, 10.0),
-        "MBT": (0.25, 2.0),
-        "6J":  (0.000001, 12.5),
+        "MET": (0.50, 0.05),
+        "MBT": (5.0, 0.5),
+        "DX":  (0.005, 5.0),
+        "6J":  (0.0000005, 6.25),
         "MCL": (0.01, 10.0),
         "ZF":  (0.005, 10.0),
     }

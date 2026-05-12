@@ -394,9 +394,30 @@ def flatten_position(*, symbol: str, side: str, qty: int) -> dict:
     if n <= 0:
         return {"ok": False, "error": "qty must be > 0"}
 
-    # Confirm position exists before placing the close order, per the
-    # operator-chat's watchpoint: 'do not place any orders without first
-    # confirming position existence.'
+    # Sleeve guard: refuse to flatten any symbol we don't have an open
+    # trades row for. The IBKR paper account is shared with the workshop
+    # and options-recorder — we must not close their positions.
+    try:
+        import sqlite3 as _sql
+        conn = _sql.connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM trades WHERE status='open' "
+                "AND symbol = ? AND direction = ?",
+                (sym, "long" if action == "SELL" else "short"),
+            ).fetchone()
+            sleeve_open = int(row[0]) if row else 0
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"sleeve check failed: {exc}"}
+    if sleeve_open == 0:
+        return {"ok": False,
+                "error": f"no open agentic-crew trade for {sym}/{action} — "
+                         "refusing to flatten (position may belong to another "
+                         "tenant on this paper account)"}
+
+    # Confirm position exists on IBKR before placing the close order.
     try:
         from ib_async import IB, Future, MarketOrder
         ib = IB()

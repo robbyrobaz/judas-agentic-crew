@@ -423,54 +423,98 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
         return [_row_to_dict(r) for r in rows]
 
     def get_open_positions() -> list[dict]:
-        # Query LIVE IBKR positions, not the local trades table. The agentic-
-        # crew's `trades` table is unreliable — legacy PM_AGENT fills from
-        # before the Phase-10 team refactor never wrote back, so the DB shows
-        # zero rows while IBKR has live positions bleeding money. Operator
-        # gets the broker-of-record view here. Falls back to DB only if the
-        # IBKR query fails.
+        """Return SLEEVE positions — what THIS system opened on the
+        shared IBKR paper account.
+
+        Reads live IBKR (clientId 199) AND the local agentic-crew
+        ``trades`` table, then intersects. A live IBKR position is only
+        included when there's a matching open trades row from this
+        system. Workshop / options-recorder / any other tenant on the
+        same paper account is filtered out so the Operator doesn't
+        misread someone else's MBT or SPY position as ours.
+
+        Each entry includes ``source='sleeve'`` and the local trade ids
+        backing it for traceability.
+        """
+        # Local sleeve view first — agentic-crew's own open trades.
+        sleeve_by_sym: dict[str, list[dict]] = {}
+        try:
+            with _connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT id, symbol, direction, qty, entry_fill, "
+                    "stop_price, target_price, opened_at, ibkr_order_id "
+                    "FROM trades WHERE status = 'open' "
+                    "ORDER BY opened_at DESC LIMIT ?",
+                    (_OUTPUT_ROW_CAP,),
+                ).fetchall()
+            for r in rows:
+                sym = str(r["symbol"]).upper()
+                sleeve_by_sym.setdefault(sym, []).append({
+                    "trade_id": int(r["id"]),
+                    "direction": str(r["direction"]),
+                    "qty": int(r["qty"] or 0),
+                    "entry_fill": r["entry_fill"],
+                    "stop_price": r["stop_price"],
+                    "target_price": r["target_price"],
+                    "opened_at": r["opened_at"],
+                    "ibkr_order_id": r["ibkr_order_id"],
+                })
+        except sqlite3.Error as exc:
+            log.exception("get_open_positions.local_read_failed")
+            return [{"ok": False, "error": f"sleeve DB read failed: {exc}",
+                     "source": "sleeve_error"}]
+
+        # Live IBKR view, filtered to symbols we have open sleeve trades for.
+        if not sleeve_by_sym:
+            return []  # Nothing in our sleeve — anything on IBKR is not ours.
         try:
             from ib_async import IB
             ib = IB()
             ib.connect("127.0.0.1", 4002, clientId=199, timeout=8)
             try:
-                positions = []
+                out: list[dict] = []
                 for p in ib.positions():
                     if p.contract.secType != "FUT":
                         continue
                     if p.position == 0:
                         continue
+                    sym = p.contract.symbol
+                    if sym not in sleeve_by_sym:
+                        # Position on the shared account but not ours.
+                        continue
                     mult = float(p.contract.multiplier or 1)
                     avg_price = (p.avgCost or 0) / mult if mult else p.avgCost
-                    positions.append({
-                        "symbol": p.contract.symbol,
+                    out.append({
+                        "symbol": sym,
                         "local_symbol": p.contract.localSymbol,
                         "direction": "long" if p.position > 0 else "short",
                         "qty": abs(int(p.position)),
                         "avg_price": round(float(avg_price), 4),
                         "contract_month": p.contract.lastTradeDateOrContractMonth,
                         "account": p.account,
-                        "source": "ibkr_live",
+                        "source": "sleeve",
+                        "sleeve_trades": sleeve_by_sym.get(sym, []),
                     })
-                return positions
+                return out
             finally:
                 ib.disconnect()
         except Exception as exc:  # noqa: BLE001
-            # Fall back to DB on IBKR failure; mark source so the agent
-            # can see this view may be stale.
-            with _connect(db_path) as conn:
-                rows = conn.execute(
-                    "SELECT id, strategy_id, symbol, direction, qty, entry_fill, "
-                    "stop_price, target_price, status, opened_at "
-                    "FROM trades WHERE status = 'open' ORDER BY opened_at DESC "
-                    "LIMIT ?",
-                    (_OUTPUT_ROW_CAP,),
-                ).fetchall()
-            out = [_row_to_dict(r) for r in rows]
-            for r in out:
-                r["source"] = "db_fallback"
-                r["_ibkr_query_error"] = str(exc)
-            return out
+            # IBKR unreachable — fall back to the local sleeve view.
+            fallback: list[dict] = []
+            for sym, trades in sleeve_by_sym.items():
+                net = sum(t["qty"] if t["direction"] == "long" else -t["qty"]
+                          for t in trades)
+                if net == 0:
+                    continue
+                fallback.append({
+                    "symbol": sym,
+                    "direction": "long" if net > 0 else "short",
+                    "qty": abs(net),
+                    "source": "sleeve_db_fallback",
+                    "sleeve_trades": trades,
+                    "_ibkr_query_error": str(exc),
+                })
+            return fallback
 
     def query_db(*, sql: str) -> dict:
         ok, err = _is_safe_select(sql)

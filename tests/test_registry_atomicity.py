@@ -141,3 +141,48 @@ def test_promote_concurrent_no_zero_active_window(db_path):
     assert not errors, errors
     assert observations, "reader observed nothing"
     assert min(observations) >= 1, f"observed zero-active window: {observations}"
+
+
+def test_insert_active_strategy_creates_new_row(db_path):
+    from src import strategy_registry as sr
+
+    a = sr.insert_active_strategy(symbol="MGC", strategy_family="judas_1h")
+    assert a.state == "active"
+    assert a.symbol == "MGC"
+    assert a.strategy_family == "judas_1h"
+    assert a.version == 1
+
+
+def test_insert_active_strategy_allows_multi_active(db_path):
+    """Multiple actives per (symbol, family) are allowed — promote/insert
+    no longer force-retires the prior row."""
+    from src import strategy_registry as sr
+
+    a = sr.insert_active_strategy(symbol="MGC", strategy_family="judas_1h")
+    b = sr.insert_active_strategy(symbol="MGC", strategy_family="judas_1h")
+    c = sr.insert_active_strategy(symbol="MGC", strategy_family="judas_1h")
+
+    actives = [r for r in sr.list_active_strategies()
+               if r["symbol"] == "MGC" and r["strategy_family"] == "judas_1h"]
+    assert len(actives) == 3
+    versions = sorted(r["version"] for r in actives)
+    assert versions == [a.version, b.version, c.version]
+    assert b.version == a.version + 1
+    assert c.version == b.version + 1
+
+
+def test_insert_active_strategy_respects_passed_params(db_path):
+    from src import strategy_registry as sr
+
+    params = {"disp": 1.5, "target_r": 2.0, "min_sweep_ticks": 4}
+    a = sr.insert_active_strategy(
+        symbol="MNQ", strategy_family="judas_1h", params=params,
+        notes="custom params seed",
+    )
+    assert a.params["disp"] == 1.5
+    assert a.params["target_r"] == 2.0
+    assert a.params["min_sweep_ticks"] == 4
+    # symbol + family auto-injected into params.
+    assert a.params["symbol"] == "MNQ"
+    assert a.params["strategy_family"] == "judas_1h"
+    assert a.notes == "custom params seed"

@@ -119,7 +119,7 @@ def insert_active_strategy(
     number is computed from the current max for that pair, but no
     previous row is retired. Use retire_strategy() deliberately when you
     actually want to retire one.
-
+    
     If ``params`` is None, falls back to ``default_judas_params(symbol)``.
     """
     sym = symbol.upper()

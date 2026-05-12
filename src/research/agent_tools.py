@@ -535,6 +535,24 @@ def reactivate_demoted(*, demotion_id: int) -> dict:
     return {"ok": True, "new_strategy_id": int(new_id)}
 
 
+def insert_custom_strategy(
+    *, symbol: str, strategy_family: str, strategy_name: str,
+    params_json: str, source_candidate_id: int | None = None,
+) -> dict:
+    """Insert a new strategy into active_strategies. Use this when promoting a candidate to active paper trading."""
+    try:
+        from src import strategy_registry as sr
+        new_id = sr.insert_active_strategy(
+            symbol=symbol,
+            strategy_family=strategy_family,
+            params_json=params_json,
+            source_candidate_id=source_candidate_id,
+        )
+        return {"ok": True, "strategy_id": int(new_id)}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 # ---------------------------------------------------------------------------
 # Findings — shared persistent memory across all agents
 # ---------------------------------------------------------------------------

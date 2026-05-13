@@ -699,18 +699,10 @@ async def _cancel_order_pair_rollback_async(*, parent_order_id: int, host: str, 
     finally:
         ib.disconnect()
 
-
-def cancel_order(*, parent_order_id: int, host: str, port: int, client_id: int) -> None:
-    asyncio.run(_cancel_order_async(
-        parent_order_id=parent_order_id, host=host, port=port, client_id=client_id,
-    ))
-
-
 def _delete_signal_and_trade(db_path: str, signal_id: int | None, trade_id: int | None) -> None:
     """Roll back rows written by ``_save_signal_and_trade``.
 
-    Used when a pair leg fails after its sibling has already been
-    persisted -- we must not leave an orphan single-leg pair in the DB.
+    Used when a pair leg fails after its sibling has already been persisted.
     """
     if signal_id is None and trade_id is None:
         return

@@ -13,6 +13,7 @@ import pandas as pd
 import yaml
 from ib_async import ContFuture, Future, IB, LimitOrder, MarketOrder, StopOrder
 
+from src import bar_cache
 from src.db.models import init_db
 from src.strategy_registry import list_active_strategies
 from src.tools.judas_detector import run_judas_detection_rich
@@ -82,11 +83,11 @@ class ActiveFire:
 
 
 def _evaluate_rsi(bars: pd.DataFrame, params: dict[str, Any]) -> tuple[str, float, float, float, dict[str, Any]] | None:
-    period = int(params["period"])
-    lo = float(params["lo_thr"])
-    hi = float(params["hi_thr"])
-    target_r = float(params["target_r"])
-    sa = float(params["stop_atr_mult"])
+    period = int(params.get("period", 14))
+    lo = float(params.get("lo_thr", 30))
+    hi = float(params.get("hi_thr", 70))
+    target_r = float(params.get("target_r", 2.0))
+    sa = float(params.get("stop_atr_mult", 1.5))
     if len(bars) < period + 30:
         return None
     rsi = _rsi(bars["close"], period)
@@ -110,10 +111,10 @@ def _evaluate_rsi(bars: pd.DataFrame, params: dict[str, Any]) -> tuple[str, floa
 
 
 def _evaluate_ma_cross(bars: pd.DataFrame, params: dict[str, Any]) -> tuple[str, float, float, float, dict[str, Any]] | None:
-    fast = int(params["fast"])
-    slow = int(params["slow"])
-    target_r = float(params["target_r"])
-    sa = float(params["stop_atr_mult"])
+    fast = int(params.get("fast", 12))
+    slow = int(params.get("slow", 26))
+    target_r = float(params.get("target_r", 2.0))
+    sa = float(params.get("stop_atr_mult", 1.5))
     if len(bars) < slow + 5:
         return None
     f = _ema(bars["close"], fast)
@@ -134,10 +135,10 @@ def _evaluate_ma_cross(bars: pd.DataFrame, params: dict[str, Any]) -> tuple[str,
 
 
 def _evaluate_bollinger(bars: pd.DataFrame, params: dict[str, Any]) -> tuple[str, float, float, float, dict[str, Any]] | None:
-    period = int(params["period"])
-    n_std = float(params["n_std"])
-    target_r = float(params["target_r"])
-    sa = float(params["stop_atr_mult"])
+    period = int(params.get("period", 20))
+    n_std = float(params.get("n_std", 2.0))
+    target_r = float(params.get("target_r", 2.0))
+    sa = float(params.get("stop_atr_mult", 1.5))
     if len(bars) < period + 5:
         return None
     ma = bars["close"].rolling(period).mean()
@@ -799,7 +800,7 @@ def run_portfolio_scan(
                 needed_symbols.update(seed.get("symbols", []))
         else:
             needed_symbols.add(str(row["symbol"]).upper())
-    bars_by_sym = fetch_bars(needed_symbols, host=host, port=port, client_id=data_client_id)
+    bars_by_sym = bar_cache.refresh_cache(needed_symbols, host=host, port=port, client_id=data_client_id)
 
     fired: list[dict[str, Any]] = []
     placed = 0

@@ -523,6 +523,134 @@ def _service_snapshot() -> dict[str, str]:
     return snapshot
 
 
+_TICK_VALUE: dict[str, float] = {
+    "MGC": 1.0, "MNQ": 0.5, "MCL": 1.0, "MBT": 0.5,
+    "MET": 0.05, "DX": 5.0, "ZF": 7.8125, "6J": 6.25, "ZN": 15.625,
+}
+_TICK_SIZE: dict[str, float] = {
+    "MGC": 0.10, "MNQ": 0.25, "MCL": 0.01, "MBT": 5.0,
+    "MET": 0.50, "DX": 0.005, "ZF": 0.0078125, "6J": 0.0000005, "ZN": 0.015625,
+}
+
+
+def _dollar_per_point(symbol: str) -> float:
+    ts = _TICK_SIZE.get(symbol.upper(), 0.01)
+    tv = _TICK_VALUE.get(symbol.upper(), 1.0)
+    return tv / ts if ts else 1.0
+
+
+def _load_price_cache() -> dict[str, dict]:
+    """Load last_bar_closes.json, then fill any gaps from cached parquet files."""
+    p = REPO_ROOT / "last_bar_closes.json"
+    cache: dict[str, dict] = {}
+    if p.exists():
+        try:
+            cache = json.loads(p.read_text())
+        except Exception:
+            pass
+    # Supplement with parquet files for symbols not in JSON cache.
+    cache_dir = REPO_ROOT / "cache_1h"
+    if cache_dir.exists():
+        try:
+            import pandas as pd
+            for parquet in cache_dir.glob("*_1h.parquet"):
+                sym = parquet.stem.replace("_1h", "").upper()
+                if sym in cache:
+                    continue
+                try:
+                    df = pd.read_parquet(parquet, columns=["ts", "close"])
+                    if df.empty:
+                        continue
+                    last = df.iloc[-1]
+                    cache[sym] = {"close": float(last["close"]), "ts": str(last["ts"])}
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return cache
+
+
+def _fetch_open_positions() -> list[dict[str, Any]]:
+    """Return open trades enriched with current price and unrealized P&L."""
+    price_cache = _load_price_cache()
+    try:
+        with get_conn(_db_path()) as conn:
+            rows = conn.execute(
+                """
+                SELECT t.id, t.symbol, t.direction, t.qty,
+                       t.entry_fill, t.stop_price, t.target_price,
+                       t.opened_at,
+                       a.strategy_family, a.version
+                FROM trades t
+                LEFT JOIN active_strategies a ON a.id = (
+                    SELECT CAST(value AS INTEGER)
+                    FROM json_each(COALESCE(t.meta_json, '{}'))
+                    WHERE key = 'active_strategy_id'
+                    LIMIT 1
+                )
+                WHERE t.status = 'open'
+                ORDER BY t.opened_at DESC
+                """,
+            ).fetchall()
+    except Exception:
+        rows = []
+        try:
+            with get_conn(_db_path()) as conn:
+                rows = conn.execute(
+                    "SELECT id, symbol, direction, qty, entry_fill, stop_price, target_price, opened_at FROM trades WHERE status='open' ORDER BY opened_at DESC"
+                ).fetchall()
+        except Exception:
+            pass
+
+    result = []
+    for row in rows:
+        sym = str(row["symbol"]).upper()
+        dpp = _dollar_per_point(sym)
+        entry = float(row["entry_fill"] or 0)
+        stop = float(row["stop_price"] or 0)
+        target = float(row["target_price"] or 0)
+        qty = int(row["qty"] or 1)
+        direction = str(row["direction"])
+
+        risk_pts = abs(entry - stop)
+        reward_pts = abs(target - entry)
+        risk_dollars = -round(risk_pts * dpp * qty, 2)
+        reward_dollars = round(reward_pts * dpp * qty, 2)
+        rr = round(reward_pts / risk_pts, 2) if risk_pts else None
+
+        pc = price_cache.get(sym) or price_cache.get(sym.lower())
+        current_price = float(pc["close"]) if pc and "close" in pc else None
+        price_ts = str(pc["ts"]) if pc and "ts" in pc else None
+
+        unrealized_pnl = None
+        if current_price is not None and entry:
+            diff = (current_price - entry) if direction == "long" else (entry - current_price)
+            unrealized_pnl = round(diff * dpp * qty, 2)
+
+        fam = row["strategy_family"] if "strategy_family" in row.keys() else None
+        ver = row["version"] if "version" in row.keys() else None
+        label = f"{fam} v{ver}" if fam and ver else None
+
+        result.append({
+            "id": int(row["id"]),
+            "symbol": sym,
+            "direction": direction,
+            "qty": qty,
+            "entry": entry,
+            "stop": stop,
+            "target": target,
+            "risk_dollars": risk_dollars,
+            "reward_dollars": reward_dollars,
+            "rr": rr,
+            "current_price": current_price,
+            "price_ts": price_ts,
+            "unrealized_pnl": unrealized_pnl,
+            "opened_at": str(row["opened_at"]),
+            "label": label,
+        })
+    return result
+
+
 def _overview_payload() -> dict[str, Any]:
     session = json.loads(session_status_tool.run(input_json="{}"))
     signals = _fetch_recent_signals(limit=8)
@@ -551,6 +679,7 @@ def _overview_payload() -> dict[str, Any]:
         "latest_experiment": experiments[0] if experiments else None,
         "trading_stats": _fetch_trading_stats(),
         "research_stats": _fetch_research_stats(),
+        "open_positions": _fetch_open_positions(),
     }
 
 

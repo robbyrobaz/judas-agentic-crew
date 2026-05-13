@@ -24,6 +24,24 @@ import { cn } from "@/lib/utils";
 
 type Row = Record<string, unknown>;
 
+type OpenPosition = {
+  id: number;
+  symbol: string;
+  direction: string;
+  qty: number;
+  entry: number;
+  stop: number;
+  target: number;
+  risk_dollars: number;
+  reward_dollars: number;
+  rr: number | null;
+  current_price: number | null;
+  price_ts: string | null;
+  unrealized_pnl: number | null;
+  opened_at: string;
+  label: string | null;
+};
+
 type Overview = {
   now_utc: string;
   now_et: string;
@@ -35,6 +53,7 @@ type Overview = {
   latest_signal: Row | null;
   latest_trade: Row | null;
   latest_experiment: Row | null;
+  open_positions: OpenPosition[];
   trading_stats: {
     headline: Record<string, number>;
     by_symbol: Row[];
@@ -307,6 +326,55 @@ function App() {
                 />
               </div>
             ) : null}
+
+            {(overview?.open_positions ?? []).length > 0 && (
+              <div className="mt-4 rounded-[20px] border border-line/70 bg-panel/90 p-4 shadow-panel backdrop-blur-md">
+                <div className="mb-2 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-accent" />
+                  <span className="text-sm font-semibold uppercase tracking-wider text-muted">Open Positions</span>
+                  <span className="ml-1 text-xs text-muted/60">price from last bar cache · updates each scan</span>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {(overview?.open_positions ?? []).map((pos) => {
+                    const pnlColor = pos.unrealized_pnl == null ? "text-muted" : pos.unrealized_pnl >= 0 ? "text-green-400" : "text-red-400";
+                    const dirColor = pos.direction === "long" ? "text-green-400" : "text-red-400";
+                    return (
+                      <div key={pos.id} className="rounded-xl border border-line/50 bg-background/60 p-3">
+                        <div className="flex items-baseline justify-between">
+                          <span className="font-display text-lg font-bold">{pos.symbol}</span>
+                          <span className={`text-xs font-semibold uppercase ${dirColor}`}>{pos.direction} ×{pos.qty}</span>
+                        </div>
+                        {pos.label && <div className="text-[10px] text-muted/60">{pos.label}</div>}
+                        <div className="mt-2 flex items-baseline gap-1">
+                          <span className="text-xs text-muted">Unrealized</span>
+                          <span className={`text-base font-bold ${pnlColor}`}>
+                            {pos.unrealized_pnl == null ? "—" : `${pos.unrealized_pnl >= 0 ? "+" : ""}$${pos.unrealized_pnl.toFixed(2)}`}
+                          </span>
+                        </div>
+                        {pos.current_price != null && (
+                          <div className="text-xs text-muted">
+                            now {pos.current_price.toFixed(2)} · entry {pos.entry.toFixed(2)}
+                            {pos.price_ts && <span className="ml-1 text-muted/50">({pos.price_ts.slice(0, 16)} UTC)</span>}
+                          </div>
+                        )}
+                        {pos.current_price == null && (
+                          <div className="text-xs text-muted/50">no price yet — waiting for next scan</div>
+                        )}
+                        <div className="mt-1 grid grid-cols-3 gap-1 text-[11px] text-muted">
+                          <div>stop<br/><span className="text-foreground">{pos.stop.toFixed(2)}</span></div>
+                          <div>target<br/><span className="text-foreground">{pos.target.toFixed(2)}</span></div>
+                          <div>R:R<br/><span className="text-foreground">{pos.rr != null ? `${pos.rr}R` : "—"}</span></div>
+                        </div>
+                        <div className="mt-1 flex gap-3 text-[11px]">
+                          <span className="text-red-400/80">risk ${Math.abs(pos.risk_dollars)}</span>
+                          <span className="text-green-400/80">reward ${pos.reward_dollars}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="mt-4 grid gap-4 2xl:grid-cols-2">
               <Panel title="Trading Headline Stats" icon={BarChart3}>
@@ -713,46 +781,39 @@ function BriefPanel({
         </div>
       </div>
 
-      {actions.length > 0 ? (
-        <div className="mb-3 space-y-2">
-          <p className="text-xs uppercase tracking-[0.24em] text-foreground/45">Recommended Actions</p>
-          {actions.map((action, index) => {
-            const prior = decisionsByIndex.get(index);
-            return (
-              <div
-                key={index}
-                className="flex flex-wrap items-center gap-2 rounded-2xl border border-line/70 bg-white/60 p-3"
-              >
-                <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-foreground/70">
-                  {action.type}
-                </span>
-                <span className="text-xs text-foreground/76">
-                  {action.strategy_id !== undefined ? `strategy ${action.strategy_id}` : ""}
-                  {action.reason ? ` — ${action.reason}` : ""}
-                </span>
-                <div className="ml-auto flex items-center gap-2">
-                  {/* Auto-applied — no human approval required. The status
-                      tag shows what the system did. */}
-                  <span className="text-[11px] text-foreground/60">
-                    {prior ? (
-                      <>{prior.decision} {prior.result ? `· ${prior.result}` : ""}</>
-                    ) : (
-                      <>pending auto-apply</>
-                    )}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-
       {expanded ? (
-        <div className="rounded-2xl border border-line/70 bg-white/58 p-3">
-          <div className="markdown-body">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{brief.content_md || "*(empty)*"}</ReactMarkdown>
+        <>
+          {actions.length > 0 ? (
+            <div className="mb-3 space-y-1.5">
+              <p className="text-xs uppercase tracking-[0.24em] text-foreground/45">Recommended Actions</p>
+              {actions.map((action, index) => {
+                const prior = decisionsByIndex.get(index);
+                return (
+                  <div
+                    key={index}
+                    className="flex flex-wrap items-center gap-2 rounded-xl border border-line/70 bg-white/60 px-3 py-2"
+                  >
+                    <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-foreground/70">
+                      {action.type}
+                    </span>
+                    <span className="text-xs text-foreground/76">
+                      {action.strategy_id !== undefined ? `strategy ${action.strategy_id}` : ""}
+                      {action.reason ? ` — ${action.reason}` : ""}
+                    </span>
+                    <span className="ml-auto text-[11px] text-foreground/60">
+                      {prior ? <>{prior.decision}{prior.result ? ` · ${prior.result}` : ""}</> : <>pending</>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          <div className="rounded-2xl border border-line/70 bg-white/58 p-3">
+            <div className="markdown-body">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{brief.content_md || "*(empty)*"}</ReactMarkdown>
+            </div>
           </div>
-        </div>
+        </>
       ) : null}
     </section>
   );

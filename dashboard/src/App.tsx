@@ -44,6 +44,12 @@ type Overview = {
   regime?: { vol_regime: string; trend: string; leaders: string[] };
   daily_brief?: { date: string; snippet: string } | null;
   agents_last_run?: Record<string, string | null>;
+  recent_trades?: Array<{
+    id: number; symbol: string; direction: string; qty: number;
+    entry_fill: number | null; stop_price: number | null; target_price: number | null;
+    exit_fill: number | null; pnl_dollars: number | null; status: string;
+    opened_at: string; closed_at: string | null;
+  }>;
 };
 
 type ChatEntry = { role: "user" | "assistant"; content: string };
@@ -84,7 +90,7 @@ const pnlColor = (v: number | null | undefined) =>
 
 const pnlStr = (v: number | null | undefined) => {
   if (v == null) return "—";
-  return `${v >= 0 ? "+" : ""}$${Math.abs(v).toFixed(2)}`;
+  return `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
 };
 
 function ageMinutes(ts: string | null | undefined): number | null {
@@ -338,12 +344,17 @@ function PositionRow({ pos }: { pos: OpenPosition }) {
 }
 
 function CenterPanel({ ov }: { ov: Overview | null }) {
-  const positions = ov?.open_positions ?? [];
-  const tradeFeed = (ov?.activity_feed ?? []).filter((e) => e.type === "trade").slice(0, 10);
-  const strats    = [...(ov?.research_stats?.active_strategies ?? [])]
-    .filter((s) => s.profit_factor != null)
-    .sort((a, b) => (b.profit_factor ?? 0) - (a.profit_factor ?? 0))
-    .slice(0, 10);
+  const positions  = ov?.open_positions ?? [];
+  const recentTrades = ov?.recent_trades ?? [];
+  // Show strategies sorted by PF descending; nulls go last
+  const strats = [...(ov?.research_stats?.active_strategies ?? [])]
+    .sort((a, b) => {
+      if (a.profit_factor == null && b.profit_factor == null) return 0;
+      if (a.profit_factor == null) return 1;
+      if (b.profit_factor == null) return -1;
+      return b.profit_factor - a.profit_factor;
+    })
+    .slice(0, 12);
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 10 }}>
@@ -359,17 +370,25 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
 
       <div style={{ marginBottom: 14 }}>
         <SectionTitle>Recent Trades</SectionTitle>
-        {tradeFeed.length === 0
+        {recentTrades.length === 0
           ? <EmptySlate>No trades yet</EmptySlate>
           : (
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
-              {tradeFeed.map((t, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderBottom: i < tradeFeed.length - 1 ? `1px solid ${C.border}30` : "none" }}>
-                  <span style={{ fontSize: 10, color: C.muted, fontFamily: "monospace", flexShrink: 0 }}>{fmtTime(t.ts)}</span>
-                  <span style={{ fontSize: 12, color: C.text, flex: 1 }}>{t.summary}</span>
-                  {t.detail && <span style={{ fontSize: 10, color: C.muted }}>{t.detail}</span>}
-                </div>
-              ))}
+              {recentTrades.map((t, i) => {
+                const pnl = t.pnl_dollars;
+                const ts = t.closed_at ?? t.opened_at;
+                return (
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: i < recentTrades.length - 1 ? `1px solid ${C.border}30` : "none" }}>
+                    <span style={{ fontSize: 10, color: C.muted, fontFamily: "monospace", flexShrink: 0 }}>{fmtTime(ts)}</span>
+                    <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: C.text, flexShrink: 0 }}>{t.symbol}</span>
+                    <span style={{ fontSize: 11, color: t.direction === "long" ? C.green : C.red, textTransform: "uppercase", flexShrink: 0 }}>{t.direction}</span>
+                    <span style={{ fontSize: 10, color: C.muted, flex: 1 }}>{t.status} @ {t.entry_fill?.toFixed(2) ?? "—"}</span>
+                    {pnl != null && (
+                      <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: pnlColor(pnl) }}>{pnlStr(pnl)}</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )
         }

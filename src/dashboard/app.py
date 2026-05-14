@@ -783,27 +783,75 @@ def _fetch_daily_brief_snippet() -> dict[str, Any] | None:
 
 def _fetch_agents_last_run() -> dict[str, Any]:
     result: dict[str, Any] = {}
+
+    # Systemd-based timestamps (most accurate — actual service activation time)
+    _svc_map = {
+        "judas-crew.service":       "scanner_last_run",
+        "judas-researcher.service": "researcher_last_run",
+        "judas-operator.service":   "operator_last_run",
+        "judas-registrar.service":  "registrar_last_run",
+        "judas-trader.service":     "trader_last_run",
+    }
+    for svc, key in _svc_map.items():
+        try:
+            proc = subprocess.run(
+                ["systemctl", "--user", "show", svc, "--property=InactiveExitTimestamp"],
+                capture_output=True, text=True, timeout=3,
+            )
+            for line in proc.stdout.splitlines():
+                if line.startswith("InactiveExitTimestamp="):
+                    raw = line.split("=", 1)[1].strip()
+                    if raw and raw != "n/a":
+                        # systemd format: "Thu 2026-05-14 14:00:00 MST"
+                        # Parse to ISO UTC
+                        from datetime import timezone as _tz
+                        import email.utils as _eu
+                        try:
+                            from zoneinfo import ZoneInfo as _ZI
+                            # Try parsing via datetime
+                            parts = raw.split()
+                            # e.g. "Thu 2026-05-14 14:00:05 MST"
+                            if len(parts) >= 4:
+                                dt_str = " ".join(parts[1:])  # "2026-05-14 14:00:05 MST"
+                                from datetime import datetime as _dt
+                                try:
+                                    tz_abbr = parts[-1]
+                                    tz_map = {"MST": "America/Phoenix", "MDT": "America/Denver",
+                                              "EST": "America/New_York", "EDT": "America/New_York",
+                                              "PST": "America/Los_Angeles", "PDT": "America/Los_Angeles",
+                                              "UTC": "UTC", "CST": "America/Chicago", "CDT": "America/Chicago"}
+                                    tz = _ZI(tz_map.get(tz_abbr, "UTC"))
+                                    naive = _dt.strptime(" ".join(parts[1:3]), "%Y-%m-%d %H:%M:%S")
+                                    aware = naive.replace(tzinfo=tz)
+                                    result[key] = aware.astimezone(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    # DB fallback for any still-missing keys
     try:
         with get_conn(_db_path()) as conn:
-            # Last completed task per team
             rows = conn.execute(
                 "SELECT team, MAX(completed_at_utc) AS last_run FROM agent_tasks "
                 "WHERE status='completed' GROUP BY team"
             ).fetchall()
             for r in rows:
-                result[str(r["team"]) + "_last_run"] = r["last_run"]
-            # Scanner: last trade opened (proxy for scanner run)
-            scanner = conn.execute(
-                "SELECT MAX(opened_at) AS last FROM trades"
-            ).fetchone()
-            if scanner and scanner["last"]:
-                result["scanner_last_run"] = scanner["last"]
-            # Researcher: last finding
-            researcher = conn.execute(
-                "SELECT MAX(created_at_utc) AS last FROM findings WHERE author='researcher'"
-            ).fetchone()
-            if researcher and researcher["last"]:
-                result["researcher_last_run"] = researcher["last"]
+                k = str(r["team"]) + "_last_run"
+                if k not in result:
+                    result[k] = r["last_run"]
+            if "scanner_last_run" not in result:
+                row = conn.execute("SELECT MAX(opened_at) AS last FROM trades").fetchone()
+                if row and row["last"]:
+                    result["scanner_last_run"] = row["last"]
+            if "researcher_last_run" not in result:
+                row = conn.execute(
+                    "SELECT MAX(created_at_utc) AS last FROM findings WHERE author='researcher'"
+                ).fetchone()
+                if row and row["last"]:
+                    result["researcher_last_run"] = row["last"]
     except Exception:
         pass
     return result
@@ -852,6 +900,7 @@ def _overview_payload() -> dict[str, Any]:
         "regime": regime,
         "daily_brief": daily_brief,
         "agents_last_run": agents_last_run,
+        "recent_trades": _fetch_recent_trades(limit=12),
     }
 
 

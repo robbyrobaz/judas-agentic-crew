@@ -651,6 +651,164 @@ def _fetch_open_positions() -> list[dict[str, Any]]:
     return result
 
 
+def _fetch_week_stats() -> dict[str, Any]:
+    with get_conn(_db_path()) as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS trades,
+                COALESCE(SUM(CASE WHEN status='closed' AND pnl_dollars > 0 THEN 1 ELSE 0 END), 0) AS wins,
+                COALESCE(SUM(CASE WHEN status='closed' AND pnl_dollars <= 0 THEN 1 ELSE 0 END), 0) AS losses,
+                COALESCE(SUM(CASE WHEN status='closed' THEN pnl_dollars ELSE 0 END), 0.0) AS pnl
+            FROM trades
+            WHERE opened_at >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-7 days')
+            """
+        ).fetchone()
+    return {
+        "trades": int(row["trades"] or 0),
+        "wins": int(row["wins"] or 0),
+        "losses": int(row["losses"] or 0),
+        "pnl": round(float(row["pnl"] or 0.0), 2),
+    }
+
+
+def _fetch_youtube_stats() -> dict[str, Any]:
+    with get_conn(_db_path()) as conn:
+        week = conn.execute(
+            "SELECT COUNT(*) AS n FROM findings WHERE title LIKE 'YT:%' "
+            "AND created_at_utc >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-7 days')"
+        ).fetchone()
+        today = conn.execute(
+            "SELECT COUNT(*) AS n FROM findings WHERE title LIKE 'YT:%' "
+            "AND created_at_utc >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', 'start of day')"
+        ).fetchone()
+    return {"this_week": int(week["n"] or 0), "today": int(today["n"] or 0)}
+
+
+def _fetch_candidates_count() -> dict[str, Any]:
+    with get_conn(_db_path()) as conn:
+        pending = conn.execute(
+            "SELECT COUNT(*) AS n FROM strategy_candidates WHERE status='candidate'"
+        ).fetchone()
+    return {"pending": int(pending["n"] or 0)}
+
+
+def _fetch_activity_feed() -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    with get_conn(_db_path()) as conn:
+        # Recent findings
+        findings = conn.execute(
+            "SELECT created_at_utc AS ts, author, title, body FROM findings "
+            "WHERE status='active' ORDER BY created_at_utc DESC LIMIT 30"
+        ).fetchall()
+        for f in findings:
+            title = str(f["title"] or "")
+            body = str(f["body"] or "")
+            # Truncate to 80 chars for display
+            summary = title if len(title) <= 80 else title[:77] + "..."
+            events.append({
+                "ts": str(f["ts"] or ""),
+                "agent": str(f["author"] or "researcher"),
+                "type": "finding",
+                "summary": summary,
+                "detail": body[:120] if body else "",
+            })
+        # Completed agent tasks
+        tasks = conn.execute(
+            "SELECT completed_at_utc AS ts, claimed_by, team, action, result_json "
+            "FROM agent_tasks WHERE status='completed' AND completed_at_utc IS NOT NULL "
+            "ORDER BY completed_at_utc DESC LIMIT 30"
+        ).fetchall()
+        for t in tasks:
+            agent = str(t["claimed_by"] or t["team"] or "agent")
+            action = str(t["action"] or "")
+            events.append({
+                "ts": str(t["ts"] or ""),
+                "agent": agent,
+                "type": "task",
+                "summary": f"{action}",
+                "detail": "",
+            })
+        # Recent trades (signals from scanner)
+        trades = conn.execute(
+            "SELECT opened_at AS ts, symbol, direction, entry_fill, pnl_dollars, status "
+            "FROM trades ORDER BY opened_at DESC LIMIT 15"
+        ).fetchall()
+        for tr in trades:
+            sym = str(tr["symbol"] or "")
+            direction = str(tr["direction"] or "")
+            status = str(tr["status"] or "")
+            pnl = tr["pnl_dollars"]
+            pnl_str = f" → ${pnl:+.2f}" if pnl is not None and status == "closed" else ""
+            events.append({
+                "ts": str(tr["ts"] or ""),
+                "agent": "scanner",
+                "type": "trade",
+                "summary": f"{sym} {direction.upper()} {status}{pnl_str}",
+                "detail": f"entry {tr['entry_fill']}",
+            })
+    # Sort by ts descending, return top 20
+    events.sort(key=lambda e: e["ts"], reverse=True)
+    return events[:20]
+
+
+def _fetch_regime() -> dict[str, Any]:
+    try:
+        from src.research.regime import tag_regime
+        return tag_regime(db_path=str(_db_path()))
+    except Exception as exc:
+        return {"vol_regime": "unknown", "trend": "unknown", "leaders": [], "error": str(exc)}
+
+
+def _fetch_daily_brief_snippet() -> dict[str, Any] | None:
+    try:
+        with get_conn(_db_path()) as conn:
+            row = conn.execute(
+                "SELECT brief_date, summary_json FROM daily_briefs ORDER BY brief_date DESC LIMIT 1"
+            ).fetchone()
+        if not row:
+            return None
+        summary = json.loads(row["summary_json"] or "{}")
+        # Get a short snippet — try common keys
+        snippet = (
+            summary.get("summary") or
+            summary.get("narrative") or
+            summary.get("overview") or
+            str(summary)[:200]
+        )
+        return {"date": str(row["brief_date"]), "snippet": str(snippet)[:300]}
+    except Exception:
+        return None
+
+
+def _fetch_agents_last_run() -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    try:
+        with get_conn(_db_path()) as conn:
+            # Last completed task per team
+            rows = conn.execute(
+                "SELECT team, MAX(completed_at_utc) AS last_run FROM agent_tasks "
+                "WHERE status='completed' GROUP BY team"
+            ).fetchall()
+            for r in rows:
+                result[str(r["team"]) + "_last_run"] = r["last_run"]
+            # Scanner: last trade opened (proxy for scanner run)
+            scanner = conn.execute(
+                "SELECT MAX(opened_at) AS last FROM trades"
+            ).fetchone()
+            if scanner and scanner["last"]:
+                result["scanner_last_run"] = scanner["last"]
+            # Researcher: last finding
+            researcher = conn.execute(
+                "SELECT MAX(created_at_utc) AS last FROM findings WHERE author='researcher'"
+            ).fetchone()
+            if researcher and researcher["last"]:
+                result["researcher_last_run"] = researcher["last"]
+    except Exception:
+        pass
+    return result
+
+
 def _overview_payload() -> dict[str, Any]:
     session = json.loads(session_status_tool.run(input_json="{}"))
     signals = _fetch_recent_signals(limit=8)
@@ -661,6 +819,13 @@ def _overview_payload() -> dict[str, Any]:
     now_utc = datetime.now(timezone.utc)
     now_et = now_utc.astimezone(ZoneInfo("America/New_York"))
     now_phx = now_utc.astimezone(ZoneInfo("America/Phoenix"))
+    week_stats = _fetch_week_stats()
+    youtube_stats = _fetch_youtube_stats()
+    candidates = _fetch_candidates_count()
+    activity_feed = _fetch_activity_feed()
+    regime = _fetch_regime()
+    daily_brief = _fetch_daily_brief_snippet()
+    agents_last_run = _fetch_agents_last_run()
     return {
         "now_utc": now_utc.isoformat(),
         "now_et": now_et.isoformat(),
@@ -680,6 +845,13 @@ def _overview_payload() -> dict[str, Any]:
         "trading_stats": _fetch_trading_stats(),
         "research_stats": _fetch_research_stats(),
         "open_positions": _fetch_open_positions(),
+        "week_stats": week_stats,
+        "youtube_stats": youtube_stats,
+        "candidates": candidates,
+        "activity_feed": activity_feed,
+        "regime": regime,
+        "daily_brief": daily_brief,
+        "agents_last_run": agents_last_run,
     }
 
 

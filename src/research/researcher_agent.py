@@ -36,7 +36,7 @@ Pull the top 4–8 results from the last 24–48 hours.
 
 DEDUPLICATION — before fetching any transcript:
   Check findings: read_findings() and look for entries with title starting
-  "YT:{video_id}:" — if found, SKIP that video, it's already processed.
+  "YT:{{video_id}}:" — if found, SKIP that video, it's already processed.
   Only fetch transcripts for videos NOT already in findings.
 
 For each unprocessed video:
@@ -49,9 +49,9 @@ For each unprocessed video:
     - Entry/exit conditions
 
 After processing a video (regardless of outcome):
-  record_finding(title="YT:{video_id}:{video_title}",
+  record_finding(title="YT:{{video_id}}:{{video_title}}",
                  body="EXTRACTED: [concepts] / BACKTEST: [result] / VERDICT: [accepted|rejected]",
-                 refs={"video_id": ..., "url": ..., "channel": ...})
+                 refs={{"video_id": ..., "url": ..., "channel": ...}})
 
 ### 3. WEB CONTEXT
   web_search("gold futures ICT setup today")

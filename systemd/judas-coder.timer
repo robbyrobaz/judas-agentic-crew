@@ -1,8 +1,8 @@
 [Unit]
-Description=Coder cadence — every 5 minutes; consumes coder-team agent_tasks
+Description=Coder cadence — hourly, self-gates when queue is empty
 
 [Timer]
-OnCalendar=*:0/5
+OnCalendar=*:10:00
 Persistent=false
 Unit=judas-coder.service
 

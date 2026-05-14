@@ -146,6 +146,7 @@ function App() {
   const [chat, setChat] = useState<ChatEntry[]>([]);
   const [message, setMessage] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [youtubeQuery, setYoutubeQuery] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [latestBrief, setLatestBrief] = useState<BriefDetail | null>(null);
   const [briefExpanded, setBriefExpanded] = useState(false);
@@ -238,13 +239,13 @@ function App() {
     }
   };
 
-  const runAction = async (path: "/api/run/doctor" | "/api/run/research") => {
+  const runAction = async (path: string, body?: object) => {
     setBusyAction(path);
     try {
       const data = await getJson<{ ok: boolean; output: string }>(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol: "MGC" }),
+        body: body ? JSON.stringify(body) : undefined,
       });
       setChat((current) => [
         ...current,
@@ -296,6 +297,33 @@ function App() {
                   icon={Play}
                   loading={busyAction === "/api/run/research"}
                   onClick={() => runAction("/api/run/research")}
+                />
+                <InlineActionButton
+                  label={busyAction === "/api/run/researcher" ? "Researcher..." : "Run Researcher Now"}
+                  disabled={!!busyAction}
+                  loading={busyAction === "/api/run/researcher"}
+                  onClick={() => runAction("/api/run/researcher")}
+                />
+                <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    placeholder="YouTube concept..."
+                    value={youtubeQuery}
+                    onChange={(e) => setYoutubeQuery(e.target.value)}
+                    style={{ fontSize: "12px", padding: "2px 6px", borderRadius: "4px", border: "1px solid #555", background: "#1a1a2e", color: "#e0e0e0", width: "160px" }}
+                  />
+                  <InlineActionButton
+                    label={busyAction === "/api/run/youtube" ? "Searching..." : "YouTube"}
+                    disabled={!!busyAction || !youtubeQuery.trim()}
+                    loading={busyAction === "/api/run/youtube"}
+                    onClick={() => runAction("/api/run/youtube", { query: youtubeQuery })}
+                  />
+                </div>
+                <InlineActionButton
+                  label={busyAction === "/api/run/sweep" ? "Sweeping..." : "Sweep All Symbols"}
+                  disabled={!!busyAction}
+                  loading={busyAction === "/api/run/sweep"}
+                  onClick={() => runAction("/api/run/sweep")}
                 />
                 <InlineStatChip
                   label="Research"
@@ -641,20 +669,22 @@ function InlineActionButton({
   label,
   icon: Icon,
   loading,
+  disabled,
   onClick,
 }: {
   label: string;
-  icon: typeof Play;
+  icon?: typeof Play;
   loading: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      disabled={loading}
+      disabled={disabled ?? loading}
       className="inline-flex items-center gap-2 rounded-xl border border-line/70 bg-white/68 px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-white/88 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      <Icon size={14} />
+      {Icon ? <Icon size={14} /> : null}
       <span>{label}</span>
     </button>
   );

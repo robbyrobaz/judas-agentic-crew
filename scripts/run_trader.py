@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Trader specialist runner — invoked by judas-trader.timer (5-min poll)."""
+"""Trader specialist runner — invoked by judas-trader.timer (hourly poll)."""
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -18,6 +19,13 @@ def main() -> int:
         "JUDAS_DB_PATH",
         str(Path(__file__).resolve().parents[1] / "judas_crew.db"),
     )
+    # Self-gate: skip if no pending trader tasks
+    pending = sqlite3.connect(db_path).execute(
+        "SELECT COUNT(*) FROM agent_tasks WHERE team='trader' AND status='open'"
+    ).fetchone()[0]
+    if pending == 0:
+        print("trader: no pending tasks — skipping")
+        return 0
     result = run_trader_decision(db_path=db_path)
     print(
         f"trader: success={result.success} actions={len(result.actions_taken)} "

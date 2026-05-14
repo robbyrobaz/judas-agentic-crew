@@ -1,8 +1,10 @@
 [Unit]
-Description=Registrar cadence — every 5 minutes
+Description=Registrar cadence — 3×/day queue flush after Operator runs
 
 [Timer]
-OnCalendar=*:0/5
+OnCalendar=*-*-* 06:30:00 UTC
+OnCalendar=*-*-* 13:30:00 UTC
+OnCalendar=*-*-* 21:30:00 UTC
 Persistent=false
 Unit=judas-registrar.service
 

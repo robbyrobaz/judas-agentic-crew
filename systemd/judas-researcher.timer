@@ -1,9 +1,20 @@
 [Unit]
-Description=Researcher cadence — weekend hourly + weekday nightly
+Description=Researcher blitz — every 90 min during market hours + nightly sessions
 
 [Timer]
-OnCalendar=Sat,Sun *:15:00
-OnCalendar=Mon..Fri 19:15:00
+# Market-hours blitz (13:30–21:00 UTC, every 90 min, Mon–Sun)
+OnCalendar=*-*-* 13:30:00 UTC
+OnCalendar=*-*-* 15:00:00 UTC
+OnCalendar=*-*-* 16:30:00 UTC
+OnCalendar=*-*-* 18:00:00 UTC
+OnCalendar=*-*-* 19:30:00 UTC
+OnCalendar=*-*-* 21:00:00 UTC
+# Post-NY deep session
+OnCalendar=*-*-* 22:00:00 UTC
+# Pre-London session
+OnCalendar=*-*-* 04:00:00 UTC
+# Sunday weekly overhaul
+OnCalendar=Sun *-*-* 14:00:00 UTC
 Persistent=false
 Unit=judas-researcher.service
 

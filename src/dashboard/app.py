@@ -873,6 +873,72 @@ def create_app() -> Flask:
         code, output = _run_subprocess([str(REPO_ROOT / ".venv" / "bin" / "python"), "scripts/run_research.py", "--symbol", symbol, "--log-level", "INFO"])
         return jsonify({"ok": code == 0, "output": _format_research_output(symbol, code == 0, output), "raw_output": output})
 
+    @app.post("/api/run/researcher")
+    def run_researcher() -> Any:
+        code, output = _run_subprocess([
+            str(REPO_ROOT / ".venv" / "bin" / "python"),
+            "scripts/run_researcher.py",
+        ])
+        lines = [l.strip() for l in output.splitlines() if l.strip()]
+        status = "completed" if code == 0 else "failed"
+        tail = lines[-8:]
+        body = "\n".join(["### Researcher " + status, "", "```text"] + tail + ["```"])
+        return jsonify({"ok": code == 0, "output": body, "raw_output": output})
+
+    @app.post("/api/run/youtube")
+    def run_youtube() -> Any:
+        payload = request.get_json(silent=True) or {}
+        query = str(payload.get("query", "ICT liquidity sweep 2026")).strip()
+        # Inject a researcher task via the DB directly so the next researcher run picks it up
+        with get_conn(_db_path()) as conn:
+            conn.execute(
+                """INSERT INTO agent_tasks
+                   (requested_at_utc, requester, team, action, payload_json, rationale, urgency, status)
+                   VALUES (strftime('%Y-%m-%dT%H:%M:%SZ','now'), 'dashboard', 'researcher',
+                           'youtube_search', ?, 'Dashboard YouTube search request', 'high', 'open')""",
+                (json.dumps({"query": query}),),
+            )
+        # Then immediately trigger a researcher run
+        code, output = _run_subprocess([
+            str(REPO_ROOT / ".venv" / "bin" / "python"),
+            "scripts/run_researcher.py",
+        ])
+        lines = [l.strip() for l in output.splitlines() if l.strip()]
+        status = "completed" if code == 0 else "failed"
+        tail = lines[-8:]
+        body = "\n".join([f"### YouTube search '{query}' {status}", "", "```text"] + tail + ["```"])
+        return jsonify({"ok": code == 0, "output": body, "query": query})
+
+    @app.post("/api/run/sweep")
+    def run_sweep() -> Any:
+        payload = request.get_json(silent=True) or {}
+        strategy_family = str(payload.get("strategy_family", "judas_1h"))
+        params = payload.get("params", {})
+        # Inject a researcher task to sweep all 8 symbols
+        task_payload = {
+            "strategy_family": strategy_family,
+            "params": params,
+            "symbols": ["MGC", "MNQ", "MCL", "MBT", "MET", "DX", "ZF", "6J"],
+        }
+        with get_conn(_db_path()) as conn:
+            conn.execute(
+                """INSERT INTO agent_tasks
+                   (requested_at_utc, requester, team, action, payload_json, rationale, urgency, status)
+                   VALUES (strftime('%Y-%m-%dT%H:%M:%SZ','now'), 'dashboard', 'researcher',
+                           'sweep_all_symbols', ?, 'Dashboard sweep all symbols request', 'high', 'open')""",
+                (json.dumps(task_payload),),
+            )
+        # Trigger researcher run
+        code, output = _run_subprocess([
+            str(REPO_ROOT / ".venv" / "bin" / "python"),
+            "scripts/run_researcher.py",
+        ])
+        lines = [l.strip() for l in output.splitlines() if l.strip()]
+        status = "completed" if code == 0 else "failed"
+        tail = lines[-8:]
+        body = "\n".join([f"### Sweep all symbols ({strategy_family}) {status}", "", "```text"] + tail + ["```"])
+        return jsonify({"ok": code == 0, "output": body})
+
     @app.get("/api/demotions")
     def demotions() -> Any:
         with get_conn(_db_path()) as conn:

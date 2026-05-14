@@ -150,12 +150,23 @@ def run_operator_decision(
     except Exception:  # noqa: BLE001
         date_et = datetime.now(timezone.utc).isoformat()
 
+    today_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     base = run_agent_loop(
         db_path=db_path,
         system_prompt=SYSTEM_PROMPT.format(
             turn_budget=turn_budget, time_budget_s=time_budget_s,
         ),
-        user_kickoff=f"It's {date_et}. Manage the lab.",
+        user_kickoff=(
+            f"It's {date_et}. Manage the lab.\n\n"
+            f"If this is the 21:00 UTC run (post-NY close): review today's scanner fires, "
+            f"today's Researcher output (new findings, candidates), and any open agent_tasks. "
+            f"Write a daily brief as a record_finding with title 'DAILY_BRIEF:{today_date}' covering: "
+            f"trades today, regime, research wins/losses, tomorrow's watch list. "
+            f"Then delegate next-day research priorities to the Researcher task queue.\n\n"
+            f"If this is the 06:00 UTC run (pre-London): check new candidates from overnight Researcher, "
+            f"check strategies with 0 fires in 14+ days, check macro news, update regime tag, "
+            f"write a pre-session brief note as record_finding with title 'SESSION_BRIEF:{today_date}:pre-london'."
+        ),
         tools=tools, schemas=schemas,
         turn_budget=turn_budget, time_budget_s=time_budget_s,
         minimax_model=minimax_model,

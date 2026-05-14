@@ -645,6 +645,104 @@ def _save_signal_and_trade(db_path: str, fire: ActiveFire, order: dict[str, Any]
     return {"signal_id": signal_id, "trade_id": trade_id}
 
 
+def _reconcile_open_trades(db_path: str, bars_by_sym: dict[str, pd.DataFrame]) -> int:
+    """Close any open DB trades whose stop or target was crossed by the last bar.
+
+    This is a best-effort reconciliation: it uses the cached 1H bars to detect
+    whether stop/target was hit since the trade was opened.  Fill price is set
+    to the stop or target level (paper account semantics).  Returns number of
+    trades closed.
+    """
+    from src.db.models import get_conn
+
+    with get_conn(db_path) as conn:
+        open_trades = conn.execute(
+            "SELECT id, symbol, direction, qty, entry_fill, stop_price, target_price, opened_at "
+            "FROM trades WHERE status = 'open'"
+        ).fetchall()
+
+    closed = 0
+    for row in open_trades:
+        sym = str(row["symbol"]).upper()
+        bars = bars_by_sym.get(sym)
+        if bars is None or bars.empty:
+            continue
+
+        opened_at = str(row["opened_at"])
+        stop = float(row["stop_price"] or 0)
+        target = float(row["target_price"] or 0)
+        direction = str(row["direction"])
+        qty = int(row["qty"] or 1)
+        entry = float(row["entry_fill"] or 0)
+
+        if not stop or not target or not entry:
+            continue
+
+        spec = _CONTRACT_SPECS.get(sym, {})
+        ts_val = spec.get("tick_value", 1.0)
+        ts_sz = spec.get("tick", 0.01)
+        dpp = ts_val / ts_sz if ts_sz else 1.0
+
+        # Only look at bars since the trade opened.
+        try:
+            since = pd.to_datetime(opened_at, utc=True)
+        except Exception:
+            continue
+        post = bars[bars["ts"] > since]
+        if post.empty:
+            continue
+
+        exit_fill: float | None = None
+        exit_reason: str | None = None
+        exit_ts: str | None = None
+
+        for _, b in post.iterrows():
+            low, high = float(b["low"]), float(b["high"])
+            ts_str = str(b["ts"])
+            if direction == "long":
+                if low <= stop:
+                    exit_fill = stop
+                    exit_reason = "stop"
+                    exit_ts = ts_str
+                    break
+                if high >= target:
+                    exit_fill = target
+                    exit_reason = "target"
+                    exit_ts = ts_str
+                    break
+            else:
+                if high >= stop:
+                    exit_fill = stop
+                    exit_reason = "stop"
+                    exit_ts = ts_str
+                    break
+                if low <= target:
+                    exit_fill = target
+                    exit_reason = "target"
+                    exit_ts = ts_str
+                    break
+
+        if exit_fill is None:
+            continue
+
+        pnl = round(
+            ((exit_fill - entry) if direction == "long" else (entry - exit_fill)) * dpp * qty,
+            2,
+        )
+        with get_conn(db_path) as conn:
+            conn.execute(
+                "UPDATE trades SET status='closed', exit_fill=?, pnl_dollars=?, closed_at=? WHERE id=?",
+                (exit_fill, pnl, exit_ts, int(row["id"])),
+            )
+        log.info(
+            "reconcile.closed trade_id=%d sym=%s reason=%s exit=%.4f pnl=%.2f",
+            int(row["id"]), sym, exit_reason, exit_fill, pnl,
+        )
+        closed += 1
+
+    return closed
+
+
 def _gate_fire(
     db_path: str,
     fire: ActiveFire,
@@ -801,6 +899,8 @@ def run_portfolio_scan(
         else:
             needed_symbols.add(str(row["symbol"]).upper())
     bars_by_sym = bar_cache.refresh_cache(needed_symbols, host=host, port=port, client_id=data_client_id)
+
+    _reconcile_open_trades(db_path, bars_by_sym)
 
     fired: list[dict[str, Any]] = []
     placed = 0

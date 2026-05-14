@@ -396,9 +396,10 @@ def flatten_position(*, symbol: str, side: str, qty: int) -> dict:
 
     # Sleeve guard: refuse to flatten any symbol we don't have an open
     # trades row for. The IBKR paper account is shared with the workshop
-    # and options-recorder — we must not close their positions.
+    # and options-recorder -- we must not close their positions.
     try:
         import sqlite3 as _sql
+        db_path = os.environ.get("JUDAS_DB_PATH", str(Path.home() / ".judas" / "judas.db"))
         conn = _sql.connect(db_path)
         try:
             row = conn.execute(

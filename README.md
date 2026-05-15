@@ -62,15 +62,18 @@ The Operator is a **manager that delegates**. Specialists do the work.
 `get_strategy_detail`, `get_recent_experiments`, `get_open_positions`,
 `get_regime_tag`.
 
-**Researcher** — ingestion + backtests + proposals only:
-`get_active_strategies`, `get_strategy_detail`, `get_workshop_leaderboard`,
-`get_candidates_queue`, `get_recent_pnl`, `get_regime_tag`,
-`get_recent_briefs`, `get_recent_experiments`, `query_db`, `web_search`,
-`web_fetch`, `fetch_youtube_transcript`, `search_youtube_trading_videos`,
-`read_file`, `list_files`, `read_research_artifact`,
-`run_judas_threshold_sweep`, `run_walk_forward`, `run_custom_backtest`,
-`propose_candidate`, `propose_custom_strategy`, `claim_task`,
-`complete_task`, `get_open_tasks`.
+**Researcher** — ingestion + backtests + proposals only (20 tools):
+`web_search`, `web_fetch`, `fetch_youtube_transcript`,
+`search_youtube_trading_videos`, `read_file`, `list_files`,
+`read_research_artifact`, `run_judas_threshold_sweep`, `run_walk_forward`,
+`run_custom_backtest`, `propose_candidate`, `propose_custom_strategy`,
+`claim_task`, `complete_task`, `record_finding`, `retract_finding`,
+`get_strategy_detail`, `get_strategy_dossier`, `query_db`, `get_recent_pnl`.
+
+**Note:** read-only discovery tools (`get_active_strategies`,
+`get_open_tasks`, `get_recent_briefs`, etc.) are NOT in the Researcher schema.
+That data is pre-loaded into the kickoff message via `_build_kickoff()` before
+the first LLM call — so every turn is spent on action, not discovery.
 
 **Trader** — execute + cancel + report fills:
 `place_bracket_order`, `cancel_order`, `get_open_positions`, `get_fills`,
@@ -109,16 +112,17 @@ Tests: **97/97 passing.** Wall-clock to ship 0/1/2/4/5 + 3 design + 3 a/b/c full
 
 ## Daily Routine
 
-The system runs on three independent cadences:
+The system runs on independent cadences (V2 schedule — see `AGENTIC_PLAN_V2.md`):
 
 | Cadence | Service / Timer | What it does |
 |---|---|---|
-| Hourly | `judas-crew.timer` (existing trading runtime) | Scans `active_strategies`, evaluates each on fresh 1H bars, places paper bracket orders. **Pure deterministic Python** — no LLM in the order path. |
-| Hourly (weekends) / nightly (weekdays) | `judas-researcher.timer` | Researcher specialist — ingests web/YouTube/files, runs backtests, proposes candidates. Replaces the old `judas-research.timer`. |
-| Every 5 min | `judas-trader.timer` | Trader specialist — pulls queued trades and places brackets. |
-| Every 5 min | `judas-registrar.timer` | Registrar specialist — applies queued retire/promote/modify atomically. |
-| **Daily 06:00 ET** | **`judas-operator.timer`** (the brain) | The OperatorFlow morning review — see below. |
-| Always-on | `judas-dashboard.service` | Flask backend + React frontend on `:8080` |
+| Hourly | `judas-crew.timer` | Scans `active_strategies`, evaluates each on fresh 1H bars, places paper bracket orders. **Zero LLM — pure deterministic Python.** Reconciles open trades against stop/target each run. |
+| Every 90 min (market hours) + 2× nightly | `judas-researcher.timer` | Researcher specialist — ingests YouTube/web, runs backtests, proposes candidates. Pre-loads full context (strategies, tasks, findings, brief) before first LLM call so every turn is productive work. |
+| 2×/day — 06:00 + 21:00 UTC | `judas-operator.timer` | Operator — pre-London review + post-NY close. Reads portfolio state, delegates to specialists, writes daily brief. |
+| 3×/day — 06:30, 13:30, 21:30 UTC | `judas-registrar.timer` | Registrar — short queue-flush session. Promotes candidates, retires dead strategies. |
+| Hourly self-gating | `judas-trader.timer` | Trader — fires hourly but skips in `<100ms` if no pending trader tasks. |
+| Hourly self-gating | `judas-coder.timer` | Coder — fires hourly but skips in `<100ms` if no pending coder tasks. |
+| Always-on | `judas-dashboard.service` | Flask backend + frontend on `:5080` |
 
 ### What the OperatorFlow does each morning
 
@@ -210,10 +214,13 @@ scripts/
   import_workshop_seed.py        one-shot baseline import from ../judas-futures-workshop
 
 systemd/
-  judas-crew.{service,timer}             hourly trading
-  judas-research.{service,timer}         weekend research
-  judas-operator.{service,timer}         daily 06:00 ET brain
-  judas-dashboard.service                always-on Flask + frontend
+  judas-crew.{service,timer}             hourly trading (zero LLM)
+  judas-researcher.{service,timer}       90-min blitz + 2 nightly sessions
+  judas-operator.{service,timer}         2×/day 06:00+21:00 UTC
+  judas-registrar.{service,timer}        3×/day queue-flush
+  judas-trader.{service,timer}           hourly self-gate (skips when no tasks)
+  judas-coder.{service,timer}            hourly self-gate (skips when no tasks)
+  judas-dashboard.service                always-on Flask + frontend on :5080
   install.sh                             rootless --user install
 
 knowledge_base/

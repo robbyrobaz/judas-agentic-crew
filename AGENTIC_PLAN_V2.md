@@ -268,3 +268,40 @@ This creates a continuous improvement loop without any human input after initial
 | New candidates proposed/week | 5–15 |
 | Strategy coverage (symbols with ≥1 active strategy) | All 8 symbols |
 | Scanner zero-LLM runs | 100% |
+
+---
+
+## Deployment Log
+
+### May 14 2026 — V2 timers deployed
+All agent timers cut over to the V2 schedule (2× operator, 3× registrar,
+90-min researcher). Infrastructure polling collapsed from ~475 registrar runs
+over 2 days → 16 runs. Request burn dropped from ~6,800/day to target range.
+
+### May 15 2026 — Researcher context overflow bug fixed
+**Symptom:** Researcher crashed on every run (`turns=1, context window exceeds
+limit (2013)`) starting the moment V2 was deployed. Root cause: LLM made one
+tool call (`get_open_tasks`) on turn 0 which returned 9.5KB of task data;
+accumulated context on turn 1 then exceeded MiniMax's limit. Zero productive
+research sessions ran for ~5 days despite the researcher timer firing.
+
+**Fix (`src/research/researcher_agent.py`):**
+- `_build_kickoff(db_path)` — queries DB before first LLM call and injects
+  active strategies, open tasks (researcher team only), recent findings,
+  pending candidates, and last brief into the `user_kickoff` message.
+- Removed 8 read-only tools from the schema (they're now pre-loaded):
+  `get_active_strategies`, `get_workshop_leaderboard`, `get_open_tasks`,
+  `get_recent_briefs`, `get_recent_experiments`, `get_regime_tag`,
+  `get_candidates_queue`, `read_findings`. Schema: 28 → 20 tools.
+- Also fixed: MNQ zoo RSI 20/80 `strategy_type='None'` DB bug (silently
+  skipping hourly scans), 18 stale `claimed` agent tasks reset to `abandoned`,
+  ghost `judas-research.timer` failed state cleared.
+
+**Validation:** First clean session: `success=True actions=40 turns=7
+elapsed=1378.7s`. 7 LLM requests → 40 actions (backtests + proposals).
+
+**Key design principle (already in plan, now enforced in code):**
+The pre-load approach means each session turn is used for productive work
+(backtest, YouTube, proposal) — not discovery overhead. The LLM never needs
+to ask "what strategies are active?" because the answer is already in the
+kickoff message. This is what makes 7 requests produce 40 actions.

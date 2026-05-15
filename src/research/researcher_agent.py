@@ -2,12 +2,19 @@
 
 Mandate: find strategy ideas, ingest web/YouTube/files, run backtests,
 propose candidates. NO retire/promote/place_bracket.
+
+V2 design: all "read" context is pre-loaded into the kickoff message before
+the first LLM call. Only action tools remain in the schema — no discovery
+tool calls that would balloon the context mid-session.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import sqlite3
 import time
+from datetime import datetime, timezone
 
 from src.research import agent_tools
 from src.research.agent_runner import (
@@ -21,30 +28,33 @@ You are the Researcher on a paper futures trading lab. Your job is to
 find real edges: ingest YouTube ICT content, extract concrete rules,
 backtest them, and propose the winners.
 
+Your full briefing (active strategies, open tasks, recent findings, last
+brief) is injected at the top of the first user message — read it before
+acting. Do NOT call get_active_strategies, get_open_tasks, or read_findings;
+that data is already in front of you.
+
 ## Session Loop — run in order every cycle
 
-### 1. CHECK TASK QUEUE FIRST
-Call get_open_tasks() and claim any tasks assigned to the researcher team.
-Work claimed tasks before doing anything else.
+### 1. WORK OPEN TASKS FIRST
+Your briefing lists open tasks by priority. Claim and complete them before
+doing any YouTube ingest. Use claim_task(task_id=...) then complete_task().
 
 ### 2. YOUTUBE INGEST (main driver — do this every session)
 Search for fresh ICT and Smart Money content:
   search_youtube_trading_videos("ICT liquidity sweep 2026")
   search_youtube_trading_videos("SMC order block judas swing")
   search_youtube_trading_videos("inner circle trader [current month/year]")
-Pull the top 4–8 results from the last 24–48 hours.
+Pull the top 4-8 results from the last 24-48 hours.
 
-DEDUPLICATION — before fetching any transcript:
-  Check findings: read_findings() and look for entries with title starting
-  "YT:{{video_id}}:" — if found, SKIP that video, it's already processed.
-  Only fetch transcripts for videos NOT already in findings.
+DEDUPLICATION — your briefing lists the last 10 processed video IDs.
+Check the "YT:{{video_id}}:" prefix. Only fetch transcripts for new videos.
 
 For each unprocessed video:
   fetch_youtube_transcript(url)
   Extract concrete, testable rules:
     - Session windows (time ranges in UTC)
-    - Sweep criteria (how many pips, ATR multiples)
-    - Displacement thresholds
+    - Sweep criteria (ATR multiples, pip counts)
+    - Displacement thresholds, body ratios
     - FVG requirements
     - Entry/exit conditions
 
@@ -57,9 +67,8 @@ After processing a video (regardless of outcome):
   web_search("gold futures ICT setup today")
   web_search("dollar index liquidity levels [today's date]")
 Grab macro context: key levels, session biases, news events.
-Note the regime tag for the day.
 
-### 4. BACKTEST (target 2–5 runs per session)
+### 4. BACKTEST (target 2-5 runs per session)
 For each extracted concept, formulate concrete parameters and test:
   run_judas_threshold_sweep() or run_walk_forward() or run_custom_backtest()
 Test against cached 1H bars for all relevant symbols.
@@ -70,46 +79,132 @@ Acceptance threshold: PF > 1.5 AND >= 20 trades.
 When any parameter set clears the threshold on one symbol, immediately
 sweep it across ALL 8 symbols in the same session:
   Symbols: MGC, MNQ, MCL, MBT, MET, DX, ZF, 6J
-Run one backtest call per symbol — the Python loops are free (no LLM turns).
+One backtest call per symbol — Python loops inside the tool are free.
 
 ### 6. PROPOSE OR DISCARD
-  If clears threshold on any symbol: propose_candidate()
-  If fails threshold: record_finding() with "REJECTED: [reason]"
-  Never re-test a rejected concept in a future session.
+  If clears threshold: propose_candidate()
+  If fails: record_finding() with "REJECTED: [reason]" so it's never re-tested.
 
-## Symbols by priority
+## Symbols by priority (highest gap = top priority)
+Symbols with NO active strategy are the highest research priority.
 MGC (gold micro) > MNQ (Nasdaq micro) > MCL (crude micro) > MBT (bitcoin micro)
 MET (ether micro), DX (dollar index), ZF (5yr treasury), 6J (yen)
-
-## What to check before searching YouTube
-  get_workshop_leaderboard() — what's winning right now?
-  get_active_strategies() — which symbols have no active strategy? (those are top priority)
-  get_regime_tag() — what's the macro backdrop?
-  get_recent_briefs() — what did the Operator flag?
 
 ## Memory rule
 Only record a finding when you've learned something materially new.
 Do NOT record a finding just because a cycle ended or a search returned nothing.
 """
 
-INCLUDE_TOOLS = {    # reads
-    "get_active_strategies", "get_strategy_detail", "get_workshop_leaderboard",
-    "get_candidates_queue", "get_recent_pnl", "get_regime_tag",
-    "get_recent_briefs", "get_recent_experiments", "query_db",
+# Only action tools — "read" tools replaced by pre-loaded kickoff context.
+INCLUDE_TOOLS = {
     # ingestion
-    "web_search", "web_fetch", "fetch_youtube_transcript",
-    "search_youtube_trading_videos",
+    "web_search", "web_fetch",
+    "fetch_youtube_transcript", "search_youtube_trading_videos",
     "read_file", "list_files", "read_research_artifact",
     # backtesting
     "run_judas_threshold_sweep", "run_walk_forward", "run_custom_backtest",
-    # proposals only
+    # proposals
     "propose_candidate", "propose_custom_strategy",
-    # queue
-    "claim_task", "complete_task", "get_open_tasks",
-    # shared findings memory
-    "record_finding", "read_findings", "retract_finding",
-    "get_strategy_dossier",
+    # queue — claim/complete only (no get_open_tasks; tasks are pre-loaded)
+    "claim_task", "complete_task",
+    # findings — write only (no read_findings; recent findings are pre-loaded)
+    "record_finding", "retract_finding",
+    # deep dives when needed
+    "get_strategy_detail", "get_strategy_dossier",
+    "query_db", "get_recent_pnl",
 }
+
+
+def _build_kickoff(db_path: str) -> str:
+    """Build the pre-loaded briefing injected as the first user message."""
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    lines = [f"=== RESEARCHER BRIEFING — {now} ===\n"]
+
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+
+        # Active strategies
+        rows = conn.execute("""
+            SELECT symbol, strategy_family, version, params_json
+            FROM active_strategies WHERE state='active'
+            ORDER BY symbol, strategy_family
+        """).fetchall()
+        all_syms = {"MGC", "MNQ", "MCL", "MBT", "MET", "DX", "ZF", "6J"}
+        active_syms: set[str] = set()
+        lines.append(f"ACTIVE STRATEGIES ({len(rows)}):")
+        for r in rows:
+            p = json.loads(r["params_json"] or "{}")
+            name = p.get("strategy_name") or p.get("strategy_type") or "?"
+            lines.append(f"  {r['symbol']} {r['strategy_family']} v{r['version']} — {name}")
+            active_syms.add(r["symbol"])
+        uncovered = sorted(all_syms - active_syms)
+        if uncovered:
+            lines.append(f"  *** UNCOVERED (zero active): {', '.join(uncovered)} — PRIORITY ***")
+        lines.append("")
+
+        # Open researcher tasks (top 12 by priority)
+        task_rows = conn.execute("""
+            SELECT id, action, urgency, rationale
+            FROM agent_tasks
+            WHERE team='researcher' AND status='open'
+            ORDER BY CASE urgency WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+                     requested_at_utc ASC
+            LIMIT 12
+        """).fetchall()
+        if task_rows:
+            lines.append(f"OPEN TASKS FOR YOU ({len(task_rows)}):")
+            for t in task_rows:
+                lines.append(
+                    f"  #{t['id']} [{t['urgency']}] {t['action']}: {str(t['rationale'])[:120]}"
+                )
+            lines.append("")
+
+        # Recent findings (last 10 — for YouTube dedup and context)
+        finding_rows = conn.execute("""
+            SELECT id, title, substr(body, 1, 120) AS body_preview, created_at_utc
+            FROM findings
+            ORDER BY id DESC LIMIT 10
+        """).fetchall()
+        if finding_rows:
+            lines.append(f"RECENT FINDINGS (last {len(finding_rows)}) — YT:id: prefix = already processed:")
+            for f in finding_rows:
+                lines.append(f"  [{f['id']}] {f['title']}: {f['body_preview']}")
+            lines.append("")
+        else:
+            lines.append("RECENT FINDINGS: none yet.\n")
+
+        # Top candidates awaiting promotion
+        cand_rows = conn.execute("""
+            SELECT id, symbol, strategy_family, metrics_json, status
+            FROM strategy_candidates
+            WHERE status='pending'
+            ORDER BY id DESC LIMIT 5
+        """).fetchall()
+        if cand_rows:
+            lines.append(f"PENDING CANDIDATES (awaiting Registrar): {len(cand_rows)}")
+            for c in cand_rows:
+                m = json.loads(c["metrics_json"] or "{}")
+                pf = m.get("profit_factor") or m.get("pf_20") or "?"
+                lines.append(f"  #{c['id']} {c['symbol']} {c['strategy_family']} PF={pf}")
+            lines.append("")
+
+        # Last daily brief summary
+        brief_rows = conn.execute("""
+            SELECT brief_date, substr(content_md, 1, 400) AS preview
+            FROM daily_briefs ORDER BY brief_date DESC LIMIT 1
+        """).fetchall()
+        if brief_rows:
+            lines.append(f"LAST BRIEF ({brief_rows[0]['brief_date']}):")
+            lines.append(str(brief_rows[0]["preview"]))
+            lines.append("")
+
+        conn.close()
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"[context load error: {exc}]")
+
+    lines.append("=== END BRIEFING — begin your session loop above ===")
+    return "\n".join(lines)
 
 
 def run_researcher_decision(
@@ -131,12 +226,15 @@ def run_researcher_decision(
         db_path=db_path, include=INCLUDE_TOOLS, team="researcher",
         claimed_by="researcher_agent", author="researcher",
     )
+
+    kickoff = _build_kickoff(db_path)
+
     return run_agent_loop(
         db_path=db_path,
         system_prompt=SYSTEM_PROMPT.format(
             turn_budget=turn_budget, time_budget_s=time_budget_s,
         ),
-        user_kickoff="Run your research cycle.",
+        user_kickoff=kickoff,
         tools=tools, schemas=schemas,
         turn_budget=turn_budget, time_budget_s=time_budget_s,
         minimax_model=minimax_model,

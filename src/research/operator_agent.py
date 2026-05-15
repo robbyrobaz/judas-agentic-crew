@@ -9,8 +9,10 @@ Tests monkeypatch ``src.research.pm_agent._call_llm`` (shared seam).
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -124,6 +126,110 @@ class OperatorDecisionResult:
     error: str | None = None
 
 
+def _build_operator_kickoff(db_path: str) -> str:
+    """Pre-load compact state into the operator's first message.
+
+    Same pattern as researcher_agent._build_kickoff: gives the LLM
+    everything it needs to delegate immediately on turn 1, without
+    calling discovery tools that would balloon the context and overflow.
+    """
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    lines = [f"=== OPERATOR BRIEFING — {now} ===\n"]
+
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+
+        # Active strategies
+        rows = conn.execute("""
+            SELECT symbol, strategy_family, version, params_json
+            FROM active_strategies WHERE state='active'
+            ORDER BY symbol, strategy_family
+        """).fetchall()
+        all_syms = {"MGC", "MNQ", "MCL", "MBT", "MET", "DX", "ZF", "6J"}
+        active_syms: set[str] = set()
+        lines.append(f"ACTIVE STRATEGIES ({len(rows)}):")
+        for r in rows:
+            p = json.loads(r["params_json"] or "{}")
+            name = p.get("strategy_name") or p.get("strategy_type") or "?"
+            lines.append(f"  {r['symbol']} {r['strategy_family']} v{r['version']} — {name}")
+            active_syms.add(r["symbol"])
+        uncovered = sorted(all_syms - active_syms)
+        if uncovered:
+            lines.append(f"  *** UNCOVERED: {', '.join(uncovered)} — delegate research ***")
+        lines.append("")
+
+        # Candidates awaiting review (compact — just key metrics)
+        cand_rows = conn.execute("""
+            SELECT id, ts_utc, symbol, strategy_family, decision, metrics_json,
+                   substr(rationale, 1, 100) AS rationale_preview
+            FROM strategy_candidates
+            WHERE status='candidate'
+            ORDER BY ts_utc DESC LIMIT 20
+        """).fetchall()
+        total_cands = conn.execute(
+            "SELECT COUNT(*) FROM strategy_candidates WHERE status='candidate'"
+        ).fetchone()[0]
+        if cand_rows:
+            lines.append(f"CANDIDATES AWAITING REVIEW ({total_cands} total, showing top 20):")
+            for c in cand_rows:
+                m = json.loads(c["metrics_json"] or "{}")
+                pf = m.get("profit_factor") or m.get("pf_20") or m.get("pf") or "?"
+                trades = m.get("total_trades") or m.get("n_trades") or "?"
+                lines.append(
+                    f"  #{c['id']} {c['symbol']} {c['strategy_family']} "
+                    f"PF={pf} trades={trades} | {c['rationale_preview']}"
+                )
+            lines.append("  → Use delegate_to_registrar to promote or reject candidates.")
+            lines.append("")
+
+        # Recent P&L
+        trade_rows = conn.execute("""
+            SELECT symbol, direction, pnl_dollars, status, opened_at
+            FROM trades
+            WHERE datetime(COALESCE(closed_at, opened_at)) >= datetime('now', '-7 days')
+            ORDER BY opened_at DESC LIMIT 10
+        """).fetchall()
+        if trade_rows:
+            total_pnl = sum(float(r["pnl_dollars"] or 0) for r in trade_rows if r["status"] == "closed")
+            lines.append(f"RECENT TRADES (last 7 days, total PnL ${total_pnl:+.2f}):")
+            for r in trade_rows:
+                pnl = f"${float(r['pnl_dollars'] or 0):+.2f}" if r["pnl_dollars"] is not None else "open"
+                lines.append(f"  {r['symbol']} {r['direction']} {r['status']} {pnl}")
+            lines.append("")
+
+        # Open tasks from all teams
+        task_rows = conn.execute("""
+            SELECT team, action, urgency, substr(rationale, 1, 80) AS r
+            FROM agent_tasks WHERE status='open'
+            ORDER BY CASE urgency WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+                     requested_at_utc ASC
+            LIMIT 15
+        """).fetchall()
+        if task_rows:
+            lines.append(f"OPEN TEAM TASKS ({len(task_rows)}):")
+            for t in task_rows:
+                lines.append(f"  [{t['team']}] {t['action']} [{t['urgency']}]: {t['r']}")
+            lines.append("")
+
+        # Last brief
+        brief = conn.execute("""
+            SELECT brief_date, substr(content_md, 1, 300) AS preview
+            FROM daily_briefs ORDER BY brief_date DESC LIMIT 1
+        """).fetchone()
+        if brief:
+            lines.append(f"LAST BRIEF ({brief['brief_date']}):")
+            lines.append(str(brief["preview"]))
+            lines.append("")
+
+        conn.close()
+    except Exception:
+        log.exception("operator_agent._build_kickoff failed")
+
+    lines.append("Your job: look at the above, decide what to delegate. Act now.")
+    return "\n".join(lines)
+
+
 def run_operator_decision(
     *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
     minimax_model: str = "minimax/MiniMax-M2.7",
@@ -151,21 +257,26 @@ def run_operator_decision(
         date_et = datetime.now(timezone.utc).isoformat()
 
     today_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    preload = _build_operator_kickoff(db_path)
     base = run_agent_loop(
         db_path=db_path,
         system_prompt=SYSTEM_PROMPT.format(
             turn_budget=turn_budget, time_budget_s=time_budget_s,
         ),
         user_kickoff=(
-            f"It's {date_et}. Manage the lab.\n\n"
-            f"If this is the 21:00 UTC run (post-NY close): review today's scanner fires, "
-            f"today's Researcher output (new findings, candidates), and any open agent_tasks. "
-            f"Write a daily brief as a record_finding with title 'DAILY_BRIEF:{today_date}' covering: "
-            f"trades today, regime, research wins/losses, tomorrow's watch list. "
-            f"Then delegate next-day research priorities to the Researcher task queue.\n\n"
-            f"If this is the 06:00 UTC run (pre-London): check new candidates from overnight Researcher, "
-            f"check strategies with 0 fires in 14+ days, check macro news, update regime tag, "
-            f"write a pre-session brief note as record_finding with title 'SESSION_BRIEF:{today_date}:pre-london'."
+            f"{preload}\n\n"
+            f"It's {date_et}. The briefing above is pre-loaded — do NOT call "
+            f"get_active_strategies, get_candidates_queue, or get_recent_pnl "
+            f"(that data is already above). Use your turns to delegate.\n\n"
+            f"If this is the 21:00 UTC run (post-NY close): review the candidates "
+            f"above and delegate promote/reject to registrar; write a daily brief as "
+            f"record_finding with title 'DAILY_BRIEF:{today_date}' covering trades, "
+            f"regime, research wins/losses, tomorrow's watch list; then delegate "
+            f"next-day research priorities to the Researcher task queue.\n\n"
+            f"If this is the 06:00 UTC run (pre-London): review candidates, "
+            f"delegate promote/reject for any clear winners, check strategies with "
+            f"0 fires in 14+ days, update regime tag, write pre-session brief as "
+            f"record_finding with title 'SESSION_BRIEF:{today_date}:pre-london'."
         ),
         tools=tools, schemas=schemas,
         turn_budget=turn_budget, time_budget_s=time_budget_s,

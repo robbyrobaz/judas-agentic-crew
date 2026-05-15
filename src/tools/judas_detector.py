@@ -527,9 +527,19 @@ def judas_detector_tool(input_json: str) -> str:
     if "ts" not in bars_df.columns:
         bars_df["ts"] = range(len(bars_df))
 
-    # Symbol-specific params
-    _tick_map = {"MGC": 0.10, "MNQ": 0.25}
-    _dpp_map = {"MGC": 10.0, "MNQ": 2.0}
+    # Symbol-specific params — derived from portfolio_runtime._CONTRACT_SPECS
+    # (tick_value / tick = dollar_per_point).  Missing symbols defaulted to
+    # MGC-like values which gave near-zero dollar P&L on 6J/DX/ZF etc.
+    _tick_map = {
+        "MGC": 0.10, "MNQ": 0.25,
+        "MCL": 0.01, "MBT": 5.0, "MET": 0.50,
+        "DX": 0.005, "ZF": 0.0078125, "6J": 0.0000005,
+    }
+    _dpp_map = {
+        "MGC": 10.0, "MNQ": 2.0,
+        "MCL": 100.0, "MBT": 0.1, "MET": 0.1,
+        "DX": 1_000.0, "ZF": 1_000.0, "6J": 12_500_000.0,
+    }
     tick_size = float(strategy_params.get("tick_size", _tick_map.get(symbol, 0.10)))
     dollar_per_point = _dpp_map.get(symbol, 10.0)
 

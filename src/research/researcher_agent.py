@@ -178,7 +178,7 @@ def _build_kickoff(db_path: str) -> str:
         cand_rows = conn.execute("""
             SELECT id, symbol, strategy_family, metrics_json, status
             FROM strategy_candidates
-            WHERE status='pending'
+            WHERE status='candidate'
             ORDER BY id DESC LIMIT 5
         """).fetchall()
         if cand_rows:

@@ -122,6 +122,55 @@ def _infer_importance(*, author: str, title: str, body: str) -> float:
     return 0.6
 
 
+_DB_PATH = _REPO_ROOT / "judas_crew.db"
+
+
+def _sqlite_dual_write(
+    *,
+    author: str,
+    title: str,
+    body: str,
+    created_at_utc: str,
+    strategy_id: int | None = None,
+    strategy_name: str | None = None,
+    symbol: str | None = None,
+    refs: dict | None = None,
+) -> None:
+    """Mirror the finding into the findings SQLite table.
+
+    _build_kickoff() queries this table for YouTube dedup. Without the
+    dual-write, the kickoff always shows zero findings and the LLM
+    re-processes the same videos every session.
+
+    Silently skips if a row with the same title already exists.
+    """
+    import json as _json
+    import sqlite3 as _sqlite3
+
+    try:
+        with _sqlite3.connect(str(_DB_PATH)) as conn:
+            existing = conn.execute(
+                "SELECT id FROM findings WHERE title=? LIMIT 1", (title,)
+            ).fetchone()
+            if existing:
+                return
+            conn.execute(
+                """INSERT INTO findings
+                   (created_at_utc, author, title, body,
+                    strategy_id, strategy_name, symbol, refs_json, status)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (
+                    created_at_utc, author, title, body,
+                    strategy_id, strategy_name,
+                    symbol.upper() if symbol else None,
+                    _json.dumps(refs) if refs else None,
+                    "active",
+                ),
+            )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("memory_backend.sqlite_dual_write_failed extra=%s", exc)
+
+
 def save_memory(
     *,
     author: str,
@@ -185,6 +234,17 @@ def save_memory(
     except Exception as exc:  # noqa: BLE001
         log.exception("memory_backend.save_failed")
         return {"ok": False, "error": f"memory save failed: {exc}"}
+
+    # Dual-write to the findings SQLite table so _build_kickoff() can read
+    # processed video IDs for YouTube deduplication. Without this the kickoff
+    # always shows "RECENT FINDINGS: none yet" and the LLM re-processes the
+    # same YouTube videos every session.
+    _sqlite_dual_write(
+        author=author, title=title, body=body,
+        strategy_id=strategy_id, strategy_name=strategy_name,
+        symbol=symbol, refs=refs,
+        created_at_utc=metadata["created_at_utc"],
+    )
 
     return {
         "ok": True,

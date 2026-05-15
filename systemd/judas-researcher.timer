@@ -1,18 +1,33 @@
 [Unit]
-Description=Researcher blitz — every 90 min during market hours + nightly sessions
+Description=Researcher blitz — every 45 min during market hours + pre-market + nightly sessions
 
 [Timer]
-# Market-hours blitz (13:30–21:00 UTC, every 90 min, Mon–Sun)
+# Pre-market / Asian close (06:00–13:00 UTC, every 90 min)
+OnCalendar=*-*-* 06:00:00 UTC
+OnCalendar=*-*-* 07:30:00 UTC
+OnCalendar=*-*-* 09:00:00 UTC
+OnCalendar=*-*-* 11:00:00 UTC
+# Pre-London warmup
+OnCalendar=*-*-* 12:30:00 UTC
+# Market-hours blitz (13:30–21:00 UTC, every 45 min)
 OnCalendar=*-*-* 13:30:00 UTC
+OnCalendar=*-*-* 14:15:00 UTC
 OnCalendar=*-*-* 15:00:00 UTC
+OnCalendar=*-*-* 15:45:00 UTC
 OnCalendar=*-*-* 16:30:00 UTC
+OnCalendar=*-*-* 17:15:00 UTC
 OnCalendar=*-*-* 18:00:00 UTC
+OnCalendar=*-*-* 18:45:00 UTC
 OnCalendar=*-*-* 19:30:00 UTC
+OnCalendar=*-*-* 20:15:00 UTC
 OnCalendar=*-*-* 21:00:00 UTC
 # Post-NY deep session
 OnCalendar=*-*-* 22:00:00 UTC
+OnCalendar=*-*-* 23:30:00 UTC
 # Pre-London session
-OnCalendar=*-*-* 04:00:00 UTC
+OnCalendar=*-*-* 01:30:00 UTC
+OnCalendar=*-*-* 03:00:00 UTC
+OnCalendar=*-*-* 04:30:00 UTC
 # Sunday weekly overhaul
 OnCalendar=Sun *-*-* 14:00:00 UTC
 Persistent=false

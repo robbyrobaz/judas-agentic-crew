@@ -105,10 +105,10 @@ INCLUDE_TOOLS = {
     "run_judas_threshold_sweep", "run_walk_forward", "run_custom_backtest",
     # proposals
     "propose_candidate", "propose_custom_strategy",
-    # queue — claim/complete only (no get_open_tasks; tasks are pre-loaded)
-    "claim_task", "complete_task",
-    # findings — write only (no read_findings; recent findings are pre-loaded)
-    "record_finding", "retract_finding",
+    # queue
+    "claim_task", "complete_task", "get_open_tasks",
+    # findings
+    "record_finding", "read_findings", "retract_finding",
     # deep dives when needed
     "get_strategy_detail", "get_strategy_dossier",
     "query_db", "get_recent_pnl",

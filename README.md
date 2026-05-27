@@ -4,6 +4,35 @@ A self-running paper futures lab on IBKR that continuously ingests trading conte
 
 ---
 
+## Current State (2026-05-27)
+
+### Active Strategies (6)
+
+| ID | Symbol | Family | Type | Notes |
+|---|---|---|---|---|
+| 3228 | MNQ | judas_1h | judas_native | Sweep+CHoCH, displacement filtered |
+| 3240 | MGC | judas_1h | judas_native | Sweep+CHoCH |
+| 3250 | DX | judas_1h | judas_native | Sweep+CHoCH |
+| 3271 | MET | buffet_zoo | RSI 30/70 | 98 fires/7d in workshop (5m bars → expect 2-5/week on 1H) |
+| 3272 | MCL | buffet_zoo | Bollinger bb_20 | 18 fires/7d workshop |
+| 3273 | MCL | zoo | MA cross 9/21 | 8 fires/7d workshop |
+
+**judas_native** strategies fire on sweep+CHoCH patterns (ICT Judas Swing, inherently low-frequency). **buffet_zoo/zoo** strategies fire on RSI/BB/MA crossovers — fire more often, fully validated in workshop.
+
+### Contract Expiries
+
+| Symbol | Contract | Expiry | Notes |
+|---|---|---|---|
+| MET | METK6 | 2026-05-29 | Auto-rolls when next-month volume flips |
+| DX | DXM6 | 2026-06-15 | |
+| MNQ | MNQM6 | 2026-06-18 | |
+| MCL | MCLN6 | 2026-06-18 | |
+| MGC | MGCM6 | 2026-06-26 | |
+
+**Volume-based roll**: When a contract is ≤14 days from expiry, `bar_cache._pick_contract()` fetches 10-bar volume for both front and next month and rolls to next if next-month volume is higher. Logs `bar_cache.rolling` or `bar_cache.no_roll`.
+
+---
+
 ## The Design Philosophy: Burn the 45,000 Requests Productively
 
 This system runs on MiniMax M2.7 with **45,000 API requests/week**. The goal is NOT to conserve them — it's to spend every request on something that produces alpha: YouTube ingestion, backtesting, strategy proposals.
@@ -303,6 +332,35 @@ touch autofix.disable    # halt coder autofix path only
 
 - Local: `http://127.0.0.1:5080/`
 - Tailnet: `http://omen-claw.tail76e7df.ts.net:5080/`
+
+---
+
+## Agent Gate Alignment (2026-05-27 overhaul)
+
+### The core rule: empty slot beats net-loser
+
+A symbol with zero strategies is **better** than a symbol with a strategy that fires losing trades. The agents were previously keeping bad strategies to "maintain coverage." That exception was removed.
+
+### Promotion gates (all three required)
+
+| Gate | Researcher acceptance | Reviewer pass | Registrar promote |
+|---|---|---|---|
+| 1 | PF > 1.5 | PF ≥ 1.3 | PF ≥ 1.3 |
+| 2 | ≥ 20 trades | ≥ 20 trades | ≥ 20 trades |
+| 3 | E[R] > 0 | E[R] > 0 | E[R] > 0 |
+| 4 | Workshop fire check | — | — |
+
+### Burnout rule
+
+If a symbol has had 3+ auto-demotions in 7 days, the researcher skips re-trying the same family. Burnout summary is injected into every agent kickoff.
+
+### Staleness grace period
+
+A strategy active for fewer than 14 days is exempt from staleness-based retirement. The reviewer cannot retire a brand-new strategy just because it hasn't fired yet.
+
+### Duplicate fingerprint
+
+`_param_fingerprint()` hashes: engine + strategy_type + all numeric params. The old version used `displacement_r` (a key that doesn't exist in current params), so the fingerprint was always empty and every proposal looked unique.
 
 ---
 

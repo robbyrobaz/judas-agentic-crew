@@ -1869,9 +1869,9 @@ def run_pm_decision(
     tools = _make_tools(db_path=db_path)
     schemas = _tool_schemas()
 
-    system_prompt = PM_SYSTEM_PROMPT.format(
-        turn_budget=turn_budget, time_budget_s=time_budget_s
-    )
+    _tb = "unlimited" if not turn_budget or turn_budget <= 0 else str(turn_budget)
+    _ts = "unlimited" if not time_budget_s or time_budget_s <= 0 else f"{time_budget_s}s"
+    system_prompt = PM_SYSTEM_PROMPT.format(turn_budget=_tb, time_budget_s=_ts)
     try:
         date_et = datetime.now(_ET_TZ).strftime("%Y-%m-%d %H:%M %Z")
     except Exception:  # noqa: BLE001

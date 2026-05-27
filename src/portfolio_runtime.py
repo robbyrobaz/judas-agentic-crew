@@ -262,6 +262,16 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
         )
         if not det.get("pattern_found"):
             return fires
+        # Quality filters — applied after pattern_found so params are respected
+        _disp = det.get("displacement") or {}
+        if _disp.get("strength", 999.0) < float(params.get("min_displacement_strength", 0.0)):
+            return fires
+        if _disp.get("body_ratio", 999.0) < float(params.get("min_displacement_body_ratio", 0.0)):
+            return fires
+        _sweep_bar = (det.get("sweep") or {}).get("bar_idx", 0)
+        _choch_bar = (det.get("choch") or {}).get("bar_idx", 0)
+        if (_choch_bar - _sweep_bar) > int(params.get("max_sweep_age_bars", 9999)):
+            return fires
         direction = str(det["direction"])
         fires.append(
             ActiveFire(

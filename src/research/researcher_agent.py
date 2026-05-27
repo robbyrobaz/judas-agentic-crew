@@ -73,7 +73,11 @@ For each extracted concept, formulate concrete parameters and test:
   run_judas_threshold_sweep() or run_walk_forward() or run_custom_backtest()
 Test against cached 1H bars for all relevant symbols.
 
-Acceptance threshold: PF > 1.5 AND >= 20 trades.
+Acceptance gates (ALL four required before propose_candidate):
+  1. PF > 1.5
+  2. >= 20 trades
+  3. E[R] = (WR × avg_win) - ((1-WR) × avg_loss) > 0
+  4. Workshop fire check — confirm the strategy type fires on real 5m bars
 
 ### 5. MULTI-SYMBOL SWEEP
 When any parameter set clears the threshold on one symbol, immediately
@@ -89,6 +93,11 @@ One backtest call per symbol — Python loops inside the tool are free.
 Symbols with NO active strategy are the highest research priority.
 MGC (gold micro) > MNQ (Nasdaq micro) > MCL (crude micro) > MBT (bitcoin micro)
 MET (ether micro), DX (dollar index), ZF (5yr treasury), 6J (yen)
+
+## Burnout rule
+If your briefing shows 3+ auto-demotions for a symbol+family in 7 days, do NOT
+re-propose the same family for that symbol. The edge is absent on this instrument.
+Move to a different family or a different symbol.
 
 ## Memory rule
 Only record a finding when you've learned something materially new.
@@ -187,6 +196,25 @@ def _build_kickoff(db_path: str) -> str:
                 m = json.loads(c["metrics_json"] or "{}")
                 pf = m.get("profit_factor") or m.get("pf_20") or "?"
                 lines.append(f"  #{c['id']} {c['symbol']} {c['strategy_family']} PF={pf}")
+            lines.append("")
+
+        # Burnout summary — symbols with repeated demotions in last 7 days
+        burnout_rows = conn.execute("""
+            SELECT symbol, strategy_family, COUNT(*) AS n_retired
+            FROM auto_demotions
+            WHERE retired_at_utc >= datetime('now', '-7 days')
+            GROUP BY symbol, strategy_family
+            HAVING COUNT(*) >= 2
+            ORDER BY n_retired DESC
+        """).fetchall()
+        if burnout_rows:
+            lines.append("BURNOUT ALERT — repeated demotions in 7d (avoid re-proposing these):")
+            for b in burnout_rows:
+                covered = b["symbol"] in active_syms
+                lines.append(
+                    f"  {b['symbol']} {b['strategy_family']}: {b['n_retired']} retirements"
+                    f" ({'covered' if covered else 'UNCOVERED — try different family'})"
+                )
             lines.append("")
 
         # Last daily brief summary

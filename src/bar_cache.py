@@ -110,10 +110,99 @@ def _write_price_cache(bars_by_sym: dict[str, pd.DataFrame]) -> None:
         log.warning("bar_cache.price_cache_write_failed: %s", exc)
 
 
+async def _fetch_bars(ib, contract, duration: str = "60 D") -> list:
+    """Fetch 1H TRADES bars for a qualified contract. Returns empty list on error."""
+    try:
+        bars = await ib.reqHistoricalDataAsync(
+            contract,
+            endDateTime="",
+            durationStr=duration,
+            barSizeSetting="1 hour",
+            whatToShow="TRADES",
+            useRTH=False,
+            formatDate=1,
+            keepUpToDate=False,
+        )
+        return bars or []
+    except Exception:
+        return []
+
+
+async def _pick_contract(ib, spec: dict, symbol: str):
+    """Qualify ContFuture then check if the next month is already more liquid.
+
+    Roll rule: if the front-month contract expires within 14 days AND the
+    next-month contract exists AND its recent 10-bar average volume > front-month,
+    return the next-month contract (volume-based roll).
+    """
+    from datetime import date, timedelta
+    from ib_async import ContFuture, Future
+
+    cont = ContFuture(spec["ibkr_symbol"], exchange=spec["exchange"])
+    qualified = await ib.qualifyContractsAsync(cont)
+    if not qualified:
+        return None, "qualify_failed"
+
+    front = qualified[0]
+    expiry_str = front.lastTradeDateOrContractMonth or ""
+    if len(expiry_str) < 8:
+        return front, None  # can't parse expiry — use as-is
+
+    try:
+        exp_date = date(int(expiry_str[:4]), int(expiry_str[4:6]), int(expiry_str[6:8]))
+    except ValueError:
+        return front, None
+
+    days_to_expiry = (exp_date - date.today()).days
+    if days_to_expiry > 14:
+        return front, None  # plenty of time, no roll check needed
+
+    # Near expiry — check the next month contract
+    next_month_approx = exp_date + timedelta(days=28)
+    next_expiry_ym = next_month_approx.strftime("%Y%m")
+    try:
+        next_cont = Future(
+            symbol=spec["ibkr_symbol"],
+            lastTradeDateOrContractMonth=next_expiry_ym,
+            exchange=spec["exchange"],
+        )
+        qualified_next = await ib.qualifyContractsAsync(next_cont)
+    except Exception:
+        qualified_next = []
+
+    if not qualified_next:
+        log.info("bar_cache.no_next_contract symbol=%s expiry=%s", symbol, next_expiry_ym)
+        return front, None
+
+    next_contract = qualified_next[0]
+
+    # Fetch recent 5-bar snapshot for both and compare volume
+    front_snap = await _fetch_bars(ib, front, duration="5 D")
+    next_snap = await _fetch_bars(ib, next_contract, duration="5 D")
+
+    front_vol = sum(getattr(b, "volume", 0) or 0 for b in front_snap[-10:])
+    next_vol = sum(getattr(b, "volume", 0) or 0 for b in next_snap[-10:])
+
+    if next_vol > front_vol:
+        log.info(
+            "bar_cache.rolling symbol=%s front=%s(vol=%d,dte=%d) -> next=%s(vol=%d)",
+            symbol, front.localSymbol, front_vol, days_to_expiry,
+            next_contract.localSymbol, next_vol,
+        )
+        return next_contract, None
+    else:
+        log.info(
+            "bar_cache.no_roll symbol=%s front=%s(vol=%d,dte=%d) next=%s(vol=%d) — front still dominant",
+            symbol, front.localSymbol, front_vol, days_to_expiry,
+            next_contract.localSymbol, next_vol,
+        )
+        return front, None
+
+
 async def _fetch_async(
     symbols: set[str], host: str, port: int, client_id: int
 ) -> dict[str, pd.DataFrame]:
-    from ib_async import ContFuture, IB
+    from ib_async import IB
     ib = IB()
     await ib.connectAsync(host, port, clientId=client_id, timeout=15)
     out: dict[str, pd.DataFrame] = {}
@@ -123,23 +212,13 @@ async def _fetch_async(
             if not spec:
                 log.warning("bar_cache.unknown_symbol symbol=%s", symbol)
                 continue
-            cont = ContFuture(spec["ibkr_symbol"], exchange=spec["exchange"])
-            qualified = await ib.qualifyContractsAsync(cont)
-            if not qualified:
-                log.warning("bar_cache.qualify_failed symbol=%s", symbol)
+            contract, err = await _pick_contract(ib, spec, symbol)
+            if err or contract is None:
+                log.warning("bar_cache.qualify_failed symbol=%s err=%s", symbol, err)
                 continue
-            bars = await ib.reqHistoricalDataAsync(
-                qualified[0],
-                endDateTime="",
-                durationStr="60 D",
-                barSizeSetting="1 hour",
-                whatToShow="TRADES",
-                useRTH=False,
-                formatDate=1,
-                keepUpToDate=False,
-            )
+            bars = await _fetch_bars(ib, contract, duration="60 D")
             if not bars:
-                log.warning("bar_cache.no_bars symbol=%s", symbol)
+                log.warning("bar_cache.no_bars symbol=%s contract=%s", symbol, contract.localSymbol)
                 continue
             rows = []
             for b in bars:
@@ -152,7 +231,7 @@ async def _fetch_async(
                 })
             df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
             out[symbol] = df
-            log.info("bar_cache.fetched symbol=%s bars=%d", symbol, len(df))
+            log.info("bar_cache.fetched symbol=%s contract=%s bars=%d", symbol, contract.localSymbol, len(df))
     finally:
         ib.disconnect()
     return out

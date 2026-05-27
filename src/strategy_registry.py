@@ -219,8 +219,13 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
             if not candidate:
                 raise ValueError(f"Candidate {candidate_id} not found")
 
-            # Validate params_json before doing anything destructive.
-            _validate_params_json(candidate["params_json"])
+            # Inject family/name into params if missing, then validate.
+            _pre_params = json.loads(candidate["params_json"] or "{}")
+            _pre_params.setdefault("strategy_family", family)
+            _pre_params.setdefault("strategy_name", f"{family}_{symbol.lower()}_auto")
+            _pre_params.setdefault("execution_engine", "judas_native")
+            _fixed_params = json.dumps(_pre_params)
+            _validate_params_json(_fixed_params)
 
             symbol = str(candidate["symbol"])
             family = str(candidate["strategy_family"])
@@ -255,7 +260,7 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
                     symbol,
                     family,
                     next_version,
-                    candidate["params_json"],
+                    _fixed_params,
                     candidate["metrics_json"],
                     candidate_id,
                     _utc_now(),

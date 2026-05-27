@@ -1073,6 +1073,13 @@ def create_app() -> Flask:
     app = Flask(__name__, static_folder=str(DASHBOARD_DIST), static_url_path="/")
     _db_path()
 
+    @app.after_request
+    def no_cache(response):
+        if request.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+        return response
+
     @app.get("/api/overview")
     def overview() -> Any:
         return jsonify(_overview_payload())

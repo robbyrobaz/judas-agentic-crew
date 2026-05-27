@@ -185,12 +185,19 @@ function ActionBtn({ label, onClick, disabled, loading, primary }: {
 
 // ─── Header ───────────────────────────────────────────────────────────────────
 
-function Header({ ov }: { ov: Overview | null }) {
+function Header({ ov, ovTs }: { ov: Overview | null; ovTs: Date | null }) {
   const [clock, setClock] = useState(() => new Date().toISOString().slice(11, 19) + " UTC");
+  const [syncAge, setSyncAge] = useState("—");
   useEffect(() => {
-    const t = setInterval(() => setClock(new Date().toISOString().slice(11, 19) + " UTC"), 1000);
+    const t = setInterval(() => {
+      setClock(new Date().toISOString().slice(11, 19) + " UTC");
+      if (ovTs) {
+        const s = Math.round((Date.now() - ovTs.getTime()) / 1000);
+        setSyncAge(s < 5 ? "live" : `${s}s ago`);
+      }
+    }, 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [ovTs]);
 
   const runs = ov?.agents_last_run ?? {};
   const canTrade = ov?.session?.can_trade_now;
@@ -215,6 +222,7 @@ function Header({ ov }: { ov: Overview | null }) {
           </div>
         ))}
       </div>
+      <span style={{ fontSize: 10, fontFamily: "monospace", color: C.muted }}>synced <span style={{ color: syncAge === "live" ? C.green : C.muted }}>{syncAge}</span></span>
       <span style={{ fontSize: 11, fontFamily: "monospace", color: C.muted }}>{clock}</span>
     </div>
   );
@@ -670,17 +678,18 @@ function ChatBar() {
 
 export default function App() {
   const [ov, setOv] = useState<Overview | null>(null);
+  const [ovTs, setOvTs] = useState<Date | null>(null);
 
   useEffect(() => {
-    const load = () => apiFetch<Overview>("/api/overview").then(setOv).catch(() => {});
+    const load = () => apiFetch<Overview>("/api/overview").then((d) => { setOv(d); setOvTs(new Date()); }).catch(() => {});
     load();
-    const t = setInterval(load, 60_000);
+    const t = setInterval(load, 15_000);
     return () => clearInterval(t);
-  }, []);
+  }, [])
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: C.bg, color: C.text, fontFamily: "system-ui,-apple-system,sans-serif", overflow: "hidden" }}>
-      <Header ov={ov} />
+      <Header ov={ov} ovTs={ovTs} />
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         <LeftPanel ov={ov} />
         <CenterPanel ov={ov} />

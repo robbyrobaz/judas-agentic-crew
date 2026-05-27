@@ -65,31 +65,40 @@ the team will use on a later cycle — e.g. a single param tweak that
 flipped a strategy from net-loser to net-winner. Do NOT write a
 finding just because a cycle ended.
 
-REVIEWER HEURISTICS (apply with judgment, not as hard rules):
-  - Cost-adjusted (*_net) metrics are the source of truth. If a
-    strategy looks great gross but bleeds net, it's a retire/retune
-    candidate.
-  - Active strategies with pf_20_net < ~0.9 on a real sample (>=20
-    closed trades) are retire candidates.
-  - Candidates must pass ALL THREE before promotion: (1) walk-forward
-    avg_test_profit_factor (net) >= 1.3, (2) avg_test_E[R] > 0,
-    (3) total_test_trades >= 20. NO exception for uncovered symbols —
-    a bad strategy on an uncovered slot fires bad trades; an empty
-    slot fires nothing. Empty is safer than a net-loser.
-  - Duplicate detection: two actives for the same (symbol, family)
-    with near-identical params (same target_r + same core entry
-    params within 10%) fire identical signals — retire all but the
-    highest walk-forward PF. Don't rely on any single param name
-    (param keys change over time); inspect the full params dict.
-  - Stale strategies (no fires in 14+ days, active > 14 days) on
-    covered symbols are retire candidates; newly promoted strategies
-    (active < 14 days) should not be retired for staleness alone.
-  - Execution engine must be 'judas_native' or 'buffet_zoo'. Any
-    candidate with execution_engine='custom' requires code review
-    via read_file before promotion.
+## HARD RETIREMENT GATE — check BEFORE retire_strategy()
 
-You act on your own judgment. The heuristics above are starting
-points, not gates.
+A strategy with n_closed_trades = 0 AND active < 7 days is IMMUNE from retirement
+EXCEPT in exactly two cases:
+  1. Exact duplicate: same symbol + same engine + params within 5% of an existing active
+  2. Broken engine: execution_engine is not 'judas_native' or 'buffet_zoo'
+
+Do NOT retire a brand-new strategy because:
+  - its backtest came from a different experiment type (that's a researcher issue)
+  - it hasn't fired yet (it just started — give it time)
+  - you can't verify the BT source (verify via get_strategy_dossier, don't retire blindly)
+  - it seems unproven (all new strategies are unproven — live trades are how we learn)
+
+The correct action for a new strategy with questionable BT provenance: record_finding()
+with the concern and move on. Let it run. Retire only if live metrics confirm the edge
+is absent after real trades (n >= 10, pf_net < 0.8).
+
+## REVIEWER HEURISTICS (for strategies with real live data)
+
+These apply ONLY when n_closed_trades >= 10:
+  - Cost-adjusted (*_net) metrics are the source of truth.
+  - pf_20_net < 0.9 on >= 20 closed trades → retire candidate.
+  - Stale: no fires in 14+ days, active > 14 days → retire candidate.
+
+For candidate promotion, ALL THREE gates required:
+  (1) walk-forward avg_test_profit_factor (net) >= 1.3
+  (2) avg_test_E[R] > 0
+  (3) total_test_trades >= 20
+NO exception for uncovered symbols. Empty is safer than a net-loser.
+
+Duplicate detection: same (symbol, family) with near-identical params → retire
+all but highest PF. Check full params dict, not single param names.
+
+Execution engine: 'judas_native' or 'buffet_zoo' only. 'custom' requires code review.
 """
 
 

@@ -606,6 +606,7 @@ def _fetch_open_positions() -> list[dict[str, Any]]:
     for row in rows:
         sym = str(row["symbol"]).upper()
         dpp = _dollar_per_point(sym)
+        tick = _TICK_SIZE.get(sym, 0.01)
         entry = float(row["entry_fill"] or 0)
         stop = float(row["stop_price"] or 0)
         target = float(row["target_price"] or 0)
@@ -623,13 +624,38 @@ def _fetch_open_positions() -> list[dict[str, Any]]:
         price_ts = str(pc["ts"]) if pc and "ts" in pc else None
 
         unrealized_pnl = None
+        pts_to_stop = None
+        pts_to_target = None
+        pct_to_target = None   # 0–1: how far from entry toward target
         if current_price is not None and entry:
             diff = (current_price - entry) if direction == "long" else (entry - current_price)
             unrealized_pnl = round(diff * dpp * qty, 2)
+            if direction == "long":
+                pts_to_stop   = round(current_price - stop, 4)
+                pts_to_target = round(target - current_price, 4)
+            else:
+                pts_to_stop   = round(stop - current_price, 4)
+                pts_to_target = round(current_price - target, 4)
+            span = reward_pts + risk_pts
+            if span:
+                pct_to_target = round(max(0.0, min(1.0, (diff + risk_pts) / span)), 4)
 
         fam = row["strategy_family"] if "strategy_family" in row.keys() else None
         ver = row["version"] if "version" in row.keys() else None
-        label = f"{fam} v{ver}" if fam and ver else None
+        # Grab strategy_name from the params_json of the active strategy row
+        strategy_name: str | None = None
+        try:
+            with get_conn(_db_path()) as _c:
+                sid_row = _c.execute(
+                    "SELECT json_extract(params_json,'$.strategy_name') AS sn "
+                    "FROM active_strategies WHERE id=? LIMIT 1",
+                    (row.get("active_strategy_id") or -1,)
+                ).fetchone()
+                if sid_row:
+                    strategy_name = sid_row["sn"]
+        except Exception:
+            pass
+        label = strategy_name or (f"{fam} v{ver}" if fam and ver else None)
 
         result.append({
             "id": int(row["id"]),
@@ -639,12 +665,16 @@ def _fetch_open_positions() -> list[dict[str, Any]]:
             "entry": entry,
             "stop": stop,
             "target": target,
+            "tick": tick,
             "risk_dollars": risk_dollars,
             "reward_dollars": reward_dollars,
             "rr": rr,
             "current_price": current_price,
             "price_ts": price_ts,
             "unrealized_pnl": unrealized_pnl,
+            "pts_to_stop": pts_to_stop,
+            "pts_to_target": pts_to_target,
+            "pct_to_target": pct_to_target,
             "opened_at": str(row["opened_at"]),
             "label": label,
         })
@@ -1046,6 +1076,10 @@ def create_app() -> Flask:
     @app.get("/api/overview")
     def overview() -> Any:
         return jsonify(_overview_payload())
+
+    @app.get("/api/positions")
+    def positions() -> Any:
+        return jsonify({"positions": _fetch_open_positions(), "ts": __import__("datetime").datetime.utcnow().isoformat() + "Z"})
 
     @app.get("/api/signals")
     def signals() -> Any:

@@ -7,10 +7,13 @@ import remarkGfm from "remark-gfm";
 
 type OpenPosition = {
   id: number; symbol: string; direction: string; qty: number;
-  entry: number; stop: number; target: number;
+  entry: number; stop: number; target: number; tick: number;
   risk_dollars: number; reward_dollars: number; rr: number | null;
   current_price: number | null; price_ts: string | null;
-  unrealized_pnl: number | null; opened_at: string; label: string | null;
+  unrealized_pnl: number | null;
+  pts_to_stop: number | null; pts_to_target: number | null;
+  pct_to_target: number | null;
+  opened_at: string; label: string | null;
 };
 
 type ActivityEvent = {
@@ -319,32 +322,143 @@ function MiniStat({ label, val, color }: { label: string; val: string; color?: s
   );
 }
 
+function useLiveAge(openedAt: string) {
+  const [age, setAge] = useState("");
+  useEffect(() => {
+    function calc() {
+      const ms = Date.now() - new Date(openedAt).getTime();
+      if (isNaN(ms) || ms < 0) { setAge("—"); return; }
+      const s = Math.floor(ms / 1000);
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      if (h > 0) setAge(`${h}h ${m}m`);
+      else if (m > 0) setAge(`${m}m ${sec}s`);
+      else setAge(`${sec}s`);
+    }
+    calc();
+    const t = setInterval(calc, 1000);
+    return () => clearInterval(t);
+  }, [openedAt]);
+  return age;
+}
+
 function PositionRow({ pos }: { pos: OpenPosition }) {
-  const upnl = pos.unrealized_pnl;
-  const borderAccent = upnl != null && upnl > 0 ? C.green + "50" : upnl != null && upnl < 0 ? C.red + "50" : C.border;
+  const upnl  = pos.unrealized_pnl;
+  const pct   = pos.pct_to_target;  // 0 = at stop, 1 = at target
+  const winning = upnl != null && upnl > 0;
+  const losing  = upnl != null && upnl < 0;
+  const age   = useLiveAge(pos.opened_at);
+
+  const borderColor = winning ? C.green + "60" : losing ? C.red + "60" : C.border;
+  const decimals = pos.tick < 0.01 ? 4 : pos.tick < 1 ? 2 : 2;
+
+  // Progress bar: stop (left, red) → entry (middle) → target (right, green)
+  // pct_to_target: 0 = current is at stop level, 0.5 = at entry, 1 = at target
+  const barFill = pct != null ? Math.round(pct * 100) : null;
+
+  const ptsToStop   = pos.pts_to_stop;
+  const ptsToTarget = pos.pts_to_target;
+
   return (
-    <div style={{ background: C.surface, border: `1px solid ${borderAccent}`, borderRadius: 8, padding: "10px 14px", marginBottom: 6, display: "grid", gridTemplateColumns: "70px 1fr auto", alignItems: "center", gap: 14 }}>
-      <div>
-        <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 14, color: C.text }}>{pos.symbol}</div>
-        <div style={{ fontSize: 10, color: pos.direction === "long" ? C.green : C.red, fontWeight: 700, textTransform: "uppercase", marginTop: 1 }}>{pos.direction}</div>
+    <div style={{ background: C.surface, border: `1px solid ${borderColor}`, borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
+      {/* Row 1: symbol / direction / strategy / age / P&L */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
+        <div style={{ minWidth: 64 }}>
+          <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 15, color: C.text }}>{pos.symbol}</div>
+          <div style={{ fontSize: 10, color: pos.direction === "long" ? C.green : C.red, fontWeight: 700, textTransform: "uppercase", marginTop: 1 }}>
+            {pos.direction} ×{pos.qty}
+          </div>
+        </div>
+
+        <div style={{ flex: 1 }}>
+          {pos.label && (
+            <div style={{ fontSize: 9, color: C.muted, letterSpacing: "0.05em", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {pos.label}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <MiniStat label="Entry"  val={pos.entry.toFixed(decimals)} />
+            {pos.current_price != null && (
+              <MiniStat label="Now" val={pos.current_price.toFixed(decimals)} color={winning ? C.green : losing ? C.red : C.text} />
+            )}
+            <MiniStat label="Stop"   val={pos.stop.toFixed(decimals)}   color={C.red} />
+            <MiniStat label="Target" val={pos.target.toFixed(decimals)} color={C.green} />
+            {pos.rr != null && <MiniStat label="R:R" val={`1:${pos.rr.toFixed(1)}`} />}
+          </div>
+        </div>
+
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 20, color: pnlColor(upnl), lineHeight: 1 }}>
+            {pnlStr(upnl)}
+          </div>
+          <div style={{ fontSize: 9, color: C.muted, marginTop: 2 }}>unrealized</div>
+          <div style={{ fontSize: 9, color: C.muted, marginTop: 4, fontFamily: "monospace" }}>{age}</div>
+        </div>
       </div>
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <MiniStat label="Entry"  val={pos.entry.toFixed(2)} />
-        {pos.current_price != null && <MiniStat label="Now" val={pos.current_price.toFixed(2)} />}
-        <MiniStat label="Stop"   val={pos.stop.toFixed(2)}   color={C.red} />
-        <MiniStat label="Target" val={pos.target.toFixed(2)} color={C.green} />
-        {pos.rr != null && <MiniStat label="R/R" val={`1:${pos.rr.toFixed(1)}`} />}
-      </div>
-      <div style={{ textAlign: "right" }}>
-        <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 18, color: pnlColor(upnl) }}>{pnlStr(upnl)}</div>
-        <div style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>unrealized</div>
+
+      {/* Progress bar: stop ←→ target */}
+      {barFill != null && (
+        <div style={{ marginBottom: 7 }}>
+          <div style={{ position: "relative", height: 6, background: C.surface2, borderRadius: 3, overflow: "hidden" }}>
+            {/* Red zone: stop → entry (left half visually) */}
+            <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "50%", background: C.red + "25" }} />
+            {/* Green zone: entry → target (right half) */}
+            <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, right: 0, background: C.green + "25" }} />
+            {/* Fill up to current position */}
+            <div style={{
+              position: "absolute", left: 0, top: 0, bottom: 0,
+              width: `${barFill}%`,
+              background: barFill > 50 ? C.green + "99" : C.red + "99",
+              borderRadius: 3, transition: "width 0.4s ease",
+            }} />
+            {/* Entry marker */}
+            <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: C.muted + "80" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+            <span style={{ fontSize: 9, color: C.red, fontFamily: "monospace" }}>
+              {ptsToStop != null ? `−${Math.abs(ptsToStop).toFixed(decimals)} to stop` : ""}
+            </span>
+            <span style={{ fontSize: 9, color: C.green, fontFamily: "monospace" }}>
+              {ptsToTarget != null ? `${Math.abs(ptsToTarget).toFixed(decimals)} to target` : ""}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Row 3: risk / reward / price freshness */}
+      <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+        <span style={{ fontSize: 10, color: C.muted }}>
+          Risk <span style={{ color: C.red, fontFamily: "monospace" }}>{pnlStr(pos.risk_dollars)}</span>
+        </span>
+        <span style={{ fontSize: 10, color: C.muted }}>
+          Target <span style={{ color: C.green, fontFamily: "monospace" }}>{pnlStr(pos.reward_dollars)}</span>
+        </span>
+        {pos.price_ts && (
+          <span style={{ fontSize: 9, color: C.muted, marginLeft: "auto", fontFamily: "monospace" }}>
+            price {ageStr(pos.price_ts)}
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
 function CenterPanel({ ov }: { ov: Overview | null }) {
-  const positions  = ov?.open_positions ?? [];
+  const [livePositions, setLivePositions] = useState<OpenPosition[] | null>(null);
+  const [posTs, setPosTs] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = () =>
+      apiFetch<{ positions: OpenPosition[]; ts: string }>("/api/positions")
+        .then((r) => { setLivePositions(r.positions); setPosTs(r.ts); })
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 10_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const positions = livePositions ?? ov?.open_positions ?? [];
   const recentTrades = ov?.recent_trades ?? [];
   // Show strategies sorted by PF descending; nulls go last
   const strats = [...(ov?.research_stats?.active_strategies ?? [])]
@@ -358,15 +472,23 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 10 }}>
-      {positions.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, paddingLeft: 2 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.13em", textTransform: "uppercase", color: C.gold }}>Open Positions</span>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, paddingLeft: 2 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.13em", textTransform: "uppercase", color: C.gold }}>Open Positions</span>
+          {positions.length > 0 && (
             <span style={{ fontSize: 9, background: C.gold + "28", color: C.gold, borderRadius: 4, padding: "0 5px", fontFamily: "monospace" }}>{positions.length}</span>
-          </div>
-          {positions.map((pos) => <PositionRow key={pos.id} pos={pos} />)}
+          )}
+          {posTs && (
+            <span style={{ fontSize: 9, color: C.muted, fontFamily: "monospace", marginLeft: "auto" }}>
+              refreshed {ageStr(posTs)} · 10s poll
+            </span>
+          )}
         </div>
-      )}
+        {positions.length === 0
+          ? <EmptySlate>No open positions</EmptySlate>
+          : positions.map((pos) => <PositionRow key={pos.id} pos={pos} />)
+        }
+      </div>
 
       <div style={{ marginBottom: 14 }}>
         <SectionTitle>Recent Trades</SectionTitle>

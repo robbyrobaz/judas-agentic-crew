@@ -67,10 +67,12 @@ finding just because a cycle ended.
 
 ## HARD RETIREMENT GATE — check BEFORE retire_strategy()
 
-A strategy with n_closed_trades = 0 AND active < 7 days is IMMUNE from retirement
-EXCEPT in exactly two cases:
-  1. Exact duplicate: same symbol + same engine + params within 5% of an existing active
-  2. Broken engine: execution_engine is not 'judas_native' or 'buffet_zoo'
+A strategy is IMMUNE from retirement in these cases:
+  1. n_closed_trades = 0 AND active < 7 days — give it time to collect data
+     (exceptions: exact duplicate params, or broken execution_engine)
+  2. total_realized_pnl > 0 AND n_closed_trades < 10 — a profitable live trade
+     is stronger evidence than any historical walk-forward; do NOT retire based
+     on WF data alone when real money confirmed the edge
 
 Do NOT retire a brand-new strategy because:
   - its backtest came from a different experiment type (that's a researcher issue)

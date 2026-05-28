@@ -94,6 +94,19 @@ Symbols with NO active strategy are the highest research priority.
 MGC (gold micro) > MNQ (Nasdaq micro) > MCL (crude micro) > MBT (bitcoin micro)
 MET (ether micro), DX (dollar index), ZF (5yr treasury), 6J (yen)
 
+## Exact runtime param keys (DO NOT invent alternatives)
+
+judas_native: `min_displacement_strength` (NOT `displacement`/`disp`),
+  `min_displacement_body_ratio` (NOT `body_ratio`/`body_ratio_thr`),
+  `max_sweep_age_bars` (NOT `sweep_age`), `target_r`, `stop_buffer_ticks`,
+  `min_sweep_ticks`, `confirmation_bars`, `pivot_length`.
+
+buffet_zoo: requires `strategy_type` = "rsi"|"bollinger"|"ma_cross".
+  RSI uses `lo_thr`/`hi_thr`/`period`. Bollinger uses `period`/`n_std`.
+  MA cross uses `fast`/`slow`. All use `target_r` and `stop_atr_mult`.
+
+Full reference: knowledge_base/judas_runtime_params.md
+
 ## Burnout rule
 If your briefing shows 3+ auto-demotions for a symbol+family in 7 days, do NOT
 re-propose the same family for that symbol. The edge is absent on this instrument.

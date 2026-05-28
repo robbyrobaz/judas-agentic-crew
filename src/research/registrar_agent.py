@@ -38,6 +38,10 @@ promote and hope — bad strategies fire bad trades.
 ## Execution engine check
 
   - 'judas_native' — runs Judas sweep+CHoCH, low-frequency but ICT-validated
+    Correct param keys: min_displacement_strength, min_displacement_body_ratio,
+    max_sweep_age_bars, target_r, stop_buffer_ticks, min_sweep_ticks.
+    WRONG keys (silently ignored): displacement, body_ratio, body_ratio_thr, disp, sweep_age.
+    Reference: knowledge_base/judas_runtime_params.md
   - 'buffet_zoo' — RSI/Bollinger/MA cross, requires strategy_type param
   - 'custom' engine — reject unless you can verify the code exists and was tested
 

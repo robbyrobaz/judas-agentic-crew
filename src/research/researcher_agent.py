@@ -129,8 +129,10 @@ INCLUDE_TOOLS = {
     "propose_candidate", "propose_custom_strategy",
     # queue — claim/complete only (no get_open_tasks; tasks are pre-loaded)
     "claim_task", "complete_task",
-    # findings — write only (no read_findings; recent findings are pre-loaded)
+    "get_open_tasks",
+    # findings — write only (recent findings are pre-loaded)
     "record_finding", "retract_finding",
+    "read_findings",
     # deep dives when needed
     "get_strategy_detail", "get_strategy_dossier",
     "query_db", "get_recent_pnl",

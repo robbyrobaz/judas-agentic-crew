@@ -219,16 +219,20 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
             if not candidate:
                 raise ValueError(f"Candidate {candidate_id} not found")
 
+            symbol = str(candidate["symbol"])
+            family = str(candidate["strategy_family"])
+            # Validate params_json first before any mutation attempts.
+            _pre_params_raw = candidate["params_json"] or "{}"
+            _pre_params = json.loads(_pre_params_raw)
+            if not isinstance(_pre_params, dict):
+                raise ValueError(f"params_json must decode to a dict, got {type(_pre_params).__name__}")
             # Inject family/name into params if missing, then validate.
-            _pre_params = json.loads(candidate["params_json"] or "{}")
             _pre_params.setdefault("strategy_family", family)
             _pre_params.setdefault("strategy_name", f"{family}_{symbol.lower()}_auto")
             _pre_params.setdefault("execution_engine", "judas_native")
             _fixed_params = json.dumps(_pre_params)
             _validate_params_json(_fixed_params)
 
-            symbol = str(candidate["symbol"])
-            family = str(candidate["strategy_family"])
             current = conn.execute(
                 """
                 SELECT *
@@ -320,6 +324,13 @@ def retire_strategy(
     """
     with get_conn(_ensure_db()) as conn:
         conn.execute("BEGIN IMMEDIATE")
+        # Guard: refuse to retire a strategy that has open positions.
+        open_trades = conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE status = 'open' AND strategy_id = ?",
+            (int(strategy_id),),
+        ).fetchone()[0]
+        if int(open_trades) > 0:
+            raise ValueError("Cannot retire strategy with open positions")
         try:
             row = conn.execute(
                 "SELECT * FROM active_strategies WHERE id = ? AND state = 'active'",

@@ -1,0 +1,12 @@
+[Unit]
+Description=Judas Crew scanner watchdog — kills the scanner if it hangs
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rob/judas-agentic-crew
+EnvironmentFile=/home/rob/judas-agentic-crew/.env
+ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python /home/rob/judas-agentic-crew/scripts/scanner_watchdog.py
+TimeoutStartSec=2min
+StandardOutput=journal
+StandardError=journal

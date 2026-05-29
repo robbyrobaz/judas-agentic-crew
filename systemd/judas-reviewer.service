@@ -1,0 +1,14 @@
+[Unit]
+Description=JudasFutures Reviewer specialist (Phase 11)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rob/judas-agentic-crew
+EnvironmentFile=/home/rob/judas-agentic-crew/.env
+ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python /home/rob/judas-agentic-crew/scripts/run_reviewer.py
+TimeoutStartSec=20min
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal

@@ -1,0 +1,11 @@
+[Unit]
+Description=Judas Crew watchdog — check every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=judas-crew-watchdog.service
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

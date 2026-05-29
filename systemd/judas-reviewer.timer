@@ -1,0 +1,12 @@
+[Unit]
+Description=Reviewer cadence — every 20 min, 24/7 (registry mutations only)
+
+[Timer]
+OnCalendar=*-*-* *:00:00 UTC
+OnCalendar=*-*-* *:20:00 UTC
+OnCalendar=*-*-* *:40:00 UTC
+Persistent=false
+Unit=judas-reviewer.service
+
+[Install]
+WantedBy=timers.target

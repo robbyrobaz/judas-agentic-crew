@@ -446,29 +446,81 @@ def _fetch_trading_stats() -> dict[str, Any]:
     }
 
 
+def _live_metrics_by_symbol(db_path: str) -> dict[str, dict]:
+    """Compute live trade metrics per symbol from all closed trades (any strategy row, any state).
+
+    Symbol is the stable key — strategy_family names change when agents retune, so
+    grouping by family causes mismatches between old trades and new active rows.
+    """
+    result: dict[str, dict] = {}
+    try:
+        with get_conn(db_path) as conn:
+            rows = conn.execute(
+                "SELECT symbol, pnl_dollars FROM trades WHERE status='closed' AND pnl_dollars IS NOT NULL"
+            ).fetchall()
+        by_sym: dict[str, list[float]] = {}
+        for row in rows:
+            by_sym.setdefault(str(row["symbol"]), []).append(float(row["pnl_dollars"]))
+        for sym, pnls in by_sym.items():
+            wins = [p for p in pnls if p > 0]
+            losses = [p for p in pnls if p <= 0]
+            gross_win = sum(wins)
+            gross_loss = abs(sum(losses))
+            # No losses yet → PF is undefined (too few samples); show None/"—" not 999
+            pf = (gross_win / gross_loss) if gross_loss > 0 else None
+            result[sym] = {
+                "profit_factor": round(pf, 2) if pf is not None else None,
+                "trades": len(pnls),
+                "wins": len(wins),
+                "winrate": round(len(wins) / len(pnls) * 100, 1) if pnls else None,
+                "total_pnl_dollars": round(sum(pnls), 2),
+            }
+    except Exception:
+        pass
+    return result
+
+
 def _fetch_research_stats() -> dict[str, Any]:
     active = list_active_strategies()
     experiments = _fetch_recent_experiments(limit=50)
     walk_forwards = [exp for exp in experiments if exp.get("experiment_type") == "walk_forward"]
     sweeps = [exp for exp in experiments if exp.get("experiment_type") == "judas_threshold_sweep"]
-    active_sorted = sorted(
-        active,
-        key=lambda row: float((row.get("metrics") or {}).get("profit_factor", 0.0)),
-        reverse=True,
-    )
+
+    db_path = str(REPO_ROOT / "judas_crew.db")
+    live_metrics = _live_metrics_by_symbol(db_path)
+
+    def _sort_key(row: dict) -> float:
+        sym = str(row.get("symbol", ""))
+        lm = live_metrics.get(sym, {})
+        pnl = lm.get("total_pnl_dollars")
+        pf = lm.get("profit_factor")
+        if pnl is not None:
+            return float(pnl)
+        if pf is not None:
+            return float(pf) * 0.001
+        return 0.0
+
+    active_sorted = sorted(active, key=_sort_key, reverse=True)
     best_active = []
+    seen_symbols: set[str] = set()
     for row in active_sorted[:12]:
-        metrics = row.get("metrics") or {}
+        sym = str(row.get("symbol", ""))
+        lm = live_metrics.get(sym, {})
+        params = row.get("params") or {}
+        name = params.get("strategy_name") or params.get("strategy_type") or params.get("strategy_family")
+        # Show live metrics only on the first row for each symbol to avoid duplicating totals
+        show_metrics = sym not in seen_symbols
+        seen_symbols.add(sym)
         best_active.append(
             {
                 "symbol": row.get("symbol"),
-                "strategy_name": (row.get("params") or {}).get("strategy_name"),
-                "engine": (row.get("params") or {}).get("execution_engine"),
-                "profit_factor": metrics.get("profit_factor"),
-                "trades": metrics.get("trades"),
-                "winrate": metrics.get("winrate"),
-                "total_pnl_dollars": metrics.get("total_pnl_dollars"),
-                "max_drawdown_dollars": metrics.get("max_drawdown_dollars"),
+                "strategy_name": name,
+                "engine": params.get("execution_engine"),
+                "profit_factor": lm.get("profit_factor") if show_metrics else None,
+                "trades": lm.get("trades") if show_metrics else None,
+                "winrate": lm.get("winrate") if show_metrics else None,
+                "total_pnl_dollars": lm.get("total_pnl_dollars") if show_metrics else None,
+                "max_drawdown_dollars": None,
             }
         )
 

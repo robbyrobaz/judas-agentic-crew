@@ -295,11 +295,19 @@ _JUDAS_NATIVE_RUNTIME_KEYS = (
     "min_displacement_strength", "min_displacement_body_ratio", "max_sweep_age_bars",
 )
 _BUFFET_ZOO_TYPES = ("rsi", "ma_cross", "bollinger")
-# Substrings that mark a retirement reason as a "params are empty/broken" claim.
+# Substrings that mark a retirement reason as a "params are empty / broken /
+# wrong-for-engine" factual claim. When matched, the claim is VERIFIED against
+# the real params before the retire is allowed — an LLM reviewer has twice
+# fabricated these (2026-05-30: "empty params" and "carries bollinger params"
+# on strategies that had neither). Genuine breakage still retires because the
+# guard only refuses when _params_look_zombie() says the params ARE valid.
 _ZOMBIE_REASON_MARKERS = (
     "zombie", "empty params", "params_json is empty", "params are empty",
     "no runtime", "lack any runtime", "lack runtime", "no judas keys",
     "missing detector", "no valid", "params lack", "hollow", "no params",
+    "broken param", "wrong param", "invalid param", "params are broken",
+    "param mismatch", "params mismatch", "engine mismatch", "wrong engine",
+    "mismatched param", "engine/params",
 )
 
 
@@ -373,7 +381,7 @@ def retire_strategy(
                 if not _params_look_zombie(_params):
                     raise ValueError(
                         f"retire REFUSED for strategy {strategy_id}: reason claims "
-                        f"zombie/empty params but params are complete for "
+                        f"empty/broken/mismatched params but params are VALID for "
                         f"engine={_params.get('execution_engine')!r} "
                         f"(keys={sorted(_params.keys())}). Reason was: {reason!r}"
                     )

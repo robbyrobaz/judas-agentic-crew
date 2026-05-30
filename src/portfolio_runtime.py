@@ -570,6 +570,65 @@ def place_bracket(**kwargs) -> dict[str, Any]:
     return asyncio.run(_place_bracket_async(**kwargs))
 
 
+# --- NinjaTrader execution route -----------------------------------------
+
+_NT_BROKER_CACHE: dict[str, Any] = {}
+
+
+def _nt_broker():
+    """Build (and cache) the NTBroker from config. Cached so each scan reuses
+    one broker object; the WinRM session itself is created per command."""
+    if "broker" in _NT_BROKER_CACHE:
+        return _NT_BROKER_CACHE["broker"]
+    from src.broker.ninjatrader import NTBroker
+    from src.config import load_config
+
+    cfg = load_config()
+    nt = cfg.ninjatrader
+    if nt is None:
+        raise RuntimeError("execution.route=ninjatrader but config has no ninjatrader section")
+    broker = NTBroker(
+        account=nt.account,
+        instrument_map=nt.instrument_map,
+        host=nt.host,
+        user=nt.user,
+        python_exe=nt.python_exe,
+        outgoing_dir=nt.outgoing_dir,
+        fill_timeout_s=nt.fill_timeout_s,
+        fill_poll_s=nt.fill_poll_s,
+    )
+    _NT_BROKER_CACHE["broker"] = broker
+    return broker
+
+
+def place_bracket_nt(*, symbol: str, side: str, quantity: int,
+                     stop_price: float, target_price: float) -> dict[str, Any] | None:
+    """Place a bracket on the NT sim account. Returns a dict shaped like the
+    IBKR ``place_bracket`` result (plus ``entry_fill``), or ``None`` when no
+    entry fill was obtained — callers MUST treat None as "no trade placed".
+    """
+    broker = _nt_broker()
+    spec = _CONTRACT_SPECS.get(symbol, {})
+    res = broker.place_bracket(
+        symbol=symbol,
+        side=side,
+        quantity=quantity,
+        stop_price=stop_price,
+        target_price=target_price,
+        tick=float(spec.get("tick", 0.0)),
+    )
+    if res is None:
+        return None
+    return {
+        "parent_order_id": res.entry_oid,
+        "tp_order_id": res.target_oid,
+        "sl_order_id": res.stop_oid,
+        "local_symbol": res.instrument,
+        "entry_fill": res.entry_fill_price,
+        "status": "Filled",
+    }
+
+
 async def _cancel_order_async(*, order_id: int, host: str, port: int, client_id: int) -> str:
     """Cancel an open IBKR paper order by id. Tests monkeypatch this seam."""
     ib = IB()
@@ -630,12 +689,18 @@ def _save_signal_and_trade(db_path: str, fire: ActiveFire, order: dict[str, Any]
         signal_id = int(cur.lastrowid)
         trade_id = None
         if order and decision == "TRADE":
+            # Real fill from NT when present; else fall back to signal price
+            # (IBKR route doesn't return a synchronous fill price).
+            entry_fill = order.get("entry_fill")
+            if entry_fill is None:
+                entry_fill = fire.entry
             cur = conn.execute(
                 """
                 INSERT INTO trades
                     (signal_id, strategy_id, strategy_family, strategy_version, ibkr_order_id,
-                     symbol, direction, qty, entry_fill, stop_price, target_price, status, opened_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+                     tp_order_id, sl_order_id, symbol, direction, qty, entry_fill, stop_price,
+                     target_price, status, opened_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', strftime('%Y-%m-%dT%H:%M:%SZ','now'))
                 """,
                 (
                     signal_id,
@@ -643,10 +708,12 @@ def _save_signal_and_trade(db_path: str, fire: ActiveFire, order: dict[str, Any]
                     fire.strategy_family,
                     fire.strategy_version,
                     str(order["parent_order_id"]),
+                    str(order["tp_order_id"]) if order.get("tp_order_id") is not None else None,
+                    str(order["sl_order_id"]) if order.get("sl_order_id") is not None else None,
                     fire.symbol,
                     fire.direction,
                     fire.qty,
-                    fire.entry,
+                    entry_fill,
                     fire.stop,
                     fire.target,
                 ),
@@ -753,6 +820,81 @@ def _reconcile_open_trades(db_path: str, bars_by_sym: dict[str, pd.DataFrame]) -
     return closed
 
 
+def _reconcile_nt_fills(db_path: str) -> int:
+    """Close open trades by reading REAL NT fills from the OIF outgoing files.
+
+    For each open trade, poll the stop and target leg GUIDs. Whichever filled
+    becomes the exit (real fill price), the sibling is cancelled (OCO should
+    already have done so), and pnl_dollars is computed from the actual entry
+    and exit fills. Used when execution.route == "ninjatrader" instead of the
+    bar-touch reconciler. Returns number of trades closed.
+    """
+    from src.db.models import get_conn
+
+    broker = _nt_broker()
+    with get_conn(db_path) as conn:
+        open_trades = conn.execute(
+            "SELECT id, symbol, direction, qty, entry_fill, sl_order_id, tp_order_id "
+            "FROM trades WHERE status = 'open'"
+        ).fetchall()
+
+    closed = 0
+    for row in open_trades:
+        sym = str(row["symbol"]).upper()
+        sl_oid = row["sl_order_id"]
+        tp_oid = row["tp_order_id"]
+        entry = float(row["entry_fill"] or 0)
+        qty = int(row["qty"] or 1)
+        direction = str(row["direction"])
+        if not entry:
+            continue
+
+        exit_fill: float | None = None
+        exit_reason: str | None = None
+        winner_oid: str | None = None
+        # Check stop leg first, then target.
+        if sl_oid:
+            filled, price, _raw = broker.check_fill(str(sl_oid))
+            if filled:
+                exit_fill, exit_reason, winner_oid = price, "stop", str(sl_oid)
+        if exit_fill is None and tp_oid:
+            filled, price, _raw = broker.check_fill(str(tp_oid))
+            if filled:
+                exit_fill, exit_reason, winner_oid = price, "target", str(tp_oid)
+        if exit_fill is None:
+            continue  # still open
+
+        # Cancel the sibling leg (OCO normally handles this; belt-and-braces).
+        sibling = str(tp_oid) if winner_oid == str(sl_oid) else str(sl_oid)
+        if sibling and sibling != "None":
+            try:
+                broker.cancel(sibling, sym)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("nt reconcile: sibling cancel failed %s: %s", sibling, exc)
+
+        spec = _CONTRACT_SPECS.get(sym, {})
+        ts_val = spec.get("tick_value", 1.0)
+        ts_sz = spec.get("tick", 0.01)
+        dpp = ts_val / ts_sz if ts_sz else 1.0
+        pnl = round(
+            ((exit_fill - entry) if direction == "long" else (entry - exit_fill)) * dpp * qty,
+            2,
+        )
+        with get_conn(db_path) as conn:
+            conn.execute(
+                "UPDATE trades SET status='closed', exit_fill=?, pnl_dollars=?, exit_reason=?, "
+                "closed_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?",
+                (exit_fill, pnl, exit_reason, int(row["id"])),
+            )
+        log.info(
+            "nt_reconcile.closed trade_id=%d sym=%s reason=%s exit=%.4f pnl=%.2f",
+            int(row["id"]), sym, exit_reason, exit_fill, pnl,
+        )
+        closed += 1
+
+    return closed
+
+
 def _gate_fire(
     db_path: str,
     fire: ActiveFire,
@@ -836,6 +978,7 @@ def _place_fire_with_record(
     place_orders: bool,
     placed_so_far: int,
     max_new_trades: int,
+    route: str = "ibkr",
     skip_strategy_open_check: bool = False,
 ) -> dict[str, Any]:
     """Gate, optionally place, and persist a single ActiveFire.
@@ -856,17 +999,33 @@ def _place_fire_with_record(
     if gate_reason is None and placed_so_far < max_new_trades and place_orders:
         side = "BUY" if fire.direction == "long" else "SELL"
         try:
-            order = place_bracket(
-                symbol=fire.symbol,
-                side=side,
-                quantity=fire.qty,
-                stop_price=fire.stop,
-                target_price=fire.target,
-                host=host,
-                port=port,
-                client_id=client_id,
-            )
-            decision = "TRADE"
+            if route == "ninjatrader":
+                order = place_bracket_nt(
+                    symbol=fire.symbol,
+                    side=side,
+                    quantity=fire.qty,
+                    stop_price=fire.stop,
+                    target_price=fire.target,
+                )
+            else:
+                order = place_bracket(
+                    symbol=fire.symbol,
+                    side=side,
+                    quantity=fire.qty,
+                    stop_price=fire.stop,
+                    target_price=fire.target,
+                    host=host,
+                    port=port,
+                    client_id=client_id,
+                )
+            # Phantom-fill guard: a None result means the entry never filled
+            # (timeout / rejection / dry-run). Do NOT record an open trade at
+            # signal price — that's the phantom-fill bug. Leave decision=SKIP.
+            if order is None:
+                fire.features["skip_reason"] = "no_fill"
+                place_error = "no entry fill (None from broker)"
+            else:
+                decision = "TRADE"
         except Exception as exc:  # noqa: BLE001 - record and surface
             place_error = str(exc)
             log.error("place_bracket failed for %s: %s", fire.symbol, exc, exc_info=True)
@@ -895,6 +1054,7 @@ def run_portfolio_scan(
     max_open_positions: int = 6,
     max_trades_per_day: int = 12,
     place_orders: bool = True,
+    route: str = "ibkr",
 ) -> dict[str, Any]:
     init_db(db_path)
     active = [row for row in list_active_strategies() if str(row["params"].get("execution_engine", "")).startswith(("judas", "buffet"))]
@@ -910,7 +1070,15 @@ def run_portfolio_scan(
             needed_symbols.add(str(row["symbol"]).upper())
     bars_by_sym = bar_cache.refresh_cache(needed_symbols, host=host, port=port, client_id=data_client_id)
 
-    _reconcile_open_trades(db_path, bars_by_sym)
+    # Reconcile open trades. NT route reads REAL fills from the OIF files; the
+    # IBKR/legacy route uses bar-touch against the cached 1H bars.
+    if route == "ninjatrader":
+        try:
+            _reconcile_nt_fills(db_path)
+        except Exception as exc:  # noqa: BLE001
+            log.error("nt fill reconcile failed: %s", exc, exc_info=True)
+    else:
+        _reconcile_open_trades(db_path, bars_by_sym)
 
     fired: list[dict[str, Any]] = []
     placed = 0
@@ -932,6 +1100,7 @@ def run_portfolio_scan(
                     place_orders=place_orders,
                     placed_so_far=placed,
                     max_new_trades=max_new_trades,
+                    route=route,
                 )
                 if outcome["decision"] == "TRADE":
                     placed += 1
@@ -964,6 +1133,7 @@ def run_portfolio_scan(
             place_orders=place_orders,
             placed_so_far=placed,
             max_new_trades=max_new_trades,
+            route=route,
         )
         leg_a_traded = outcome_a["decision"] == "TRADE"
         if leg_a_traded:
@@ -980,6 +1150,7 @@ def run_portfolio_scan(
             place_orders=place_orders,
             placed_so_far=placed,
             max_new_trades=max_new_trades,
+            route=route,
             # Leg A of the same pair row may have just been recorded as
             # an open trade with the same strategy_id; that's expected
             # for pairs. Bypass the per-strategy open check here.

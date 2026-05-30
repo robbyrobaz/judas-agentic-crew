@@ -22,6 +22,18 @@ class IBKRConfig:
 
 
 @dataclass
+class NinjaTraderConfig:
+    account: str
+    host: str
+    user: str
+    python_exe: str
+    outgoing_dir: str
+    instrument_map: dict
+    fill_timeout_s: float = 15.0
+    fill_poll_s: float = 1.0
+
+
+@dataclass
 class SymbolConfig:
     symbol: str
     tick: float
@@ -69,6 +81,8 @@ class Config:
     judas: JudasParams
     risk: RiskConfig
     crew: CrewConfig
+    route: str = "ibkr"
+    ninjatrader: "NinjaTraderConfig | None" = None
     db_path: str = "judas_crew.db"
     minimax_api_key: str = field(default_factory=lambda: os.environ.get("MINIMAX_API_KEY", ""))
 
@@ -105,6 +119,20 @@ def load_config(path: str | None = None) -> Config:
         verbose=crew_raw.get("verbose", True),
         min_quality_score=crew_raw.get("min_quality_score", 6),
     )
+    route = os.environ.get("JUDAS_ROUTE", raw.get("execution", {}).get("route", "ibkr"))
+    nt_raw = raw.get("ninjatrader")
+    ninjatrader = None
+    if nt_raw:
+        ninjatrader = NinjaTraderConfig(
+            account=nt_raw["account"],
+            host=nt_raw.get("host", "100.108.151.36"),
+            user=nt_raw.get("user", "nqtrader"),
+            python_exe=nt_raw["python_exe"],
+            outgoing_dir=nt_raw["outgoing_dir"],
+            instrument_map={str(k): str(v) for k, v in (nt_raw.get("instrument_map") or {}).items()},
+            fill_timeout_s=float(nt_raw.get("fill_timeout_s", 15.0)),
+            fill_poll_s=float(nt_raw.get("fill_poll_s", 1.0)),
+        )
     return Config(
         mode=mode,
         account=raw.get("account", ibkr_raw.get("account", "DUH860616")),
@@ -113,6 +141,8 @@ def load_config(path: str | None = None) -> Config:
         judas=judas,
         risk=risk,
         crew=crew,
+        route=route,
+        ninjatrader=ninjatrader,
         db_path=raw.get("db_path", "judas_crew.db"),
         minimax_api_key=os.environ.get("MINIMAX_API_KEY", ""),
     )

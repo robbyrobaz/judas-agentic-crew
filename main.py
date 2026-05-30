@@ -195,6 +195,7 @@ def main() -> int:
                 max_open_positions=cfg.risk.max_open_positions,
                 max_trades_per_day=cfg.risk.max_trades_per_day,
                 place_orders=not args.eval_only,
+                route=cfg.route,
             )
             print(json.dumps({"status": "ok", "runtime": "portfolio", "result": result}, indent=2, default=str))
             log.info("portfolio_runtime.finished", extra={"fire_count": len(result.get("fires", []))})

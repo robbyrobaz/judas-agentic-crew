@@ -8,6 +8,36 @@ ibkr:
   exec_client_id: 151
   account: "DUH860616"
 
+# Execution route: "ninjatrader" places real bracket orders on the NT sim
+# account via the WinRM bridge (data still comes from IBKR). "ibkr" keeps the
+# legacy IBKR paper-account execution + bar-touch reconciliation.
+execution:
+  route: ninjatrader          # ninjatrader | ibkr
+
+# NinjaTrader bridge — only used when execution.route == "ninjatrader".
+# WinRM → PowerShell → NT Client API on the Windows host. Password from env
+# WINDOWS_PASSWORD (set in the systemd unit), never committed here.
+ninjatrader:
+  account: SimJudasCrew       # NT sim account (separate sleeve from workshop's SimJUDAS)
+  host: 100.108.151.36        # Tailscale IP of the Windows NT box
+  user: nqtrader
+  python_exe: "C:\\Users\\hartw\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe"
+  outgoing_dir: "C:\\Users\\hartw\\Documents\\NinjaTrader 8\\outgoing"
+  fill_timeout_s: 15
+  fill_poll_s: 1.0
+  # Logical symbol → NT instrument string ("ROOT MM-YY"). Front months as of
+  # 2026-05-30; MNQ/MCL/DX June contracts roll ~mid-June — update at roll.
+  # ZF/6J are best-effort: verify the NT sim data feed carries them.
+  instrument_map:
+    MGC: "MGC 06-26"
+    MNQ: "MNQ 06-26"
+    MBT: "MBT 06-26"
+    MET: "MET 06-26"
+    MCL: "MCL 07-26"
+    DX:  "DX 06-26"
+    ZF:  "ZF 06-26"
+    "6J": "6J 06-26"
+
 symbols:
   - symbol: MGC
     tick: 0.10

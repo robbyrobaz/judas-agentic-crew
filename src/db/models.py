@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS trades (
     strategy_id     INTEGER,
     strategy_family TEXT,
     strategy_version INTEGER,
-    ibkr_order_id   TEXT,
+    ibkr_order_id   TEXT,                       -- parent/entry order id (IBKR int or NT GUID)
+    tp_order_id     TEXT,                       -- take-profit leg id (NT GUID)
+    sl_order_id     TEXT,                       -- stop-loss leg id (NT GUID)
     symbol          TEXT    NOT NULL,
     direction       TEXT    NOT NULL,          -- "long" | "short"
     qty             INTEGER NOT NULL DEFAULT 1,
@@ -55,6 +57,7 @@ CREATE TABLE IF NOT EXISTS trades (
     target_price    REAL,
     exit_fill       REAL,
     pnl_dollars     REAL,
+    exit_reason     TEXT,                       -- "stop" | "target" | manual_*
     status          TEXT    NOT NULL DEFAULT 'open',  -- "open" | "closed" | "cancelled"
     opened_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     closed_at       TEXT
@@ -253,6 +256,9 @@ _MIGRATIONS = [
     ("trades", "strategy_id", "ALTER TABLE trades ADD COLUMN strategy_id INTEGER"),
     ("trades", "strategy_family", "ALTER TABLE trades ADD COLUMN strategy_family TEXT"),
     ("trades", "strategy_version", "ALTER TABLE trades ADD COLUMN strategy_version INTEGER"),
+    ("trades", "tp_order_id", "ALTER TABLE trades ADD COLUMN tp_order_id TEXT"),
+    ("trades", "sl_order_id", "ALTER TABLE trades ADD COLUMN sl_order_id TEXT"),
+    ("trades", "exit_reason", "ALTER TABLE trades ADD COLUMN exit_reason TEXT"),
 ]
 
 

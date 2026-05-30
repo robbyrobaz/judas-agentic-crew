@@ -168,23 +168,99 @@ class NTBroker:
     def check_fill(self, order_id: str) -> tuple[bool, float, str]:
         """Returns (filled, fill_price, raw_status) for a single order GUID.
 
-        Reads {outgoing_dir}\\{account}_{order_id}.txt written by the NT addon.
+        Confirms the fill against TWO sources in one WinRM round-trip:
+          1. The OIF outgoing file {outgoing_dir}\\{account}_{order_id}.txt
+             ("FILLED;<ts>;<price>") written by the NT addon, and
+          2. NT's own Client API — Filled(oid)/AvgFillPrice(oid)/OrderStatus(oid).
+
+        A fill is only reported when at least one source confirms it. The
+        reported price is NT's authoritative AvgFillPrice when available
+        (it reflects real slippage), falling back to the OIF price. This is
+        the "confirm the fill price" guard — never assume the signal price.
         Public so the runtime fill-sync can poll stop/target leg GUIDs.
         """
         fp = f"{self.outgoing_dir}\\{self.account}_{order_id}.txt"
-        script = (
-            'import os, sys\n'
+        script = self._HEADER + (
+            'import os\n'
             f'fp = r"{fp}"\n'
-            'print(open(fp).read().strip()) if os.path.exists(fp) else print("NOFILE")\n'
+            'oif = open(fp).read().strip() if os.path.exists(fp) else "NOFILE"\n'
+            'print("OIF:" + oif)\n'
+            f'print("API_STATUS:" + str(nt.OrderStatus("{order_id}")))\n'
+            f'print("API_FILLED:" + str(nt.Filled("{order_id}")))\n'
+            f'print("API_AVGFILL:" + str(nt.AvgFillPrice("{order_id}")))\n'
         )
         status, out = self._nt_run(script)
         if status != 0:
             return False, 0.0, f"WINRM_FAIL({status})"
-        text = (out.strip().splitlines() or [""])[-1]
-        m = re.match(r"FILLED;\d+;([0-9.]+)", text)
-        if m:
-            return True, float(m.group(1)), text
-        return False, 0.0, text
+        oif_text = "NOFILE"
+        api_status = ""
+        api_filled = 0
+        api_avg = 0.0
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("OIF:"):
+                oif_text = line[4:]
+            elif line.startswith("API_STATUS:"):
+                api_status = line[len("API_STATUS:"):]
+            elif line.startswith("API_FILLED:"):
+                try:
+                    api_filled = int(float(line[len("API_FILLED:"):]))
+                except ValueError:
+                    api_filled = 0
+            elif line.startswith("API_AVGFILL:"):
+                try:
+                    api_avg = float(line[len("API_AVGFILL:"):])
+                except ValueError:
+                    api_avg = 0.0
+
+        m = re.match(r"FILLED;\d+;([0-9.]+)", oif_text)
+        oif_price = float(m.group(1)) if m else 0.0
+        oif_filled = m is not None
+        api_says_filled = api_filled > 0 and api_avg > 0
+        raw = f"OIF[{oif_text}] API[status={api_status} filled={api_filled} avg={api_avg}]"
+
+        if api_says_filled:
+            # NT's own record is authoritative for the price.
+            if oif_filled and abs(oif_price - api_avg) > 1e-9:
+                log.warning("nt_broker.fill_price_mismatch", extra={
+                    "nt_order_id": order_id, "oif_price": oif_price,
+                    "api_avg_fill": api_avg,
+                })
+            return True, api_avg, raw
+        if oif_filled:
+            # OIF confirms but API hasn't caught up yet — trust the OIF price.
+            return True, oif_price, raw
+        if "REJECTED" in oif_text or (api_status and "Rejected" in api_status):
+            return False, 0.0, raw + " REJECTED"
+        return False, 0.0, raw
+
+    def account_summary(self) -> dict[str, float] | None:
+        """Query the NT sim account's cash, buying power and realized P&L.
+
+        One WinRM round-trip. Returns None on any failure so callers can show
+        a stale/blank value rather than crash.
+        """
+        script = self._HEADER + (
+            f'print("CASH:" + str(nt.CashValue("{self.account}")))\n'
+            f'print("BP:" + str(nt.BuyingPower("{self.account}")))\n'
+            f'print("RPNL:" + str(nt.RealizedPnL("{self.account}")))\n'
+        )
+        status, out = self._nt_run(script)
+        if status != 0:
+            return None
+        vals: dict[str, float] = {}
+        keymap = {"CASH:": "cash", "BP:": "buying_power", "RPNL:": "realized_pnl"}
+        for line in out.splitlines():
+            line = line.strip()
+            for prefix, key in keymap.items():
+                if line.startswith(prefix):
+                    try:
+                        vals[key] = float(line[len(prefix):])
+                    except ValueError:
+                        pass
+        if "cash" not in vals:
+            return None
+        return vals
 
     def _poll_fill(self, order_id: str) -> tuple[bool, float, str]:
         """Block up to fill_timeout_s polling outgoing file. Returns (filled, price, final_status)."""

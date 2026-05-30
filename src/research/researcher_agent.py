@@ -165,6 +165,27 @@ def _build_kickoff(db_path: str) -> str:
             lines.append(f"  *** UNCOVERED (zero active): {', '.join(uncovered)} — PRIORITY ***")
         lines.append("")
 
+        # REAL winning trades by symbol — money actually made (persists past
+        # strategy retirement). Tells the researcher which symbols are proven
+        # earners so it doubles down there. (Requested 2026-05-30.)
+        try:
+            from src.research import leaderboard_stats as _ls
+            winners = _ls.winners_by_symbol(conn)
+            if winners:
+                lines.append("REAL CLOSED TRADES (by symbol — proven P&L, survives retirement):")
+                for w in winners:
+                    tag = "🟢" if w["net_pnl"] > 0 else ("🔴" if w["net_pnl"] < 0 else "  ")
+                    lines.append(
+                        f"  {tag} {w['symbol']:<4} net ${w['net_pnl']:+9.2f} | "
+                        f"{w['wins']}W/{w['losses']}L | best ${w['best_trade']:+.2f}"
+                    )
+                lines.append("  → 🟢 green = PROVEN earners: prioritize generating variants there.")
+                lines.append("  → 🔴 red = PROVEN losers on real fills: change the approach for that")
+                lines.append("    symbol (new family/params), don't just clone the losing setup.")
+                lines.append("")
+        except Exception:
+            pass
+
         # Open researcher tasks (top 12 by priority)
         task_rows = conn.execute("""
             SELECT id, action, urgency, rationale

@@ -40,6 +40,10 @@ type Overview = {
     headline: { active_strategy_count: number };
     active_strategies: ActiveStrategy[];
   };
+  nt_account?: {
+    account: string; cash: number; buying_power: number; realized_pnl: number;
+    age_s: number; stale?: boolean;
+  } | null;
   open_positions: OpenPosition[];
   week_stats?: { pnl: number; wins: number; losses: number; trades: number };
   youtube_stats?: { today: number; this_week: number };
@@ -481,8 +485,34 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
     })
     .slice(0, 14);
 
+  const nt = ov?.nt_account;
+
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 10 }}>
+      {nt && (
+        <div style={{ marginBottom: 14, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.13em", textTransform: "uppercase", color: C.gold }}>NinjaTrader · {nt.account}</span>
+            <span style={{ fontSize: 9, color: C.muted, fontFamily: "monospace", marginLeft: "auto" }}>
+              {nt.stale ? "stale · " : ""}refreshed {Math.round(nt.age_s)}s ago · 60s cache
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 22 }}>
+            <div>
+              <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Cash</div>
+              <div style={{ fontSize: 18, fontFamily: "monospace", fontWeight: 700, color: C.text }}>${nt.cash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Realized P&amp;L</div>
+              <div style={{ fontSize: 18, fontFamily: "monospace", fontWeight: 700, color: nt.realized_pnl > 0 ? C.green : nt.realized_pnl < 0 ? C.red : C.text }}>{pnlStr(nt.realized_pnl)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Buying Power</div>
+              <div style={{ fontSize: 18, fontFamily: "monospace", fontWeight: 700, color: C.muted }}>${nt.buying_power.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, paddingLeft: 2 }}>
           <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.13em", textTransform: "uppercase", color: C.gold }}>Open Positions</span>

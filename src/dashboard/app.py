@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -974,6 +975,47 @@ def _fetch_agents_last_run() -> dict[str, Any]:
     return result
 
 
+# NT account balance — cached so the WinRM call runs at most once per TTL
+# (the browser polls /api/overview every 15s; WinRM is ~1-2s and we must NOT
+# hammer it — that flooding is what locked the nqtrader account before).
+_NT_SNAPSHOT_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_NT_SNAPSHOT_TTL_S = 60.0
+
+
+def _nt_account_snapshot() -> dict[str, Any] | None:
+    """Return {account, cash, buying_power, realized_pnl, age_s} for the NT sim
+    account, or None when route!=ninjatrader / WinRM unavailable. TTL-cached;
+    on a refresh failure the last good value is kept so the panel doesn't blank.
+    """
+    cfg = load_config()
+    if getattr(cfg, "route", "ibkr") != "ninjatrader" or cfg.ninjatrader is None:
+        return None
+    now = time.time()
+    cached = _NT_SNAPSHOT_CACHE.get("data")
+    if cached is not None and (now - _NT_SNAPSHOT_CACHE["ts"]) < _NT_SNAPSHOT_TTL_S:
+        return {**cached, "age_s": round(now - _NT_SNAPSHOT_CACHE["ts"], 1)}
+    try:
+        from src.broker.ninjatrader import NTBroker
+
+        nt = cfg.ninjatrader
+        broker = NTBroker(
+            account=nt.account, instrument_map=nt.instrument_map, host=nt.host,
+            user=nt.user, python_exe=nt.python_exe, outgoing_dir=nt.outgoing_dir,
+        )
+        summary = broker.account_summary()
+        if summary is None:
+            raise RuntimeError("account_summary returned None")
+        data = {"account": nt.account, **summary}
+        _NT_SNAPSHOT_CACHE["ts"] = now
+        _NT_SNAPSHOT_CACHE["data"] = data
+        return {**data, "age_s": 0.0}
+    except Exception:
+        # Keep last good value (possibly stale) rather than blank the panel.
+        if cached is not None:
+            return {**cached, "age_s": round(now - _NT_SNAPSHOT_CACHE["ts"], 1), "stale": True}
+        return None
+
+
 def _overview_payload() -> dict[str, Any]:
     session = json.loads(session_status_tool.run(input_json="{}"))
     signals = _fetch_recent_signals(limit=8)
@@ -1009,6 +1051,7 @@ def _overview_payload() -> dict[str, Any]:
         "latest_experiment": experiments[0] if experiments else None,
         "trading_stats": _fetch_trading_stats(),
         "research_stats": _fetch_research_stats(),
+        "nt_account": _nt_account_snapshot(),
         "open_positions": _fetch_open_positions(),
         "week_stats": week_stats,
         "youtube_stats": youtube_stats,

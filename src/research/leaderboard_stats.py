@@ -475,6 +475,48 @@ def sleeve_summary(conn: sqlite3.Connection, *, starting: float = 5000.0) -> dic
     }
 
 
+def winners_by_symbol(conn: sqlite3.Connection) -> list[dict]:
+    """Closed-trade P&L aggregated by SYMBOL across ALL strategies.
+
+    Winning trades are attributed to whatever strategy_id was active when the
+    trade closed — which is often since retired/replaced. Grouping by symbol
+    keeps the win visible to agents even after the originating strategy row is
+    gone, so a profitable symbol isn't mistaken for dead weight. Sorted by net
+    P&L descending.
+    """
+    rows = conn.execute(
+        """
+        SELECT symbol,
+               COUNT(*) AS n,
+               SUM(CASE WHEN pnl_dollars > 0 THEN 1 ELSE 0 END) AS wins,
+               COALESCE(SUM(pnl_dollars), 0) AS net_pnl,
+               MAX(pnl_dollars) AS best,
+               MIN(pnl_dollars) AS worst,
+               MAX(closed_at) AS last_close
+        FROM trades
+        WHERE status='closed' AND pnl_dollars IS NOT NULL
+        GROUP BY symbol
+        ORDER BY net_pnl DESC
+        """
+    ).fetchall()
+    out = []
+    for r in rows:
+        n = _safe_int(r["n"])
+        wins = _safe_int(r["wins"])
+        out.append({
+            "symbol": str(r["symbol"]),
+            "n": n,
+            "wins": wins,
+            "losses": n - wins,
+            "winrate": round(wins / n * 100, 1) if n else 0.0,
+            "net_pnl": round(_safe_float(r["net_pnl"]), 2),
+            "best_trade": round(_safe_float(r["best"]), 2),
+            "worst_trade": round(_safe_float(r["worst"]), 2),
+            "last_close_utc": r["last_close"],
+        })
+    return out
+
+
 def recent_walk_forward_candidates(conn: sqlite3.Connection, *, limit: int = 12) -> list[dict]:
     """Recent walk_forward experiments not yet active — potential promotions."""
     rows = conn.execute(

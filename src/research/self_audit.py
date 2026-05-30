@@ -52,6 +52,28 @@ def build_leaderboard_block(db_path: str) -> str:
         )
         out.append("")
 
+        # REAL WINNING TRADES, by symbol — survives strategy retirement.
+        # A symbol can be net-profitable even if the strategy that earned it
+        # was since retired/replaced; this keeps the win visible so agents
+        # don't retire/ignore a productive symbol. (Requested 2026-05-30.)
+        winners = ls.winners_by_symbol(conn)
+        if winners:
+            out.append("REAL CLOSED TRADES (by symbol — money actually made; persists past retirement):")
+            for w in winners:
+                tag = "🟢" if w["net_pnl"] > 0 else ("🔴" if w["net_pnl"] < 0 else "  ")
+                out.append(
+                    f"  {tag} {w['symbol']:<4} net ${w['net_pnl']:+9.2f} | "
+                    f"{w['wins']}W/{w['losses']}L ({w['winrate']:.0f}% WR) | "
+                    f"best ${w['best_trade']:+.2f} worst ${w['worst_trade']:+.2f} | "
+                    f"last {str(w['last_close_utc'])[:10]}"
+                )
+            out.append("  → 🟢 GREEN = PROVEN earner: do NOT treat its active strategies as dead")
+            out.append("    weight just because live_n=0 on the current row (the win may be attributed")
+            out.append("    to a now-retired ancestor strategy). Protect / build on these.")
+            out.append("  → 🔴 RED = PROVEN loser on real fills: prime candidate to retire / retune /")
+            out.append("    tighten. This is real-money evidence, stronger than any backtest.")
+            out.append("")
+
         cov = ls.coverage_summary(conn)
         out.append(
             f"COVERAGE: {cov['total_active_symbols']}/{cov['total_target_symbols']} "

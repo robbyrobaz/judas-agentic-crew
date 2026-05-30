@@ -287,6 +287,37 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
 _REQUIRED_PARAM_KEYS = ("symbol",)
 _REQUIRED_PARAM_NAME_ALTERNATES = ("strategy_name", "strategy_family")
 
+# Runtime keys that distinguish a real, runnable strategy from a hollow stub.
+# Used by the zombie-retire guard to verify an LLM's "empty params" claim.
+_JUDAS_NATIVE_RUNTIME_KEYS = (
+    "detector_lookback_bars", "confirmation_bars", "pivot_length",
+    "target_r", "stop_buffer_ticks", "min_sweep_ticks",
+    "min_displacement_strength", "min_displacement_body_ratio", "max_sweep_age_bars",
+)
+_BUFFET_ZOO_TYPES = ("rsi", "ma_cross", "bollinger")
+# Substrings that mark a retirement reason as a "params are empty/broken" claim.
+_ZOMBIE_REASON_MARKERS = (
+    "zombie", "empty params", "params_json is empty", "params are empty",
+    "no runtime", "lack any runtime", "lack runtime", "no judas keys",
+    "missing detector", "no valid", "params lack", "hollow", "no params",
+)
+
+
+def _params_look_zombie(params: dict[str, Any]) -> bool:
+    """True only when params GENUINELY lack the runtime config to run.
+
+    A judas_native strategy needs several detector keys; a buffet_zoo strategy
+    needs a valid strategy_type. This is the code-of-record that a retirement
+    reason claiming "empty/missing params" must agree with — if the params are
+    actually complete, the claim is false and the retirement is refused.
+    """
+    engine = str(params.get("execution_engine", "")).lower()
+    if engine == "buffet_zoo":
+        return str(params.get("strategy_type", "")) not in _BUFFET_ZOO_TYPES
+    # judas_native (and anything judas-like / unknown defaults to judas rules)
+    present = [k for k in _JUDAS_NATIVE_RUNTIME_KEYS if k in params]
+    return len(present) < 3
+
 
 def _validate_params_json(raw: str | None) -> dict[str, Any]:
     """Parse + validate a candidate's params_json blob. Raise ValueError if bad."""
@@ -329,6 +360,23 @@ def retire_strategy(
                 raise ValueError(
                     f"active strategy {strategy_id} not found or not active"
                 )
+            # Hallucinated-zombie guard: if the reason claims the params are
+            # empty/missing runtime keys, VERIFY in code. An LLM reviewer must
+            # not retire a fully-parameterized strategy on a fabricated factual
+            # basis (this wiped 41 valid strategies on 2026-05-30). If the
+            # params are actually complete, refuse the retirement.
+            if any(mk in (reason or "").lower() for mk in _ZOMBIE_REASON_MARKERS):
+                try:
+                    _params = json.loads(row["params_json"] or "{}")
+                except (TypeError, ValueError):
+                    _params = {}
+                if not _params_look_zombie(_params):
+                    raise ValueError(
+                        f"retire REFUSED for strategy {strategy_id}: reason claims "
+                        f"zombie/empty params but params are complete for "
+                        f"engine={_params.get('execution_engine')!r} "
+                        f"(keys={sorted(_params.keys())}). Reason was: {reason!r}"
+                    )
             now = _utc_now()
             conn.execute(
                 """

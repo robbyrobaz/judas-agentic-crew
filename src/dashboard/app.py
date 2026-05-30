@@ -480,6 +480,34 @@ def _live_metrics_by_symbol(db_path: str) -> dict[str, dict]:
     return result
 
 
+def _bt_metrics(metrics: dict) -> dict:
+    """Extract walk-forward backtest metrics from a strategy's metrics_json.
+
+    Keys vary by generator: walk-forward uses ``avg_test_*``, older/seeded rows
+    use ``backtest_pf``/``profit_factor``. Returns normalized {pf, trades, winrate}.
+    """
+    def _first(*keys):
+        for k in keys:
+            v = metrics.get(k)
+            if v is not None:
+                return v
+        return None
+
+    pf = _first("avg_test_profit_factor", "avg_test_PF", "backtest_pf", "profit_factor", "pf")
+    n = _first("total_test_trades", "total_combined_test_trades", "n_trades", "n_signals")
+    wr = _first("avg_test_win_rate", "win_rate", "winrate")
+    # win rate may be a fraction (0-1) or already a percentage
+    if wr is not None:
+        wr = float(wr)
+        if wr <= 1.0:
+            wr *= 100.0
+    return {
+        "bt_pf": round(float(pf), 2) if pf is not None else None,
+        "bt_trades": int(n) if n is not None else None,
+        "bt_winrate": round(wr, 1) if wr is not None else None,
+    }
+
+
 def _fetch_research_stats() -> dict[str, Any]:
     active = list_active_strategies()
     experiments = _fetch_recent_experiments(limit=50)
@@ -489,37 +517,44 @@ def _fetch_research_stats() -> dict[str, Any]:
     db_path = str(REPO_ROOT / "judas_crew.db")
     live_metrics = _live_metrics_by_symbol(db_path)
 
-    def _sort_key(row: dict) -> float:
+    def _sort_key(row: dict) -> tuple:
         sym = str(row.get("symbol", ""))
         lm = live_metrics.get(sym, {})
         pnl = lm.get("total_pnl_dollars")
-        pf = lm.get("profit_factor")
-        if pnl is not None:
-            return float(pnl)
-        if pf is not None:
-            return float(pf) * 0.001
-        return 0.0
+        bt_pf = _bt_metrics(row.get("metrics") or {}).get("bt_pf")
+        # Primary: live realized P&L (has skin in the game). Secondary: BT PF.
+        return (
+            pnl if pnl is not None else float("-inf"),
+            bt_pf if bt_pf is not None else float("-inf"),
+        )
 
     active_sorted = sorted(active, key=_sort_key, reverse=True)
     best_active = []
     seen_symbols: set[str] = set()
-    for row in active_sorted[:12]:
+    for row in active_sorted[:14]:
         sym = str(row.get("symbol", ""))
         lm = live_metrics.get(sym, {})
         params = row.get("params") or {}
+        bt = _bt_metrics(row.get("metrics") or {})
         name = params.get("strategy_name") or params.get("strategy_type") or params.get("strategy_family")
-        # Show live metrics only on the first row for each symbol to avoid duplicating totals
-        show_metrics = sym not in seen_symbols
+        # Live (forward-test) metrics are per-symbol — show only on the first row
+        # per symbol so we don't duplicate the symbol's total across its variants.
+        show_ft = sym not in seen_symbols
         seen_symbols.add(sym)
         best_active.append(
             {
                 "symbol": row.get("symbol"),
                 "strategy_name": name,
                 "engine": params.get("execution_engine"),
-                "profit_factor": lm.get("profit_factor") if show_metrics else None,
-                "trades": lm.get("trades") if show_metrics else None,
-                "winrate": lm.get("winrate") if show_metrics else None,
-                "total_pnl_dollars": lm.get("total_pnl_dollars") if show_metrics else None,
+                # Backtest (walk-forward) — per strategy
+                "bt_pf": bt["bt_pf"],
+                "bt_trades": bt["bt_trades"],
+                "bt_winrate": bt["bt_winrate"],
+                # Forward-test (live paper) — per symbol, first row only
+                "profit_factor": lm.get("profit_factor") if show_ft else None,
+                "trades": lm.get("trades") if show_ft else None,
+                "winrate": lm.get("winrate") if show_ft else None,
+                "total_pnl_dollars": lm.get("total_pnl_dollars") if show_ft else None,
                 "max_drawdown_dollars": None,
             }
         )

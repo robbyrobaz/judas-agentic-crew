@@ -22,7 +22,8 @@ type ActivityEvent = {
 
 type ActiveStrategy = {
   symbol: string; strategy_name: string | null; engine: string | null;
-  profit_factor: number | null; trades: number | null; total_pnl_dollars: number | null;
+  bt_pf: number | null; bt_trades: number | null; bt_winrate: number | null;
+  profit_factor: number | null; trades: number | null; winrate: number | null; total_pnl_dollars: number | null;
 };
 
 type Overview = {
@@ -468,15 +469,17 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
 
   const positions = livePositions ?? ov?.open_positions ?? [];
   const recentTrades = ov?.recent_trades ?? [];
-  // Show strategies sorted by PF descending; nulls go last
+  // Sort by live P&L (skin in the game) first, then backtest PF; nulls last.
+  const rank = (s: ActiveStrategy) => [
+    s.total_pnl_dollars ?? -Infinity,
+    s.bt_pf ?? -Infinity,
+  ];
   const strats = [...(ov?.research_stats?.active_strategies ?? [])]
     .sort((a, b) => {
-      if (a.profit_factor == null && b.profit_factor == null) return 0;
-      if (a.profit_factor == null) return 1;
-      if (b.profit_factor == null) return -1;
-      return b.profit_factor - a.profit_factor;
+      const [ap, ab] = rank(a), [bp, bb] = rank(b);
+      return bp - ap || bb - ab;
     })
-    .slice(0, 12);
+    .slice(0, 14);
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 10 }}>
@@ -526,26 +529,37 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
 
       <div>
         <SectionTitle>Strategy Leaderboard</SectionTitle>
+        <div style={{ display: "flex", gap: 14, marginBottom: 6, paddingLeft: 2, fontSize: 9, color: C.muted }}>
+          <span><span style={{ color: C.blue, fontWeight: 700 }}>BT</span> = walk-forward backtest (per strategy)</span>
+          <span><span style={{ color: C.gold, fontWeight: 700 }}>FT</span> = forward test, live paper (per symbol)</span>
+        </div>
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: C.surface2 }}>
-                {["#", "Symbol", "Strategy", "PF", "Trades", "P&L"].map((h) => (
-                  <th key={h} style={{ padding: "7px 11px", textAlign: h === "#" ? "center" : "left", color: C.muted, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                {[
+                  { h: "#", c: C.muted }, { h: "Symbol", c: C.muted }, { h: "Strategy", c: C.muted },
+                  { h: "BT PF", c: C.blue }, { h: "BT n", c: C.blue }, { h: "BT WR", c: C.blue },
+                  { h: "FT PF", c: C.gold }, { h: "FT Trades", c: C.gold }, { h: "FT P&L", c: C.gold },
+                ].map(({ h, c }) => (
+                  <th key={h} style={{ padding: "7px 10px", textAlign: h === "#" ? "center" : "left", color: c, fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", borderBottom: `1px solid ${C.border}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {strats.length === 0
-                ? <tr><td colSpan={6} style={{ padding: "18px 12px", color: C.muted, textAlign: "center", fontSize: 11 }}>No active strategies</td></tr>
+                ? <tr><td colSpan={9} style={{ padding: "18px 12px", color: C.muted, textAlign: "center", fontSize: 11 }}>No active strategies</td></tr>
                 : strats.map((s, i) => (
                   <tr key={i} style={{ borderBottom: `1px solid ${C.border}20` }}>
-                    <td style={{ padding: "7px 11px", color: C.muted, textAlign: "center", fontFamily: "monospace" }}>{i + 1}</td>
-                    <td style={{ padding: "7px 11px", fontFamily: "monospace", fontWeight: 700, color: C.text }}>{s.symbol}</td>
-                    <td style={{ padding: "7px 11px", color: C.muted, fontSize: 11 }}>{s.strategy_name ?? s.engine ?? "—"}</td>
-                    <td style={{ padding: "7px 11px", fontFamily: "monospace", color: C.blue, fontWeight: 700 }}>{s.profit_factor?.toFixed(2) ?? "—"}</td>
-                    <td style={{ padding: "7px 11px", fontFamily: "monospace", color: C.muted }}>{s.trades ?? "—"}</td>
-                    <td style={{ padding: "7px 11px", fontFamily: "monospace", color: pnlColor(s.total_pnl_dollars), fontWeight: 600 }}>{pnlStr(s.total_pnl_dollars)}</td>
+                    <td style={{ padding: "7px 10px", color: C.muted, textAlign: "center", fontFamily: "monospace" }}>{i + 1}</td>
+                    <td style={{ padding: "7px 10px", fontFamily: "monospace", fontWeight: 700, color: C.text }}>{s.symbol}</td>
+                    <td style={{ padding: "7px 10px", color: C.muted, fontSize: 11 }}>{s.strategy_name ?? s.engine ?? "—"}</td>
+                    <td style={{ padding: "7px 10px", fontFamily: "monospace", color: C.blue, fontWeight: 700 }}>{s.bt_pf?.toFixed(2) ?? "—"}</td>
+                    <td style={{ padding: "7px 10px", fontFamily: "monospace", color: C.muted }}>{s.bt_trades ?? "—"}</td>
+                    <td style={{ padding: "7px 10px", fontFamily: "monospace", color: C.muted }}>{s.bt_winrate != null ? `${s.bt_winrate}%` : "—"}</td>
+                    <td style={{ padding: "7px 10px", fontFamily: "monospace", color: C.gold, fontWeight: 700 }}>{s.profit_factor?.toFixed(2) ?? "—"}</td>
+                    <td style={{ padding: "7px 10px", fontFamily: "monospace", color: C.muted }}>{s.trades ?? "—"}</td>
+                    <td style={{ padding: "7px 10px", fontFamily: "monospace", color: pnlColor(s.total_pnl_dollars), fontWeight: 600 }}>{s.total_pnl_dollars != null ? pnlStr(s.total_pnl_dollars) : "—"}</td>
                   </tr>
                 ))
               }

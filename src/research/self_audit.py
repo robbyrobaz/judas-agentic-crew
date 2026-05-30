@@ -67,11 +67,6 @@ def build_leaderboard_block(db_path: str) -> str:
                     f"best ${w['best_trade']:+.2f} worst ${w['worst_trade']:+.2f} | "
                     f"last {str(w['last_close_utc'])[:10]}"
                 )
-            out.append("  → 🟢 GREEN = PROVEN earner: do NOT treat its active strategies as dead")
-            out.append("    weight just because live_n=0 on the current row (the win may be attributed")
-            out.append("    to a now-retired ancestor strategy). Protect / build on these.")
-            out.append("  → 🔴 RED = PROVEN loser on real fills: prime candidate to retire / retune /")
-            out.append("    tighten. This is real-money evidence, stronger than any backtest.")
             out.append("")
 
         cov = ls.coverage_summary(conn)

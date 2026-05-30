@@ -172,7 +172,6 @@ def _build_operator_kickoff(db_path: str) -> str:
                         f"  {tag} {w['symbol']:<4} net ${w['net_pnl']:+9.2f} | "
                         f"{w['wins']}W/{w['losses']}L"
                     )
-                lines.append("  → 🟢 protect/grow proven earners; 🔴 retune or retire proven losers.")
                 lines.append("")
         except Exception:
             pass

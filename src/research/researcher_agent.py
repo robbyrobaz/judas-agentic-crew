@@ -179,9 +179,6 @@ def _build_kickoff(db_path: str) -> str:
                         f"  {tag} {w['symbol']:<4} net ${w['net_pnl']:+9.2f} | "
                         f"{w['wins']}W/{w['losses']}L | best ${w['best_trade']:+.2f}"
                     )
-                lines.append("  → 🟢 green = PROVEN earners: prioritize generating variants there.")
-                lines.append("  → 🔴 red = PROVEN losers on real fills: change the approach for that")
-                lines.append("    symbol (new family/params), don't just clone the losing setup.")
                 lines.append("")
         except Exception:
             pass

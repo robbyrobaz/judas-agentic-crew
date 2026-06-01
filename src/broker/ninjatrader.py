@@ -299,6 +299,56 @@ class NTBroker:
             })
         return ok
 
+    def order_status(self, order_id: str) -> str:
+        """Query NT's OrderStatus for one order GUID. '' on WinRM failure.
+
+        NT states: Working/Accepted/Submitted (live), Filled, Rejected,
+        Cancelled. rc==0 from _place only means the ATI command was accepted —
+        NT rejects asynchronously, so this is how we learn a stop/target was
+        actually rejected (the naked-position trigger)."""
+        if not order_id:
+            return ""
+        script = self._HEADER + f'print("STATUS:" + str(nt.OrderStatus("{order_id}")))\n'
+        st, out = self._nt_run(script)
+        if st != 0:
+            return ""
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("STATUS:"):
+                return line[len("STATUS:"):]
+        return ""
+
+    def _confirm_protected(self, stop_oid: str, target_oid: str) -> bool:
+        """Poll both protective legs until both are live, or either is dead.
+
+        Returns True only when BOTH legs reach a live state (Working/Accepted/
+        Submitted). Returns False if either leg is missing, Rejected, or
+        Cancelled, or if both don't confirm live within fill_timeout_s. NT OCO
+        kills the whole pair when one leg is invalid, so one bad leg => unprotected.
+        """
+        if not stop_oid or not target_oid:
+            return False
+        live = ("working", "accepted", "submitted", "presubmitted", "filled")
+        dead = ("rejected", "cancelled", "canceled", "unknown")
+        t0 = time.time()
+        while time.time() - t0 < self.fill_timeout_s:
+            ss = self.order_status(stop_oid).lower()
+            ts = self.order_status(target_oid).lower()
+            if any(d in ss for d in dead) or any(d in ts for d in dead):
+                log.error("nt_broker.protective_leg_dead", extra={
+                    "stop_oid": stop_oid, "stop_status": ss,
+                    "target_oid": target_oid, "target_status": ts,
+                })
+                return False
+            if any(l in ss for l in live) and any(l in ts for l in live):
+                return True
+            time.sleep(self.fill_poll_s)
+        log.error("nt_broker.protective_legs_unconfirmed", extra={
+            "stop_oid": stop_oid, "target_oid": target_oid,
+            "timeout_s": self.fill_timeout_s,
+        })
+        return False
+
     # -- Bracket --------------------------------------------------------
 
     def place_bracket(self, *, symbol: str, side: str, quantity: int,
@@ -368,13 +418,45 @@ class NTBroker:
             instrument=instrument,
         )
 
-        if not (stop_oid and target_oid):
-            log.error("nt_broker.bracket_leg_failed", extra={
+        # NAKED-POSITION GUARD: rc==0 on _place does NOT mean NT accepted the
+        # order — it rejects asynchronously. Confirm BOTH protective legs are
+        # actually live. If not, the entry is open & unprotected → flatten it
+        # immediately rather than hold a naked position. (Sibling repo hit this
+        # live 2026-06-01.) Do NOT retry the legs — the usual cause is the
+        # MARKET fill slipping past the stop level, so a re-place just re-rejects.
+        if not self._confirm_protected(stop_oid, target_oid):
+            log.critical("nt_broker.NAKED_RISK_flattening", extra={
+                "symbol": symbol, "instrument": instrument, "side": side,
                 "entry_oid": entry_oid, "stop_oid": stop_oid,
-                "target_oid": target_oid, "oco": oco_id,
-                "WARNING": "position is OPEN but protective leg(s) MISSING",
+                "target_oid": target_oid, "entry_fill": entry_fill_price,
             })
-            # Don't auto-flatten — operator decides. Return whatever we have.
+            # Cancel whatever legs exist, then market-flatten the entry.
+            for oid in (stop_oid, target_oid):
+                if oid:
+                    try:
+                        self.cancel(oid, symbol)
+                    except Exception:  # noqa: BLE001
+                        pass
+            position_dir = "long" if side == "BUY" else "short"
+            flat_price = self.flatten(symbol, direction=position_dir, quantity=quantity)
+            if flat_price is None:
+                # Could not confirm the flatten — we may STILL be naked. This is
+                # a loud abort state, not a silent no-trade.
+                log.critical("nt_broker.FLATTEN_UNCONFIRMED_POSSIBLE_NAKED", extra={
+                    "symbol": symbol, "instrument": instrument,
+                    "position_dir": position_dir, "qty": quantity,
+                    "entry_oid": entry_oid,
+                    "ACTION": "MANUAL CHECK NT POSITION NOW",
+                })
+                raise RuntimeError(
+                    f"NT bracket unprotected AND flatten unconfirmed for {symbol} "
+                    f"({position_dir} {quantity}) — possible naked position, manual check"
+                )
+            log.warning("nt_broker.flattened_after_protection_failure", extra={
+                "symbol": symbol, "entry_fill": entry_fill_price,
+                "flat_price": flat_price,
+            })
+            return None  # entry opened then immediately closed — no live trade
 
         return NTBracketResult(
             entry_oid=entry_oid,

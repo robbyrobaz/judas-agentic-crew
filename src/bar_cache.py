@@ -144,6 +144,23 @@ async def _pick_contract(ib, spec: dict, symbol: str):
         return None, "qualify_failed"
 
     front = qualified[0]
+    # The roll check below is a best-effort optimization. We already hold a
+    # valid `front` contract, so ANY failure in the roll logic (un-qualifiable
+    # next month, None contract, snapshot error) must fall back to `front` —
+    # never crash. Quarterly contracts (DX: Mar/Jun/Sep/Dec) make the naive
+    # +28-day month step land on a non-existent month, which is fine: the
+    # next-contract qualify just returns empty and we keep front.
+    try:
+        return await _pick_contract_with_roll(ib, spec, symbol, front)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("bar_cache.roll_check_failed symbol=%s err=%s — using front", symbol, exc)
+        return front, None
+
+
+async def _pick_contract_with_roll(ib, spec: dict, symbol: str, front):
+    from datetime import date, timedelta
+    from ib_async import Future
+
     expiry_str = front.lastTradeDateOrContractMonth or ""
     if len(expiry_str) < 8:
         return front, None  # can't parse expiry — use as-is
@@ -170,7 +187,7 @@ async def _pick_contract(ib, spec: dict, symbol: str):
     except Exception:
         qualified_next = []
 
-    if not qualified_next:
+    if not qualified_next or qualified_next[0] is None:
         log.info("bar_cache.no_next_contract symbol=%s expiry=%s", symbol, next_expiry_ym)
         return front, None
 
@@ -208,30 +225,37 @@ async def _fetch_async(
     out: dict[str, pd.DataFrame] = {}
     try:
         for symbol in sorted(symbols):
-            spec = _CONTRACT_SPECS.get(symbol)
-            if not spec:
-                log.warning("bar_cache.unknown_symbol symbol=%s", symbol)
+            # Per-symbol isolation: one symbol's contract/qualify/fetch failure
+            # must NEVER abort the whole scan (a DX roll crash on 2026-06-01
+            # blinded MNQ/MCL/MGC/MET for ~5h). Warn and skip the bad symbol.
+            try:
+                spec = _CONTRACT_SPECS.get(symbol)
+                if not spec:
+                    log.warning("bar_cache.unknown_symbol symbol=%s", symbol)
+                    continue
+                contract, err = await _pick_contract(ib, spec, symbol)
+                if err or contract is None:
+                    log.warning("bar_cache.qualify_failed symbol=%s err=%s", symbol, err)
+                    continue
+                bars = await _fetch_bars(ib, contract, duration="60 D")
+                if not bars:
+                    log.warning("bar_cache.no_bars symbol=%s contract=%s", symbol, contract.localSymbol)
+                    continue
+                rows = []
+                for b in bars:
+                    ts = b.date.isoformat() if hasattr(b.date, "isoformat") else str(b.date)
+                    rows.append({
+                        "ts": pd.to_datetime(ts, utc=True),
+                        "open": float(b.open), "high": float(b.high),
+                        "low": float(b.low), "close": float(b.close),
+                        "volume": int(b.volume or 0),
+                    })
+                df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
+                out[symbol] = df
+                log.info("bar_cache.fetched symbol=%s contract=%s bars=%d", symbol, contract.localSymbol, len(df))
+            except Exception as exc:  # noqa: BLE001
+                log.error("bar_cache.symbol_failed symbol=%s err=%s", symbol, exc, exc_info=True)
                 continue
-            contract, err = await _pick_contract(ib, spec, symbol)
-            if err or contract is None:
-                log.warning("bar_cache.qualify_failed symbol=%s err=%s", symbol, err)
-                continue
-            bars = await _fetch_bars(ib, contract, duration="60 D")
-            if not bars:
-                log.warning("bar_cache.no_bars symbol=%s contract=%s", symbol, contract.localSymbol)
-                continue
-            rows = []
-            for b in bars:
-                ts = b.date.isoformat() if hasattr(b.date, "isoformat") else str(b.date)
-                rows.append({
-                    "ts": pd.to_datetime(ts, utc=True),
-                    "open": float(b.open), "high": float(b.high),
-                    "low": float(b.low), "close": float(b.close),
-                    "volume": int(b.volume or 0),
-                })
-            df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
-            out[symbol] = df
-            log.info("bar_cache.fetched symbol=%s contract=%s bars=%d", symbol, contract.localSymbol, len(df))
     finally:
         ib.disconnect()
     return out

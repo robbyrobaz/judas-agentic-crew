@@ -980,6 +980,10 @@ def _fetch_agents_last_run() -> dict[str, Any]:
 # hammer it — that flooding is what locked the nqtrader account before).
 _NT_SNAPSHOT_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
 _NT_SNAPSHOT_TTL_S = 60.0
+# SimJudasCrew starting cash. NT's RealizedPnL() field is unreliable (reported
+# -100.65 when actual cash moved -223.90 on 2026-06-02); cash delta is the
+# source of truth, matching the "nt_balances is primary P&L source" rule.
+_NT_STARTING_CASH = 50000.0
 
 
 def _nt_account_snapshot() -> dict[str, Any] | None:
@@ -1005,7 +1009,17 @@ def _nt_account_snapshot() -> dict[str, Any] | None:
         summary = broker.account_summary()
         if summary is None:
             raise RuntimeError("account_summary returned None")
-        data = {"account": nt.account, **summary}
+        # Derive realized P&L from cash delta (true net incl. commissions),
+        # NOT NT's unreliable RealizedPnL field. Keep the raw field for debug.
+        cash = float(summary.get("cash", _NT_STARTING_CASH))
+        data = {
+            "account": nt.account,
+            "cash": cash,
+            "buying_power": summary.get("buying_power"),
+            "realized_pnl": round(cash - _NT_STARTING_CASH, 2),
+            "nt_realized_field": summary.get("realized_pnl"),  # raw, for reference
+            "starting_cash": _NT_STARTING_CASH,
+        }
         _NT_SNAPSHOT_CACHE["ts"] = now
         _NT_SNAPSHOT_CACHE["data"] = data
         return {**data, "age_s": 0.0}

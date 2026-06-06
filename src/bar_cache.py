@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,17 @@ log = logging.getLogger(__name__)
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache_1h"
 PRICE_CACHE = Path(__file__).resolve().parent.parent / "last_bar_closes.json"
+# Single source of truth for the live ACTIVE contract per symbol, written each
+# refresh from the same IBKR resolution the data fetch uses. NT execution reads
+# this so it always trades the exact contract we signalled on (no hand-edited
+# config months at rolls). {symbol: {contract_month, local, ltd, updated}}.
+ACTIVE_CONTRACTS = Path(__file__).resolve().parent.parent / "active_contracts.json"
 MAX_AGE_HOURS = 1.0
+ACTIVE_MAX_AGE_HOURS = 24.0
+
+# Futures month codes -> calendar month (for localSymbol parsing fallback).
+_MONTH_CODES = {"F": 1, "G": 2, "H": 3, "J": 4, "K": 5, "M": 6,
+                "N": 7, "Q": 8, "U": 9, "V": 10, "X": 11, "Z": 12}
 
 _CONTRACT_SPECS: dict[str, dict[str, Any]] = {
     "MGC": {"ibkr_symbol": "MGC", "exchange": "COMEX"},
@@ -128,92 +139,104 @@ async def _fetch_bars(ib, contract, duration: str = "60 D") -> list:
         return []
 
 
-async def _pick_contract(ib, spec: dict, symbol: str):
-    """Qualify ContFuture then check if the next month is already more liquid.
+async def _resolve_contract_month(ib, contract, spec: dict) -> str:
+    """Authoritative contract month 'YYYYMM' for a resolved contract.
 
-    Roll rule: if the front-month contract expires within 14 days AND the
-    next-month contract exists AND its recent 10-bar average volume > front-month,
-    return the next-month contract (volume-based roll).
+    Uses reqContractDetails().contractMonth — the true delivery month, which is
+    distinct from lastTradeDateOrContractMonth (for energies like CL the
+    last-trade date falls in the PRIOR calendar month). Falls back to parsing the
+    localSymbol month code + ltd year if details are unavailable. Returns '' if
+    it cannot be determined.
     """
-    from datetime import date, timedelta
-    from ib_async import ContFuture, Future
+    from ib_async import Future
+
+    try:
+        cds = await ib.reqContractDetailsAsync(
+            Future(conId=contract.conId, exchange=spec["exchange"])
+        )
+        if cds and cds[0].contractMonth and len(cds[0].contractMonth) == 6:
+            return cds[0].contractMonth
+    except Exception as exc:  # noqa: BLE001
+        log.warning("bar_cache.contract_month_details_failed symbol=%s err=%s", spec.get("ibkr_symbol"), exc)
+
+    # Fallback: localSymbol month code (e.g. MGCQ6 -> Q=Aug) + year from ltd.
+    ls = getattr(contract, "localSymbol", "") or ""
+    ltd = getattr(contract, "lastTradeDateOrContractMonth", "") or ""
+    m = re.search(r"([FGHJKMNQUVXZ])(\d{1,2})$", ls)
+    if not m or len(ltd) < 6:
+        return ""
+    month = _MONTH_CODES[m.group(1)]
+    year = int(ltd[:4])
+    if month < int(ltd[4:6]):  # e.g. Jan (F) contract whose last-trade is prior Dec
+        year += 1
+    return f"{year:04d}{month:02d}"
+
+
+async def _pick_contract(ib, spec: dict, symbol: str):
+    """Resolve the current ACTIVE contract via IBKR's continuous future.
+
+    ContFuture follows real liquidity, so it rolls correctly for every cycle
+    (quarterly ES/NQ/DX, monthly CL, bi-monthly gold) with no month arithmetic.
+    The previous +28-day next-month step landed on non-existent months for
+    quarterly contracts (the 202607 'no security definition' noise) and never
+    actually rolled — ContFuture already did the job underneath it.
+
+    Returns (contract, contract_month_yyyymm, err). contract_month is '' if it
+    could not be resolved (the contract is still usable for data; execution will
+    loud-skip rather than guess a month).
+    """
+    from ib_async import ContFuture
 
     cont = ContFuture(spec["ibkr_symbol"], exchange=spec["exchange"])
     qualified = await ib.qualifyContractsAsync(cont)
-    if not qualified:
-        return None, "qualify_failed"
+    if not qualified or qualified[0] is None:
+        return None, "", "qualify_failed"
 
     front = qualified[0]
-    # The roll check below is a best-effort optimization. We already hold a
-    # valid `front` contract, so ANY failure in the roll logic (un-qualifiable
-    # next month, None contract, snapshot error) must fall back to `front` —
-    # never crash. Quarterly contracts (DX: Mar/Jun/Sep/Dec) make the naive
-    # +28-day month step land on a non-existent month, which is fine: the
-    # next-contract qualify just returns empty and we keep front.
+    contract_month = await _resolve_contract_month(ib, front, spec)
+    return front, contract_month, None
+
+
+def _merge_active_contracts(new: dict[str, dict]) -> None:
+    """Merge freshly-resolved active contracts into active_contracts.json.
+
+    Merge (not overwrite) so symbols served from cache this round keep their
+    last-known active contract.
+    """
     try:
-        return await _pick_contract_with_roll(ib, spec, symbol, front)
+        existing = json.loads(ACTIVE_CONTRACTS.read_text()) if ACTIVE_CONTRACTS.exists() else {}
+    except Exception:  # noqa: BLE001
+        existing = {}
+    existing.update(new)
+    try:
+        ACTIVE_CONTRACTS.write_text(json.dumps(existing, indent=2))
     except Exception as exc:  # noqa: BLE001
-        log.warning("bar_cache.roll_check_failed symbol=%s err=%s — using front", symbol, exc)
-        return front, None
+        log.warning("bar_cache.active_contracts_write_failed: %s", exc)
 
 
-async def _pick_contract_with_roll(ib, spec: dict, symbol: str, front):
-    from datetime import date, timedelta
-    from ib_async import Future
+def active_contract_month(symbol: str) -> str | None:
+    """Live active contract month 'YYYYMM' for a symbol, or None if missing/stale.
 
-    expiry_str = front.lastTradeDateOrContractMonth or ""
-    if len(expiry_str) < 8:
-        return front, None  # can't parse expiry — use as-is
-
+    Stale = older than ACTIVE_MAX_AGE_HOURS. Callers MUST treat None as
+    'cannot determine the contract' and refuse to guess (do not fall back to a
+    hard-coded config month, which silently drifts at every roll)."""
     try:
-        exp_date = date(int(expiry_str[:4]), int(expiry_str[4:6]), int(expiry_str[6:8]))
-    except ValueError:
-        return front, None
+        data = json.loads(ACTIVE_CONTRACTS.read_text())
+    except Exception:  # noqa: BLE001
+        return None
+    rec = data.get(symbol.upper())
+    if not rec:
+        return None
+    if (time.time() - float(rec.get("updated", 0))) / 3600.0 > ACTIVE_MAX_AGE_HOURS:
+        return None
+    cm = rec.get("contract_month") or ""
+    return cm if len(cm) == 6 else None
 
-    days_to_expiry = (exp_date - date.today()).days
-    if days_to_expiry > 14:
-        return front, None  # plenty of time, no roll check needed
 
-    # Near expiry — check the next month contract
-    next_month_approx = exp_date + timedelta(days=28)
-    next_expiry_ym = next_month_approx.strftime("%Y%m")
-    try:
-        next_cont = Future(
-            symbol=spec["ibkr_symbol"],
-            lastTradeDateOrContractMonth=next_expiry_ym,
-            exchange=spec["exchange"],
-        )
-        qualified_next = await ib.qualifyContractsAsync(next_cont)
-    except Exception:
-        qualified_next = []
-
-    if not qualified_next or qualified_next[0] is None:
-        log.info("bar_cache.no_next_contract symbol=%s expiry=%s", symbol, next_expiry_ym)
-        return front, None
-
-    next_contract = qualified_next[0]
-
-    # Fetch recent 5-bar snapshot for both and compare volume
-    front_snap = await _fetch_bars(ib, front, duration="5 D")
-    next_snap = await _fetch_bars(ib, next_contract, duration="5 D")
-
-    front_vol = sum(getattr(b, "volume", 0) or 0 for b in front_snap[-10:])
-    next_vol = sum(getattr(b, "volume", 0) or 0 for b in next_snap[-10:])
-
-    if next_vol > front_vol:
-        log.info(
-            "bar_cache.rolling symbol=%s front=%s(vol=%d,dte=%d) -> next=%s(vol=%d)",
-            symbol, front.localSymbol, front_vol, days_to_expiry,
-            next_contract.localSymbol, next_vol,
-        )
-        return next_contract, None
-    else:
-        log.info(
-            "bar_cache.no_roll symbol=%s front=%s(vol=%d,dte=%d) next=%s(vol=%d) — front still dominant",
-            symbol, front.localSymbol, front_vol, days_to_expiry,
-            next_contract.localSymbol, next_vol,
-        )
-        return front, None
+def nt_month(symbol: str) -> str | None:
+    """NT contract-month label 'MM-YY' for the live active contract, or None."""
+    cm = active_contract_month(symbol)
+    return f"{cm[4:6]}-{cm[2:4]}" if cm else None
 
 
 async def _fetch_async(
@@ -223,6 +246,7 @@ async def _fetch_async(
     ib = IB()
     await ib.connectAsync(host, port, clientId=client_id, timeout=15)
     out: dict[str, pd.DataFrame] = {}
+    active: dict[str, dict] = {}
     try:
         for symbol in sorted(symbols):
             # Per-symbol isolation: one symbol's contract/qualify/fetch failure
@@ -233,7 +257,7 @@ async def _fetch_async(
                 if not spec:
                     log.warning("bar_cache.unknown_symbol symbol=%s", symbol)
                     continue
-                contract, err = await _pick_contract(ib, spec, symbol)
+                contract, contract_month, err = await _pick_contract(ib, spec, symbol)
                 if err or contract is None:
                     log.warning("bar_cache.qualify_failed symbol=%s err=%s", symbol, err)
                     continue
@@ -252,12 +276,25 @@ async def _fetch_async(
                     })
                 df = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
                 out[symbol] = df
-                log.info("bar_cache.fetched symbol=%s contract=%s bars=%d", symbol, contract.localSymbol, len(df))
+                if contract_month:
+                    active[symbol] = {
+                        "contract_month": contract_month,
+                        "local": getattr(contract, "localSymbol", ""),
+                        "ltd": getattr(contract, "lastTradeDateOrContractMonth", ""),
+                        "updated": time.time(),
+                    }
+                else:
+                    log.warning("bar_cache.no_contract_month symbol=%s contract=%s",
+                                symbol, contract.localSymbol)
+                log.info("bar_cache.fetched symbol=%s contract=%s month=%s bars=%d",
+                         symbol, contract.localSymbol, contract_month or "?", len(df))
             except Exception as exc:  # noqa: BLE001
                 log.error("bar_cache.symbol_failed symbol=%s err=%s", symbol, exc, exc_info=True)
                 continue
     finally:
         ib.disconnect()
+    if active:
+        _merge_active_contracts(active)
     return out
 
 

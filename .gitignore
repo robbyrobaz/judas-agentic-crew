@@ -11,3 +11,6 @@ outputs/
 logs/
 dashboard/node_modules/
 dashboard/dist/
+
+# Derived runtime state — live active contract per symbol, rewritten each scan
+active_contracts.json

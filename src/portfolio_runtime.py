@@ -575,11 +575,41 @@ def place_bracket(**kwargs) -> dict[str, Any]:
 _NT_BROKER_CACHE: dict[str, Any] = {}
 
 
+def _resolve_nt_instrument_map(cfg_map: dict[str, str]) -> dict[str, str]:
+    """Auto-roll the NT instrument map to the live ACTIVE contract.
+
+    The config instrument_map supplies the NT product PREFIX (e.g. "MGC", "6J");
+    the contract MONTH comes from the live contract bar_cache resolved this scan
+    (active_contracts.json), so execution always trades the exact contract we
+    signalled on. If the live month is missing/stale we OMIT the symbol rather
+    than fall back to the config month — a hard-coded month silently drifts at
+    every roll (MGC/ZF were already wrong), so a silent fall-through would
+    re-create the bug. Omitting makes NTBroker raise -> caught upstream -> loud
+    skip, no order on an unverified contract.
+    """
+    from src import bar_cache
+
+    resolved: dict[str, str] = {}
+    for sym, cfg_inst in cfg_map.items():
+        parts = str(cfg_inst).rsplit(" ", 1)
+        prefix = parts[0] if len(parts) == 2 else str(cfg_inst)
+        live = bar_cache.nt_month(sym)
+        if not live:
+            log.error("nt.instrument_unresolved symbol=%s — no fresh active contract "
+                      "(config=%s); skipping NT placement for this symbol", sym, cfg_inst)
+            continue
+        inst = f"{prefix} {live}"
+        resolved[sym] = inst
+        if inst != cfg_inst:
+            log.warning("nt.instrument_autoroll symbol=%s config=%s -> active=%s", sym, cfg_inst, inst)
+    return resolved
+
+
 def _nt_broker():
     """Build (and cache) the NTBroker from config. Cached so each scan reuses
-    one broker object; the WinRM session itself is created per command."""
-    if "broker" in _NT_BROKER_CACHE:
-        return _NT_BROKER_CACHE["broker"]
+    one broker object; the WinRM session itself is created per command. The
+    instrument_map is re-resolved on every call (cheap JSON read) so placement
+    always sees the post-refresh active contracts regardless of call order."""
     from src.broker.ninjatrader import NTBroker
     from src.config import load_config
 
@@ -587,17 +617,22 @@ def _nt_broker():
     nt = cfg.ninjatrader
     if nt is None:
         raise RuntimeError("execution.route=ninjatrader but config has no ninjatrader section")
-    broker = NTBroker(
-        account=nt.account,
-        instrument_map=nt.instrument_map,
-        host=nt.host,
-        user=nt.user,
-        python_exe=nt.python_exe,
-        outgoing_dir=nt.outgoing_dir,
-        fill_timeout_s=nt.fill_timeout_s,
-        fill_poll_s=nt.fill_poll_s,
-    )
-    _NT_BROKER_CACHE["broker"] = broker
+
+    if "broker" not in _NT_BROKER_CACHE:
+        _NT_BROKER_CACHE["broker"] = NTBroker(
+            account=nt.account,
+            instrument_map={},
+            host=nt.host,
+            user=nt.user,
+            python_exe=nt.python_exe,
+            outgoing_dir=nt.outgoing_dir,
+            fill_timeout_s=nt.fill_timeout_s,
+            fill_poll_s=nt.fill_poll_s,
+        )
+        _NT_BROKER_CACHE["cfg_map"] = dict(nt.instrument_map)
+
+    broker = _NT_BROKER_CACHE["broker"]
+    broker.instrument_map = _resolve_nt_instrument_map(_NT_BROKER_CACHE["cfg_map"])
     return broker
 
 

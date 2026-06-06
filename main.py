@@ -175,6 +175,22 @@ def main() -> int:
             },
         )
 
+        # HARD MARKET-CLOSED GATE. The per-strategy session_filter is trusted
+        # to decide *off-window* placement (Globex open but outside London/NY),
+        # but when Globex is physically closed (Saturday, Sunday pre-6pm ET,
+        # Friday post-5pm ET, daily maintenance break) a fill is impossible —
+        # placing a MARKET order into a closed book just gets it rejected by NT
+        # every hour and leans on the phantom-fill guard as the only safety net.
+        # Force eval-only in that case: the scan still runs and records skips so
+        # strategies "see every hour", but no orders are sent.
+        market_open_now = bool(session_status.get("market_open_now"))
+        place_orders = (not args.eval_only) and market_open_now
+        if not market_open_now and not args.eval_only:
+            log.info(
+                "judas_crew.market_closed_no_orders",
+                extra={"symbol": symbol, "reason": session_status.get("reason")},
+            )
+
         runtime = args.runtime
         if runtime == "auto":
             from src.strategy_registry import list_active_strategies
@@ -194,7 +210,7 @@ def main() -> int:
                 max_new_trades=cfg.risk.max_trades_per_day,
                 max_open_positions=cfg.risk.max_open_positions,
                 max_trades_per_day=cfg.risk.max_trades_per_day,
-                place_orders=not args.eval_only,
+                place_orders=place_orders,
                 route=cfg.route,
             )
             print(json.dumps({"status": "ok", "runtime": "portfolio", "result": result}, indent=2, default=str))

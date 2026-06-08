@@ -595,8 +595,14 @@ def _resolve_nt_instrument_map(cfg_map: dict[str, str]) -> dict[str, str]:
         prefix = parts[0] if len(parts) == 2 else str(cfg_inst)
         live = bar_cache.nt_month(sym)
         if not live:
-            log.error("nt.instrument_unresolved symbol=%s — no fresh active contract "
-                      "(config=%s); skipping NT placement for this symbol", sym, cfg_inst)
+            # No fresh active contract for this config symbol. Omit it from the
+            # map (NTBroker will raise -> caught upstream as a loud
+            # "place_bracket failed" if a TRADED symbol actually needs it). This
+            # is INFO not ERROR because most omissions are untraded config
+            # symbols whose entry simply aged out (they're never fetched), which
+            # is harmless — the real loud guard is at placement time.
+            log.info("nt.instrument_unresolved symbol=%s — no fresh active contract "
+                     "(config=%s); omitted from NT map", sym, cfg_inst)
             continue
         inst = f"{prefix} {live}"
         resolved[sym] = inst

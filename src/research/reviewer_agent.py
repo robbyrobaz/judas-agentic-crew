@@ -91,11 +91,18 @@ These apply ONLY when n_closed_trades >= 10:
   - pf_20_net < 0.9 on >= 20 closed trades → retire candidate.
   - Stale: no fires in 14+ days, active > 14 days → retire candidate.
 
-For candidate promotion, ALL THREE gates required:
-  (1) walk-forward avg_test_profit_factor (net) >= 1.3
-  (2) avg_test_E[R] > 0
-  (3) total_test_trades >= 20
-NO exception for uncovered symbols. Empty is safer than a net-loser.
+For candidate promotion, these are signs of a strong candidate — NOT hard
+gates. Use your judgment:
+  - walk-forward avg_test_profit_factor (net) comfortably above 1
+  - avg_test_E[R] > 0
+  - a meaningful trade count (more is better)
+You have latitude to promote a promising candidate to PAPER to gather live
+evidence even on thinner backtest data — the SimJudasCrew account exists
+exactly for that, and an uncovered symbol/timeframe is a missed opportunity,
+not a safe default. Faster-timeframe (5m/15m) candidates are encouraged: they
+gather a real sample in days. The young-strategy grace period above keeps them
+alive long enough to prove themselves, so promote freely and let live results
+decide.
 
 Duplicate detection: same (symbol, family) with near-identical params → retire
 all but highest PF. Check full params dict, not single param names.
@@ -305,7 +312,10 @@ def _build_reviewer_kickoff(db_path: str) -> str:
         dup_lines: list[str] = []
         for (sym, fam, fp), ids in groups.items():
             if len(ids) > 1:
-                fp_str = ",".join(f"{k}={v}" for k, v in fp) if fp else "(no-fp-keys)"
+                # fp = (engine, stype) + ((k, v), (k, v), ...) — only the tail
+                # entries are (k, v) numeric pairs; the first two are strings.
+                nums = [x for x in fp if isinstance(x, tuple) and len(x) == 2]
+                fp_str = ",".join(f"{k}={v}" for k, v in nums) if nums else "(no-fp-keys)"
                 dup_lines.append(
                     f"  {sym} {fam} [{fp_str}] → ids {ids} (consider retiring all but best)"
                 )

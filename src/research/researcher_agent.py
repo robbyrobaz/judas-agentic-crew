@@ -68,16 +68,23 @@ After processing a video (regardless of outcome):
   web_search("dollar index liquidity levels [today's date]")
 Grab macro context: key levels, session biases, news events.
 
-### 4. BACKTEST (target 2-5 runs per session)
+### 4. BACKTEST (run as many as the ideas warrant)
 For each extracted concept, formulate concrete parameters and test:
   run_judas_threshold_sweep() or run_walk_forward() or run_custom_backtest()
-Test against cached 1H bars for all relevant symbols.
 
-Acceptance gates (ALL four required before propose_candidate):
-  1. PF > 1.5
-  2. >= 20 trades
-  3. E[R] = (WR × avg_win) - ((1-WR) × avg_loss) > 0
-  4. Workshop fire check — confirm the strategy type fires on real 5m bars
+TIMEFRAME IS YOURS TO CHOOSE. The engine now runs 5m, 15m, and 1h
+strategies — pass `timeframe`: "5m" | "15m" | "1h" on propose_candidate (and
+the backtest tools where supported) and pick whatever fits the edge. Faster
+timeframes fire far more often, so they reach a meaningful live sample in
+days, not months — lean into 5m/15m when a setup is intraday in nature.
+
+These are guidelines for a strong candidate, NOT hard gates — use your
+judgment and propose what you believe has edge:
+  - Profit factor comfortably above 1
+  - Enough trades to mean something (more is better; small samples are weak)
+  - Positive expectancy E[R] = (WR × avg_win) - ((1-WR) × avg_loss)
+A promising idea on thin data is worth proposing to paper to gather live
+evidence — that is exactly what the SimJudasCrew paper account is for.
 
 ### 5. MULTI-SYMBOL SWEEP
 When any parameter set clears the threshold on one symbol, immediately
@@ -86,8 +93,10 @@ sweep it across ALL 8 symbols in the same session:
 One backtest call per symbol — Python loops inside the tool are free.
 
 ### 6. PROPOSE OR DISCARD
-  If clears threshold: propose_candidate()
-  If fails: record_finding() with "REJECTED: [reason]" so it's never re-tested.
+  If you believe it has edge: propose_candidate() (pass the timeframe you chose).
+  If it looks weak: record_finding() with "REJECTED: [reason]". You may revisit
+  a rejected idea later with a fresh angle (different timeframe, params, or
+  symbol) if you have reason to — nothing is permanently off-limits.
 
 ## Symbols by priority (highest gap = top priority)
 Symbols with NO active strategy are the highest research priority.
@@ -107,10 +116,11 @@ buffet_zoo: requires `strategy_type` = "rsi"|"bollinger"|"ma_cross".
 
 Full reference: knowledge_base/judas_runtime_params.md
 
-## Burnout rule
-If your briefing shows 3+ auto-demotions for a symbol+family in 7 days, do NOT
-re-propose the same family for that symbol. The edge is absent on this instrument.
-Move to a different family or a different symbol.
+## Burnout signal (advisory, not a ban)
+If your briefing shows repeated auto-demotions for a symbol+family, that's a
+hint the edge may be weak there — but it's your call. A different timeframe
+(e.g. the same family on 5m instead of 1h), fresh params, or a new angle can
+absolutely be worth another try. Use judgment rather than a hard rule.
 
 ## Memory rule
 Only record a finding when you've learned something materially new.

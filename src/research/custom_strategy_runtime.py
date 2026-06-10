@@ -201,29 +201,38 @@ def evaluate_custom_strategy(
     return result
 
 
-def _fetch_synthetic_or_live_bars(symbol: str, days: int):
-    """Return a DataFrame of OHLCV bars for ``symbol``.
+_BARS_PER_DAY = {"5m": 288, "15m": 96, "1h": 24}
+
+
+def _fetch_synthetic_or_live_bars(symbol: str, days: int, timeframe: str = "1h"):
+    """Return a DataFrame of OHLCV bars for ``symbol`` at ``timeframe``.
 
     Lazy-imports ``portfolio_runtime.fetch_bars`` to avoid forcing
     ib_async at import time (tests pass synthetic bars directly via
     ``run_custom_backtest_on_bars``).
     """
     from src.config import load_config
-    from src.portfolio_runtime import fetch_bars
+    from src import bar_cache
 
+    tf = bar_cache.normalize_tf(timeframe)
     cfg = load_config()
     ibkr = cfg.ibkr
-    by_sym = fetch_bars(
-        {symbol.upper()},
-        host=ibkr.host,
-        port=ibkr.port,
-        client_id=ibkr.data_client_id,
-    )
-    df = by_sym.get(symbol.upper())
-    if df is None:
+    # Use bar_cache (tf-aware history duration + caching) rather than the fixed
+    # 60-day fetch_bars path — 60 days of 5m exceeds IBKR's limit and times out.
+    try:
+        df = bar_cache.get_bars(
+            symbol.upper(), host=ibkr.host, port=ibkr.port,
+            client_id=ibkr.data_client_id, timeframe=tf,
+        )
+    except Exception:  # noqa: BLE001
         return None
-    if days and len(df) > 24 * days:
-        df = df.tail(24 * days).reset_index(drop=True)
+    if df is None or len(df) == 0:
+        return None
+    # Trim to ``days`` using the timeframe's bars-per-day (the old code assumed
+    # 24/day = hourly, which would keep only ~2 days of 5m data).
+    per_day = _BARS_PER_DAY.get(tf, 24)
+    if days and len(df) > per_day * days:
+        df = df.tail(per_day * days).reset_index(drop=True)
     return df
 
 
@@ -378,14 +387,17 @@ def run_custom_backtest(
     db_path: str | None = None,
     bars=None,
     timeout_s: int = 60,
+    timeframe: str = "1h",
 ) -> dict:
     """High-level entry point used by the PM agent tool.
 
     If ``bars`` is supplied (tests), uses it directly. Otherwise fetches
-    via the same path ``portfolio_runtime`` uses.
+    native bars at ``timeframe`` (5m/15m/1h) — the detectors are
+    timeframe-agnostic, so this lets the researcher backtest faster
+    timeframes natively instead of resampling 1h.
     """
     if bars is None:
-        bars = _fetch_synthetic_or_live_bars(symbol, days)
+        bars = _fetch_synthetic_or_live_bars(symbol, days, timeframe)
     if bars is None or len(bars) < 5:
         return {
             "n_signals": 0, "n_wins": 0, "n_losses": 0, "total_pnl": 0.0,

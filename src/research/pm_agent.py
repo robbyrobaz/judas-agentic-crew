@@ -1073,7 +1073,8 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
 
     # ---- custom strategy invention --------------------------------------
 
-    def run_custom_backtest_tool(*, code: str, symbol: str, days: int = 90) -> dict:
+    def run_custom_backtest_tool(*, code: str, symbol: str, days: int = 90,
+                                 timeframe: str = "1h") -> dict:
         sym = str(symbol).upper()
         if sym not in _VALID_SYMBOLS:
             return {"ok": False, "error": f"unknown symbol: {sym}"}
@@ -1084,6 +1085,7 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
         try:
             metrics = csr.run_custom_backtest(
                 code=code, symbol=sym, days=int(days), db_path=db_path,
+                timeframe=str(timeframe),
             )
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": f"backtest failed: {type(exc).__name__}: {exc}"}
@@ -1714,7 +1716,9 @@ def _tool_schemas() -> list[dict]:
                 "name": "run_custom_backtest",
                 "description": (
                     "Run a sandboxed backtest of agent-authored Python "
-                    "strategy code (must define evaluate(bars, params))."
+                    "strategy code (must define evaluate(bars, params)). "
+                    "Set timeframe to '5m', '15m', or '1h' to backtest natively "
+                    "on that bar size — use this to research faster-timeframe edges."
                 ),
                 "parameters": {
                     "type": "object",
@@ -1722,6 +1726,7 @@ def _tool_schemas() -> list[dict]:
                         "code": {"type": "string"},
                         "symbol": {"type": "string", "enum": sym_enum},
                         "days": {"type": "integer", "default": 90},
+                        "timeframe": {"type": "string", "enum": ["5m", "15m", "1h"], "default": "1h"},
                     },
                     "required": ["code", "symbol"],
                 },

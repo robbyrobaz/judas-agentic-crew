@@ -21,7 +21,7 @@ ninjatrader:
   account: SimJudasCrew       # NT sim account (separate sleeve from workshop's SimJUDAS)
   host: 100.108.151.36        # Tailscale IP of the Windows NT box
   user: nqtrader
-  python_exe: "C:\\Users\\hartw\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe"
+  python_exe: "C:\\PyBridge\\python.exe"
   outgoing_dir: "C:\\Users\\hartw\\Documents\\NinjaTrader 8\\outgoing"
   fill_timeout_s: 15
   fill_poll_s: 1.0

@@ -63,7 +63,7 @@ class NTBroker:
                  host: str = "100.108.151.36",
                  user: str = "nqtrader",
                  password: str | None = None,
-                 python_exe: str = "C:\\Users\\hartw\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe",
+                 python_exe: str = "C:\\PyBridge\\python.exe",
                  outgoing_dir: str = r"C:\Users\hartw\Documents\NinjaTrader 8\outgoing",
                  fill_timeout_s: float = 15.0,
                  fill_poll_s: float = 1.0):
@@ -76,7 +76,9 @@ class NTBroker:
         if not self.password:
             raise RuntimeError("NTBroker: WINDOWS_PASSWORD env var not set "
                                "and no password argument supplied")
-        self.python_exe = python_exe
+        # PYTHON_EXE env var wins (matches the NQ pipeline convention), then the
+        # explicit/config value, then the C:\PyBridge default.
+        self.python_exe = os.getenv("PYTHON_EXE") or python_exe
         self.outgoing_dir = outgoing_dir
         self.fill_timeout_s = float(fill_timeout_s)
         self.fill_poll_s = float(fill_poll_s)
@@ -93,19 +95,15 @@ class NTBroker:
             log.exception("nt_broker.winrm_exception")
             return 1, ""
 
-    # pythonnet (provides `clr`) lives in a PERSISTENT, all-users path rather
-    # than a per-user site. The WinRM logon for the exec account frequently
-    # lands in a throwaway Windows TEMP profile (TEMP.REBEL-ALLIANCE.NNN), which
-    # wipes any `pip install --user` packages between logons — that is exactly
-    # what silently broke execution (every place failed at `import clr` →
-    # status=1 → no trade). Installing to C:\Users\Public\nt_pylibs and putting
-    # it first on sys.path makes `clr` available regardless of which profile the
-    # logon resolves to. Reinstall: PIP_USER=0 python -m pip install
-    # --target C:\Users\Public\nt_pylibs pythonnet>=3.0,<3.1
-    _PY_LIBS = r"C:\Users\Public\nt_pylibs"
+    # Execution runs on C:\PyBridge\python.exe — a standalone machine-wide
+    # Python 3.10 + pythonnet living OUTSIDE any user profile. This is the
+    # permanent fix for the silent outage where the exec account's WinRM logon
+    # landed in a throwaway TEMP profile (TEMP.REBEL-ALLIANCE.NNN) and wiped
+    # per-user `pip install --user` packages, breaking `import clr` (status=1 →
+    # no trade). Because PyBridge isn't under C:\Users it's immune to that and
+    # survives reboots, so `clr` loads natively — no sys.path shim needed.
     _HEADER = (
         'import sys\n'
-        f'sys.path.insert(0, r"{_PY_LIBS}")\n'
         'sys.path.append(r"C:\\Program Files\\NinjaTrader 8\\bin")\n'
         'import clr\n'
         'clr.AddReference("NinjaTrader.Client")\n'

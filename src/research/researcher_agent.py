@@ -72,11 +72,15 @@ Grab macro context: key levels, session biases, news events.
 For each extracted concept, formulate concrete parameters and test:
   run_judas_threshold_sweep() or run_walk_forward() or run_custom_backtest()
 
-TIMEFRAME IS YOURS TO CHOOSE. The engine now runs 5m, 15m, and 1h
-strategies — pass `timeframe`: "5m" | "15m" | "1h" on propose_candidate (and
-the backtest tools where supported) and pick whatever fits the edge. Faster
-timeframes fire far more often, so they reach a meaningful live sample in
-days, not months — lean into 5m/15m when a setup is intraday in nature.
+TIMEFRAME IS YOURS TO CHOOSE — and 5m/15m is the current priority (the
+backlog is almost entirely 1h; we need faster-timeframe coverage). Pass
+`timeframe`: "5m" | "15m" | "1h" on propose_candidate, and:
+  - run_custom_backtest(timeframe="5m"|"15m") tests faster timeframes
+    NATIVELY (real 5m/15m bars) — USE THIS for intraday ideas.
+  - run_judas_threshold_sweep / run_walk_forward are 1h-only (they resample
+    1h data and cannot go finer) — fine for 1h ideas.
+Faster timeframes fire far more often, so they reach a meaningful live
+sample in days, not months — lean into 5m/15m.
 
 These are guidelines for a strong candidate, NOT hard gates — use your
 judgment and propose what you believe has edge:

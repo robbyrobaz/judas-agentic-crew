@@ -275,7 +275,27 @@ async def _fetch_async(
     tf = normalize_tf(timeframe)
     tf_spec = _TF_SPECS[tf]
     ib = IB()
-    await ib.connectAsync(host, port, clientId=client_id, timeout=15)
+    # A transient IBKR connect timeout (clientId still in use from a prior scan,
+    # gateway hiccup) must NOT crash the whole scan — that loses reconcile + eval
+    # for every symbol. Retry once, then degrade gracefully to {} so callers fall
+    # back to cached bars. (The scan runs every 5 min, so a skipped fetch self-
+    # heals on the next tick.)
+    import asyncio as _asyncio
+    for _attempt in range(2):
+        try:
+            await ib.connectAsync(host, port, clientId=client_id, timeout=15)
+            break
+        except Exception as exc:  # noqa: BLE001
+            try:
+                ib.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+            if _attempt == 0:
+                log.warning("bar_cache.connect_retry tf=%s err=%s", tf, exc)
+                await _asyncio.sleep(2)
+                continue
+            log.error("bar_cache.connect_failed tf=%s err=%s — using cached bars this scan", tf, exc)
+            return {}
     out: dict[str, pd.DataFrame] = {}
     active: dict[str, dict] = {}
     try:
@@ -366,6 +386,16 @@ def refresh_cache(
             df.to_parquet(p, index=False)
             result[sym] = df
             log.info("bar_cache.wrote path=%s rows=%d", p, len(df))
+        # Any stale symbol we couldn't fetch (connect failure / no bars): fall
+        # back to its last-known cached bars so the scan still evaluates rather
+        # than going blind. The new-bar dedup gate keeps it from re-firing on the
+        # unchanged bar, so this is safe.
+        for sym in stale - set(fetched):
+            try:
+                result[sym] = read_cache(sym, tf)
+                log.warning("bar_cache.using_stale_cache tf=%s symbol=%s", tf, sym)
+            except FileNotFoundError:
+                pass
     else:
         log.info("bar_cache.all_fresh tf=%s symbols=%s", tf, sorted(symbols))
 

@@ -217,12 +217,16 @@ def _fetch_synthetic_or_live_bars(symbol: str, days: int, timeframe: str = "1h")
     tf = bar_cache.normalize_tf(timeframe)
     cfg = load_config()
     ibkr = cfg.ibkr
+    # Use a DEDICATED clientId (not the live scanner's data_client_id) so a
+    # researcher backtest doesn't collide with the every-5-min scan on the same
+    # IBKR connection. bar_cache's connect-retry covers the rare same-id race.
+    research_client_id = int(ibkr.data_client_id) + 9
     # Use bar_cache (tf-aware history duration + caching) rather than the fixed
     # 60-day fetch_bars path — 60 days of 5m exceeds IBKR's limit and times out.
     try:
         df = bar_cache.get_bars(
             symbol.upper(), host=ibkr.host, port=ibkr.port,
-            client_id=ibkr.data_client_id, timeframe=tf,
+            client_id=research_client_id, timeframe=tf,
         )
     except Exception:  # noqa: BLE001
         return None

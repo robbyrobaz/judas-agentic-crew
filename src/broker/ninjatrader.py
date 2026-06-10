@@ -93,8 +93,19 @@ class NTBroker:
             log.exception("nt_broker.winrm_exception")
             return 1, ""
 
+    # pythonnet (provides `clr`) lives in a PERSISTENT, all-users path rather
+    # than a per-user site. The WinRM logon for the exec account frequently
+    # lands in a throwaway Windows TEMP profile (TEMP.REBEL-ALLIANCE.NNN), which
+    # wipes any `pip install --user` packages between logons — that is exactly
+    # what silently broke execution (every place failed at `import clr` →
+    # status=1 → no trade). Installing to C:\Users\Public\nt_pylibs and putting
+    # it first on sys.path makes `clr` available regardless of which profile the
+    # logon resolves to. Reinstall: PIP_USER=0 python -m pip install
+    # --target C:\Users\Public\nt_pylibs pythonnet>=3.0,<3.1
+    _PY_LIBS = r"C:\Users\Public\nt_pylibs"
     _HEADER = (
         'import sys\n'
+        f'sys.path.insert(0, r"{_PY_LIBS}")\n'
         'sys.path.append(r"C:\\Program Files\\NinjaTrader 8\\bin")\n'
         'import clr\n'
         'clr.AddReference("NinjaTrader.Client")\n'

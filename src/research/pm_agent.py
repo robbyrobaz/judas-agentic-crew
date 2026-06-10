@@ -1903,18 +1903,27 @@ def run_pm_decision(
             remaining = 300
         else:
             remaining = max(1, int(time_budget_s - elapsed))
-        try:
-            response = _call_llm(
-                messages=messages,
-                tools=schemas,
-                model=minimax_model,
-                timeout_s=min(remaining, 300),
-            )
-        except Exception as exc:  # noqa: BLE001 — defensive
-            error = f"llm call failed: {exc}"
+        from src.research.agent_runner import _sanitize_tool_call_json
+        response = None
+        for _llm_try in range(3):
+            try:
+                response = _call_llm(
+                    messages=messages,
+                    tools=schemas,
+                    model=minimax_model,
+                    timeout_s=min(remaining, 300),
+                )
+                error = None
+                break
+            except Exception as exc:  # noqa: BLE001 — defensive
+                error = f"llm call failed: {exc}"
+                time.sleep(2)
+        if response is None:
             break
 
-        msg = _extract_message(response)
+        # Sanitize tool-call JSON before it enters history — M3 can emit
+        # malformed arguments that 400 the next request and abort the cycle.
+        msg = _sanitize_tool_call_json(_extract_message(response))
         messages.append(msg)
         turn += 1
 

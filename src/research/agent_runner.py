@@ -48,6 +48,33 @@ class AgentDecisionResult:
     error: str | None = None
 
 
+def _sanitize_tool_call_json(msg: dict) -> dict:
+    """Force every tool_call's `arguments` to be a VALID JSON string before the
+    assistant message enters history.
+
+    M3 intermittently emits malformed JSON in a tool call's arguments. Left in
+    the message history, MiniMax rejects the NEXT request with a 400 ('invalid
+    function arguments json string, tool_call_id: ...') and the whole cycle
+    aborts. Re-serializing to canonical JSON (or '{}' if unparseable) keeps the
+    history clean so the loop continues and M3 can self-correct next turn.
+    """
+    for tc in (msg.get("tool_calls") or []):
+        fn = tc.get("function")
+        if not isinstance(fn, dict):
+            continue
+        raw = fn.get("arguments")
+        if isinstance(raw, dict):
+            fn["arguments"] = json.dumps(raw)
+            continue
+        try:
+            fn["arguments"] = json.dumps(json.loads(raw or "{}"))
+        except (json.JSONDecodeError, TypeError):
+            log.warning("agent_runner.repaired_bad_tool_json name=%s",
+                        fn.get("name"))
+            fn["arguments"] = "{}"
+    return msg
+
+
 def run_agent_loop(
     *,
     db_path: str,
@@ -96,18 +123,27 @@ def run_agent_loop(
             remaining = 300
         else:
             remaining = max(1, int(time_budget_s - elapsed))
-        try:
-            response = _call_llm(
-                messages=messages,
-                tools=schemas,
-                model=minimax_model,
-                timeout_s=min(remaining, 300),
-            )
-        except Exception as exc:  # noqa: BLE001
-            error = f"llm call failed: {exc}"
-            break
+        response = None
+        for _llm_try in range(3):
+            try:
+                response = _call_llm(
+                    messages=messages,
+                    tools=schemas,
+                    model=minimax_model,
+                    timeout_s=min(remaining, 300),
+                )
+                error = None
+                break
+            except Exception as exc:  # noqa: BLE001
+                error = f"llm call failed: {exc}"
+                log.warning("agent_runner.llm_retry attempt=%d err=%s", _llm_try + 1, exc)
+                time.sleep(2)
+        if response is None:
+            break  # all retries exhausted
 
-        msg = _extract_message(response)
+        # Sanitize tool-call JSON BEFORE it enters history (M3 can emit malformed
+        # arguments that 400 the next request and abort the cycle).
+        msg = _sanitize_tool_call_json(_extract_message(response))
         messages.append(msg)
         turn += 1
 

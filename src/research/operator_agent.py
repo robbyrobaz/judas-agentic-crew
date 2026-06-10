@@ -249,7 +249,7 @@ def _build_operator_kickoff(db_path: str) -> str:
 
 def run_operator_decision(
     *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
-    minimax_model: str = "minimax/MiniMax-M2.7",
+    minimax_model: str = "minimax/MiniMax-M3",
 ) -> OperatorDecisionResult:
     """Run one Operator (manager) cycle."""
     started = time.time()

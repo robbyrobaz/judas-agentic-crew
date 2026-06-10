@@ -373,7 +373,7 @@ def _build_reviewer_kickoff(db_path: str) -> str:
 
 def run_reviewer_decision(
     *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
-    minimax_model: str = "minimax/MiniMax-M2.7",
+    minimax_model: str = "minimax/MiniMax-M3",
 ) -> AgentDecisionResult:
     """Run one Reviewer cycle."""
     started = time.time()

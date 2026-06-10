@@ -1830,7 +1830,7 @@ def run_pm_decision(
     db_path: str,
     turn_budget: int = 0,
     time_budget_s: int = 0,
-    minimax_model: str = "minimax/MiniMax-M2.7",
+    minimax_model: str = "minimax/MiniMax-M3",
 ) -> PMDecisionResult:
     """Run one PM cycle. Pure function over ``db_path`` plus the LLM seam.
 
@@ -1858,7 +1858,7 @@ def run_pm_decision(
         return PMDecisionResult(
             success=True,
             actions_taken=[],
-            narrative="M2.7 unreachable (MINIMAX_API_KEY missing); no actions taken today.",
+            narrative="M3 unreachable (MINIMAX_API_KEY missing); no actions taken today.",
             turns_used=0,
             elapsed_s=time.time() - started,
             fallback_used=True,

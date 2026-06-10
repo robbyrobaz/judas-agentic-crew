@@ -1,7 +1,7 @@
 """Autofix worktree lifecycle (Phase 3c).
 
 Worker H owns the symptom detection + DB row insert in `operator_flow.fix_bug_step`,
-Worker I generates the patch via the M2.7 harness. This module owns the
+Worker I generates the patch via the M3 harness. This module owns the
 *infrastructure*: trigger gates, worktree creation, deny-list hook installation,
 commit + push of the patch, and cleanup.
 

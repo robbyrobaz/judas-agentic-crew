@@ -450,7 +450,7 @@ class OperatorFlow(Flow[OperatorState]):
 
     def _try_run_one_autofix(self, *, db_path: str) -> None:
         """Pick the oldest 'detected' auto_fixes row and try to fix it via
-        worktree → M2.7 harness → commit+push. Delegates to the shared
+        worktree → M3 harness → commit+push. Delegates to the shared
         autofix_dispatch module so the ``delegate_to_coder`` tool path and
         this fix_bug_step path can't drift.
 

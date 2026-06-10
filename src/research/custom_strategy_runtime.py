@@ -13,7 +13,7 @@ historical bars. Hard safety:
 
 NOTE on remaining sandbox surface (operator is aware): ``pd.read_csv`` /
 ``pd.DataFrame.to_csv`` / ``np.load`` etc. CAN still touch the
-filesystem. The brief explicitly accepts this for M2.7 peer trust; the
+filesystem. The brief explicitly accepts this for M3 peer trust; the
 hard rails (paper-only mode, sleeve cap, kill flag) remain in place.
 """
 from __future__ import annotations

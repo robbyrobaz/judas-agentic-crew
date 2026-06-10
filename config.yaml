@@ -67,7 +67,7 @@ risk:
   flatten_before_daily_close_minutes: 5
 
 crew:
-  llm_model: "MiniMax-M2.7"
+  llm_model: "MiniMax-M3"
   llm_base_url: "https://api.minimax.io/v1"
   llm_provider: "openai"
   llm_reasoning_split: true

@@ -4,7 +4,7 @@
 The Coder has no systemd timer (by design — per AGENTIC_OPERATOR_PLAN.md).
 The Operator delegates symptoms via ``delegate_to_coder``, which calls
 ``dispatch_symptom`` here. That records the symptom on ``auto_fixes`` and
-runs the M2.7 autofix harness inline (worktree → patch → pytest →
+runs the M3 autofix harness inline (worktree → patch → pytest →
 commit + push), returning a structured result the Operator can read on
 the next tool turn.
 

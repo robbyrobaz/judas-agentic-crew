@@ -72,7 +72,7 @@ def _get_memory():
         os.environ.setdefault("CREWAI_STORAGE_DIR", str(_MEMORY_DIR))
         from crewai.memory.unified_memory import Memory
         _MEMORY_SINGLETON = Memory(
-            llm="minimax/MiniMax-M2.7",
+            llm="minimax/MiniMax-M3",
             storage="lancedb",
             embedder={"provider": "onnx"},
             # Importance dominates so human guidance never gets buried

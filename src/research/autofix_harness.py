@@ -1,6 +1,6 @@
-"""M2.7 auto-fix harness — Phase 3b of the Agentic Operator Plan.
+"""M3 auto-fix harness — Phase 3b of the Agentic Operator Plan.
 
-A constrained tool-using agent that runs MiniMax M2.7 inside a git worktree to
+A constrained tool-using agent that runs MiniMax M3 inside a git worktree to
 diagnose and patch a focused symptom. The harness is intentionally small and
 defensive: every tool validates paths inside ``worktree_path``, ``apply_patch``
 enforces an allow/deny list against the diff, and budgets are enforced both on
@@ -10,8 +10,8 @@ The supervisor (``operator_flow.fix_bug_step``) wires git worktree creation,
 push, and DB persistence around this module. This module returns a
 ``HarnessResult`` and never touches anything outside its worktree.
 
-Contract: see ``PHASE3_DESIGN.md`` §"Autofix executor: MiniMax M2.7" and the
-"Tools exposed to M2.7" deliverable in the Phase 3b worker brief.
+Contract: see ``PHASE3_DESIGN.md`` §"Autofix executor: MiniMax M3" and the
+"Tools exposed to M3" deliverable in the Phase 3b worker brief.
 """
 from __future__ import annotations
 
@@ -546,9 +546,9 @@ def run_harness(
     turn_budget: int = 0,
     time_budget_s: int = 0,
     pytest_args: list[str] | None = None,
-    minimax_model: str = "minimax/MiniMax-M2.7",
+    minimax_model: str = "minimax/MiniMax-M3",
 ) -> HarnessResult:
-    """Run M2.7 against a git worktree to fix a focused symptom.
+    """Run M3 against a git worktree to fix a focused symptom.
 
     See module docstring + PHASE3_DESIGN.md §"Autofix executor" for design.
     """

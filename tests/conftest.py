@@ -19,7 +19,7 @@ def pytest_configure(config):
     if workshop.exists():
         os.environ.setdefault("JUDAS_WORKSHOP_PATH", str(workshop))
 
-    # Safety defaults for the entire test suite — never reach real M2.7 or
+    # Safety defaults for the entire test suite — never reach real M3 or
     # the live IBKR paper account. Tests that need the LLM / broker / autofix
     # paths must opt-in via monkeypatch.setenv / delenv.
     #   - MINIMAX_API_KEY popped: pm_agent / live_review / explore enter

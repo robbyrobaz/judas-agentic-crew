@@ -6,7 +6,7 @@ Four agents:
   RiskGuardian    — checks DB + risk limits, outputs TRADE|SKIP
   TradeExecutor   — places paper order, records to DB
 
-LLM: config-driven MiniMax M2.7 via the OpenAI-compatible endpoint.
+LLM: config-driven MiniMax M3 via the OpenAI-compatible endpoint.
 Knowledge base: local research plus selected workshop findings.
 """
 from __future__ import annotations

@@ -203,7 +203,7 @@ def _deterministic_decide(metrics: StrategyMetrics) -> Decision:
       aren't sacred — demotions are cheap (one-click reactivate via
       auto_demotions), promotions are gated. The system should bias toward
       retire + easy rollback, not toward protecting stale slots in the
-      active set. This rule now mirrors the reasoning M2.7 would do: a
+      active set. This rule now mirrors the reasoning M3 would do: a
       strategy with no closed trades AND no recent fire activity is a
       candidate for retire, not a candidate for indefinite protection.
     """
@@ -269,7 +269,7 @@ def _llm_decide(
     regime: dict | None,
     leaderboard: list | None,
 ) -> Decision | None:
-    """Try the M2.7 LLM path. Return None on any failure (caller falls back).
+    """Try the M3 LLM path. Return None on any failure (caller falls back).
 
     Implementation note: kept thin so tests can monkeypatch ``_call_llm``.
     """
@@ -316,14 +316,14 @@ def _build_llm_prompt(
 
 
 def _call_llm(prompt: str) -> str:
-    """Invoke MiniMax M2.7 via litellm. Caller wraps in try/except."""
+    """Invoke MiniMax M3 via litellm. Caller wraps in try/except."""
     if not os.environ.get("MINIMAX_API_KEY"):
         raise RuntimeError("MINIMAX_API_KEY not set")
 
     import litellm  # type: ignore[import-not-found]
 
     resp = litellm.completion(
-        model="minimax/MiniMax-M2.7",
+        model="minimax/MiniMax-M3",
         messages=[{"role": "user", "content": prompt}],
         timeout=_LLM_TIMEOUT_S,
         temperature=0.0,
@@ -369,7 +369,7 @@ def decide_action(
 ) -> Decision:
     """Decide keep / retune / retire for a strategy.
 
-    Prefers the M2.7 LLM path when ``MINIMAX_API_KEY`` is set; falls back to
+    Prefers the M3 LLM path when ``MINIMAX_API_KEY`` is set; falls back to
     deterministic thresholds on any failure or when the env var is missing.
     """
     if os.environ.get("MINIMAX_API_KEY"):

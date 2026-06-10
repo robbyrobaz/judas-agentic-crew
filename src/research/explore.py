@@ -12,7 +12,7 @@ Surface:
     plan_experiment(*, context)                -> ExplorePlan
     execute_plan(*, plan, db_path, timeout_s)  -> dict
 
-The LLM path uses MiniMax M2.7 via ``litellm`` when ``MINIMAX_API_KEY`` is
+The LLM path uses MiniMax M3 via ``litellm`` when ``MINIMAX_API_KEY`` is
 set. On any failure (missing key, parse error, schema/allowlist violation,
 network) the deterministic fallback runs. The fallback is the source of
 truth.
@@ -381,7 +381,7 @@ def _call_llm(prompt: str) -> str:
     import litellm  # type: ignore[import-not-found]
 
     resp = litellm.completion(
-        model="minimax/MiniMax-M2.7",
+        model="minimax/MiniMax-M3",
         messages=[{"role": "user", "content": prompt}],
         timeout=_LLM_TIMEOUT_S,
         temperature=0.0,

@@ -415,7 +415,7 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
     return fires
 
 
-async def _fetch_bars_async(symbols: set[str], host: str, port: int, client_id: int) -> dict[str, pd.DataFrame]:
+async def _fetch_bars_async(symbols: set[str], host: str, port: int, client_id: int, bar_size: str = "1 hour") -> dict[str, pd.DataFrame]:
     ib = IB()
     await ib.connectAsync(host, port, clientId=client_id, timeout=15)
     # NOTE: a misplaced util loop-bootstrap call used to live here. It is
@@ -436,7 +436,7 @@ async def _fetch_bars_async(symbols: set[str], host: str, port: int, client_id: 
                 qualified[0],
                 endDateTime="",
                 durationStr="60 D",
-                barSizeSetting="1 hour",
+                barSizeSetting=bar_size,
                 whatToShow="TRADES",
                 useRTH=False,
                 formatDate=1,
@@ -454,8 +454,8 @@ async def _fetch_bars_async(symbols: set[str], host: str, port: int, client_id: 
     return out
 
 
-def fetch_bars(symbols: set[str], host: str, port: int, client_id: int) -> dict[str, pd.DataFrame]:
-    return asyncio.run(_fetch_bars_async(symbols, host, port, client_id))
+def fetch_bars(symbols: set[str], host: str, port: int, client_id: int, bar_size: str = "1 hour") -> dict[str, pd.DataFrame]:
+    return asyncio.run(_fetch_bars_async(symbols, host, port, client_id, bar_size=bar_size))
 
 
 def _build_bracket_orders(
@@ -1084,6 +1084,45 @@ def _place_fire_with_record(
     }
 
 
+def _strategy_timeframe(row: dict[str, Any]) -> str:
+    """Canonical timeframe for a strategy (default 1h). Detectors are
+    timeframe-agnostic, so this only selects which bars the strategy is fed."""
+    return bar_cache.normalize_tf(row.get("params", {}).get("timeframe"))
+
+
+def _strategy_new_bar(db_path: str, strategy_id: Any, latest_bar_ts: str) -> bool:
+    """New-closed-bar gate. Returns True only when ``latest_bar_ts`` is newer
+    than the last bar this strategy was evaluated on, and records it.
+
+    Without this, running the scan every few minutes would re-evaluate a
+    strategy against the same (unchanged) bar over and over — re-firing the same
+    setup and, once a trade closes, re-entering on the still-valid bar. It also
+    means a 1h strategy is only actually evaluated when a new 1h bar appears, not
+    on every 5-minute tick."""
+    if strategy_id is None or not latest_bar_ts:
+        return True  # can't dedup → don't block
+    from src.db.models import get_conn
+
+    with get_conn(db_path) as conn:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS strategy_bar_state ("
+            "strategy_id INTEGER PRIMARY KEY, last_bar_ts TEXT)"
+        )
+        prev = conn.execute(
+            "SELECT last_bar_ts FROM strategy_bar_state WHERE strategy_id = ?",
+            (strategy_id,),
+        ).fetchone()
+        if prev and prev[0] and str(latest_bar_ts) <= str(prev[0]):
+            return False
+        conn.execute(
+            "INSERT INTO strategy_bar_state(strategy_id, last_bar_ts) VALUES(?, ?) "
+            "ON CONFLICT(strategy_id) DO UPDATE SET last_bar_ts = excluded.last_bar_ts",
+            (strategy_id, str(latest_bar_ts)),
+        )
+        conn.commit()
+    return True
+
+
 def run_portfolio_scan(
     *,
     db_path: str,
@@ -1099,17 +1138,25 @@ def run_portfolio_scan(
 ) -> dict[str, Any]:
     init_db(db_path)
     active = [row for row in list_active_strategies() if str(row["params"].get("execution_engine", "")).startswith(("judas", "buffet"))]
-    needed_symbols: set[str] = set()
-    for row in active:
+
+    def _row_symbols(row: dict[str, Any]) -> list[str]:
         params = row["params"]
-        engine = str(params.get("execution_engine", ""))
-        if engine == "buffet_pair":
+        if str(params.get("execution_engine", "")) == "buffet_pair":
             seed = _find_seed_strategy(str(params.get("strategy_name")))
-            if seed:
-                needed_symbols.update(seed.get("symbols", []))
-        else:
-            needed_symbols.add(str(row["symbol"]).upper())
-    bars_by_sym = bar_cache.refresh_cache(needed_symbols, host=host, port=port, client_id=data_client_id)
+            return [s.upper() for s in seed.get("symbols", [])] if seed else []
+        return [str(row["symbol"]).upper()]
+
+    # Each strategy is fed bars at ITS OWN timeframe (5m/15m/1h). Collect the
+    # (symbol, timeframe) pairs needed this scan and refresh them grouped by tf.
+    needed_pairs: set[tuple[str, str]] = set()
+    for row in active:
+        tf = _strategy_timeframe(row)
+        for s in _row_symbols(row):
+            needed_pairs.add((s, tf))
+    bars_by_pair = bar_cache.refresh_cache_pairs(needed_pairs, host=host, port=port, client_id=data_client_id)
+    # 1h-only view for the ibkr-route bar-touch reconciler (NT route reconciles
+    # via real fill GUIDs and ignores this).
+    bars_by_sym = {s: df for (s, tf), df in bars_by_pair.items() if tf == bar_cache.DEFAULT_TF}
 
     # Reconcile open trades. NT route reads REAL fills from the OIF files; the
     # IBKR/legacy route uses bar-touch against the cached 1H bars.
@@ -1125,7 +1172,16 @@ def run_portfolio_scan(
     placed = 0
     for row in active:
         engine = str(row["params"].get("execution_engine", ""))
-        fires = evaluate_active_strategy(row, bars_by_sym)
+        tf = _strategy_timeframe(row)
+        # Feed the strategy bars at ITS timeframe (only those symbols/tf).
+        tf_bars = {s: df for (s, t), df in bars_by_pair.items() if t == tf}
+        # New-closed-bar gate: skip if this strategy already saw this bar (stops
+        # re-firing / re-entry when the scan runs faster than the bar period).
+        syms = _row_symbols(row)
+        pdf = tf_bars.get(syms[0]) if syms else None
+        if pdf is not None and len(pdf) and not _strategy_new_bar(db_path, row.get("id"), str(pdf.iloc[-1]["ts"])):
+            continue
+        fires = evaluate_active_strategy(row, tf_bars)
         is_pair = engine == "buffet_pair" and len(fires) == 2
 
         if not is_pair:
@@ -1251,7 +1307,7 @@ def run_portfolio_scan(
             )
     return {
         "active_strategy_count": len(active),
-        "needed_symbols": sorted(needed_symbols),
-        "bars_loaded": {k: len(v) for k, v in bars_by_sym.items()},
+        "needed_pairs": sorted(f"{s}@{tf}" for (s, tf) in needed_pairs),
+        "bars_loaded": {f"{s}@{tf}": len(v) for (s, tf), v in bars_by_pair.items()},
         "fires": fired,
     }

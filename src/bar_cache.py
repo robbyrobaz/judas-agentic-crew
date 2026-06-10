@@ -37,6 +37,32 @@ ACTIVE_CONTRACTS = Path(__file__).resolve().parent.parent / "active_contracts.js
 MAX_AGE_HOURS = 1.0
 ACTIVE_MAX_AGE_HOURS = 24.0
 
+# Timeframe support. The detectors are timeframe-agnostic (they consume whatever
+# OHLC bars they are handed), so a strategy's timeframe is purely a data-layer
+# choice. Each tf has: the IBKR barSizeSetting, how much history to pull, and a
+# cache freshness window (a 5m bar is stale after ~5 min, a 1h bar after ~1h).
+_TF_SPECS: dict[str, dict[str, Any]] = {
+    "5m":  {"bar_size": "5 mins",  "duration": "10 D", "max_age_hours": 5.0 / 60.0},
+    "15m": {"bar_size": "15 mins", "duration": "20 D", "max_age_hours": 15.0 / 60.0},
+    "1h":  {"bar_size": "1 hour",  "duration": "60 D", "max_age_hours": 1.0},
+}
+DEFAULT_TF = "1h"
+
+# Accept the many ways a timeframe gets written across config/registry/agents.
+_TF_ALIASES = {
+    "5m": "5m", "5min": "5m", "5mins": "5m", "5 min": "5m", "5 mins": "5m", "5minute": "5m",
+    "15m": "15m", "15min": "15m", "15mins": "15m", "15 min": "15m", "15 mins": "15m",
+    "1h": "1h", "1hr": "1h", "1hour": "1h", "1 hour": "1h", "60m": "1h", "60min": "1h", "h": "1h",
+}
+
+
+def normalize_tf(tf: str | None) -> str:
+    """Map any timeframe spelling to a canonical key in _TF_SPECS. Unknown -> 1h."""
+    if not tf:
+        return DEFAULT_TF
+    key = str(tf).strip().lower().replace("-", "")
+    return _TF_ALIASES.get(key, DEFAULT_TF)
+
 # Futures month codes -> calendar month (for localSymbol parsing fallback).
 _MONTH_CODES = {"F": 1, "G": 2, "H": 3, "J": 4, "K": 5, "M": 6,
                 "N": 7, "Q": 8, "U": 9, "V": 10, "X": 11, "Z": 12}
@@ -68,39 +94,42 @@ _CONTRACT_SPECS = {
 }
 
 
-def cache_path(symbol: str) -> Path:
-    return CACHE_DIR / f"{symbol.upper()}_1h.parquet"
+def cache_path(symbol: str, timeframe: str = DEFAULT_TF) -> Path:
+    return CACHE_DIR / f"{symbol.upper()}_{normalize_tf(timeframe)}.parquet"
 
 
-def cache_age_hours(symbol: str) -> float | None:
+def cache_age_hours(symbol: str, timeframe: str = DEFAULT_TF) -> float | None:
     """Return age of cached file in hours, or None if missing."""
-    p = cache_path(symbol)
+    p = cache_path(symbol, timeframe)
     if not p.exists():
         return None
     return (time.time() - p.stat().st_mtime) / 3600.0
 
 
-def is_fresh(symbol: str, max_age_hours: float = MAX_AGE_HOURS) -> bool:
-    age = cache_age_hours(symbol)
+def is_fresh(symbol: str, timeframe: str = DEFAULT_TF, max_age_hours: float | None = None) -> bool:
+    if max_age_hours is None:
+        max_age_hours = _TF_SPECS[normalize_tf(timeframe)]["max_age_hours"]
+    age = cache_age_hours(symbol, timeframe)
     return age is not None and age < max_age_hours
 
 
-def read_cache(symbol: str) -> pd.DataFrame:
+def read_cache(symbol: str, timeframe: str = DEFAULT_TF) -> pd.DataFrame:
     """Read cached bars from disk. Raises FileNotFoundError if missing."""
-    p = cache_path(symbol)
+    p = cache_path(symbol, timeframe)
     if not p.exists():
-        raise FileNotFoundError(f"No bar cache for {symbol} — run refresh_cache() first")
+        raise FileNotFoundError(
+            f"No {normalize_tf(timeframe)} bar cache for {symbol} — run refresh_cache() first")
     df = pd.read_parquet(p)
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
     return df.sort_values("ts").reset_index(drop=True)
 
 
-def read_cache_multi(symbols: set[str]) -> dict[str, pd.DataFrame]:
+def read_cache_multi(symbols: set[str], timeframe: str = DEFAULT_TF) -> dict[str, pd.DataFrame]:
     """Read multiple symbols from cache, silently skipping missing ones."""
     out: dict[str, pd.DataFrame] = {}
     for sym in symbols:
         try:
-            out[sym] = read_cache(sym)
+            out[sym] = read_cache(sym, timeframe)
         except FileNotFoundError:
             log.warning("bar_cache.missing symbol=%s", sym)
     return out
@@ -121,14 +150,14 @@ def _write_price_cache(bars_by_sym: dict[str, pd.DataFrame]) -> None:
         log.warning("bar_cache.price_cache_write_failed: %s", exc)
 
 
-async def _fetch_bars(ib, contract, duration: str = "60 D") -> list:
-    """Fetch 1H TRADES bars for a qualified contract. Returns empty list on error."""
+async def _fetch_bars(ib, contract, duration: str = "60 D", bar_size: str = "1 hour") -> list:
+    """Fetch TRADES bars for a qualified contract. Returns empty list on error."""
     try:
         bars = await ib.reqHistoricalDataAsync(
             contract,
             endDateTime="",
             durationStr=duration,
-            barSizeSetting="1 hour",
+            barSizeSetting=bar_size,
             whatToShow="TRADES",
             useRTH=False,
             formatDate=1,
@@ -240,9 +269,11 @@ def nt_month(symbol: str) -> str | None:
 
 
 async def _fetch_async(
-    symbols: set[str], host: str, port: int, client_id: int
+    symbols: set[str], host: str, port: int, client_id: int, timeframe: str = DEFAULT_TF
 ) -> dict[str, pd.DataFrame]:
     from ib_async import IB
+    tf = normalize_tf(timeframe)
+    tf_spec = _TF_SPECS[tf]
     ib = IB()
     await ib.connectAsync(host, port, clientId=client_id, timeout=15)
     out: dict[str, pd.DataFrame] = {}
@@ -261,9 +292,9 @@ async def _fetch_async(
                 if err or contract is None:
                     log.warning("bar_cache.qualify_failed symbol=%s err=%s", symbol, err)
                     continue
-                bars = await _fetch_bars(ib, contract, duration="60 D")
+                bars = await _fetch_bars(ib, contract, duration=tf_spec["duration"], bar_size=tf_spec["bar_size"])
                 if not bars:
-                    log.warning("bar_cache.no_bars symbol=%s contract=%s", symbol, contract.localSymbol)
+                    log.warning("bar_cache.no_bars symbol=%s tf=%s contract=%s", symbol, tf, contract.localSymbol)
                     continue
                 rows = []
                 for b in bars:
@@ -286,8 +317,8 @@ async def _fetch_async(
                 else:
                     log.warning("bar_cache.no_contract_month symbol=%s contract=%s",
                                 symbol, contract.localSymbol)
-                log.info("bar_cache.fetched symbol=%s contract=%s month=%s bars=%d",
-                         symbol, contract.localSymbol, contract_month or "?", len(df))
+                log.info("bar_cache.fetched symbol=%s tf=%s contract=%s month=%s bars=%d",
+                         symbol, tf, contract.localSymbol, contract_month or "?", len(df))
             except Exception as exc:  # noqa: BLE001
                 log.error("bar_cache.symbol_failed symbol=%s err=%s", symbol, exc, exc_info=True)
                 continue
@@ -304,15 +335,18 @@ def refresh_cache(
     port: int,
     client_id: int,
     force: bool = False,
+    timeframe: str = DEFAULT_TF,
 ) -> dict[str, pd.DataFrame]:
-    """Fetch fresh bars from IBKR for any stale symbols, write to cache_1h/.
+    """Fetch fresh bars from IBKR for any stale symbols at the given timeframe.
 
-    Returns the full bars_by_sym dict (cached + freshly fetched).
-    If force=True, re-fetches all regardless of age.
+    Returns the bars_by_sym dict (cached + freshly fetched) for that timeframe.
+    Freshness uses the timeframe's own TTL (5m staler faster than 1h). If
+    force=True, re-fetches all regardless of age.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    tf = normalize_tf(timeframe)
 
-    stale = {s for s in symbols if force or not is_fresh(s)}
+    stale = {s for s in symbols if force or not is_fresh(s, tf)}
     fresh = {s for s in symbols if s not in stale}
 
     result: dict[str, pd.DataFrame] = {}
@@ -320,23 +354,46 @@ def refresh_cache(
     # Load already-fresh symbols from disk immediately
     for sym in fresh:
         try:
-            result[sym] = read_cache(sym)
+            result[sym] = read_cache(sym, tf)
         except FileNotFoundError:
             stale.add(sym)
 
     if stale:
-        log.info("bar_cache.refreshing symbols=%s", sorted(stale))
-        fetched = asyncio.run(_fetch_async(stale, host, port, client_id))
+        log.info("bar_cache.refreshing tf=%s symbols=%s", tf, sorted(stale))
+        fetched = asyncio.run(_fetch_async(stale, host, port, client_id, timeframe=tf))
         for sym, df in fetched.items():
-            p = cache_path(sym)
+            p = cache_path(sym, tf)
             df.to_parquet(p, index=False)
             result[sym] = df
             log.info("bar_cache.wrote path=%s rows=%d", p, len(df))
     else:
-        log.info("bar_cache.all_fresh symbols=%s", sorted(symbols))
+        log.info("bar_cache.all_fresh tf=%s symbols=%s", tf, sorted(symbols))
 
-    _write_price_cache(result)
+    # Price cache is a 1h-only convenience (last close per symbol); only the 1h
+    # refresh maintains it so faster timeframes don't churn it.
+    if tf == DEFAULT_TF:
+        _write_price_cache(result)
     return result
+
+
+def refresh_cache_pairs(
+    pairs: set[tuple[str, str]],
+    host: str,
+    port: int,
+    client_id: int,
+    force: bool = False,
+) -> dict[tuple[str, str], pd.DataFrame]:
+    """Refresh many (symbol, timeframe) pairs, grouped by timeframe so each
+    timeframe fetches in one IBKR pass. Returns {(symbol, tf): df}."""
+    by_tf: dict[str, set[str]] = {}
+    for sym, tf in pairs:
+        by_tf.setdefault(normalize_tf(tf), set()).add(sym)
+    out: dict[tuple[str, str], pd.DataFrame] = {}
+    for tf, syms in by_tf.items():
+        got = refresh_cache(syms, host=host, port=port, client_id=client_id, force=force, timeframe=tf)
+        for sym, df in got.items():
+            out[(sym, tf)] = df
+    return out
 
 
 def get_bars(
@@ -345,12 +402,14 @@ def get_bars(
     host: str = "127.0.0.1",
     port: int = 4002,
     client_id: int = 150,
-    max_age_hours: float = MAX_AGE_HOURS,
+    timeframe: str = DEFAULT_TF,
+    max_age_hours: float | None = None,
 ) -> pd.DataFrame:
-    """Get bars for a single symbol — from cache if fresh, IBKR if stale."""
-    if is_fresh(symbol, max_age_hours):
-        return read_cache(symbol)
-    fetched = refresh_cache({symbol}, host=host, port=port, client_id=client_id)
+    """Get bars for a single symbol/timeframe — from cache if fresh, IBKR if stale."""
+    tf = normalize_tf(timeframe)
+    if is_fresh(symbol, tf, max_age_hours):
+        return read_cache(symbol, tf)
+    fetched = refresh_cache({symbol}, host=host, port=port, client_id=client_id, timeframe=tf)
     if symbol in fetched:
         return fetched[symbol]
-    raise RuntimeError(f"Failed to fetch bars for {symbol}")
+    raise RuntimeError(f"Failed to fetch bars for {symbol} ({tf})")

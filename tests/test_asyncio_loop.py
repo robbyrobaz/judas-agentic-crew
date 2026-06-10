@@ -23,7 +23,7 @@ def test_fetch_bars_uses_asyncio_run(monkeypatch):
 
     captured: dict = {}
 
-    async def fake_fetch(symbols, host, port, client_id):
+    async def fake_fetch(symbols, host, port, client_id, bar_size="1 hour"):
         captured["symbols"] = sorted(symbols)
         return {s: f"bars-{s}" for s in symbols}
 

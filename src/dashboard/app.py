@@ -359,6 +359,19 @@ def _fetch_chat_recent_brief_meta(limit: int = 2) -> list[dict[str, Any]]:
         return []
 
 
+def _futures_session_start_utc() -> str:
+    """Most recent CME daily reset (17:00 America/Chicago = 5pm Central) as a
+    UTC ISO string. The futures trading day rolls at 5pm CT, not midnight, so
+    'today' on the dashboard means the current session: everything since the
+    last 17:00 CT. Handles CDT/CST automatically via zoneinfo."""
+    from datetime import timedelta
+    now_ct = datetime.now(ZoneInfo("America/Chicago"))
+    reset = now_ct.replace(hour=17, minute=0, second=0, microsecond=0)
+    if now_ct < reset:
+        reset -= timedelta(days=1)
+    return reset.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _fetch_trading_stats() -> dict[str, Any]:
     phx = ZoneInfo("America/Phoenix")
     with get_conn(_db_path()) as conn:
@@ -379,8 +392,9 @@ def _fetch_trading_stats() -> dict[str, Any]:
                 COUNT(*) AS trades_today,
                 COALESCE(SUM(CASE WHEN status = 'closed' THEN pnl_dollars ELSE 0 END), 0.0) AS pnl_today
             FROM trades
-            WHERE substr(opened_at, 1, 10) = strftime('%Y-%m-%d','now','localtime')
-            """
+            WHERE opened_at >= ?
+            """,
+            (_futures_session_start_utc(),),
         ).fetchone()
         by_symbol_rows = conn.execute(
             """
@@ -798,7 +812,8 @@ def _fetch_youtube_stats() -> dict[str, Any]:
         ).fetchone()
         today = conn.execute(
             "SELECT COUNT(*) AS n FROM findings WHERE title LIKE 'YT:%' "
-            "AND created_at_utc >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', 'start of day')"
+            "AND created_at_utc >= ?",
+            (_futures_session_start_utc(),),
         ).fetchone()
     return {"this_week": int(week["n"] or 0), "today": int(today["n"] or 0)}
 

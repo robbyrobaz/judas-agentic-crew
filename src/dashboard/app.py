@@ -1045,6 +1045,96 @@ def _nt_account_snapshot() -> dict[str, Any] | None:
         return None
 
 
+_UNREAL_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_UNREAL_TTL_S = 30.0
+# Canonical $ per 1.0 price point (mirrors judas_detector._dpp_map) + exchanges.
+_DPP = {"MGC": 10.0, "MNQ": 2.0, "MCL": 100.0, "MBT": 0.1, "MET": 0.1,
+        "DX": 1000.0, "ZF": 1000.0, "6J": 12.5, "ZN": 1000.0}
+_EXCH = {"MGC": "COMEX", "MNQ": "CME", "MCL": "NYMEX", "MBT": "CME", "MET": "CME",
+         "DX": "NYBOT", "ZF": "CBOT", "6J": "CME", "ZN": "CBOT"}
+
+
+def _unrealized_snapshot() -> dict[str, Any]:
+    """Mark every OPEN position to the live IBKR price -> unrealized P&L.
+
+    NT tracks this perfectly in its own UI, but its ATI Client exposes no
+    UnrealizedPnL call, so we compute it: (live - entry) * dir * qty * $/point.
+    TTL-cached (a live snapshot needs a brief IBKR connection); last good value
+    is kept on a transient failure so the panel never blanks."""
+    now = time.time()
+    cached = _UNREAL_CACHE.get("data")
+    if cached is not None and (now - _UNREAL_CACHE["ts"]) < _UNREAL_TTL_S:
+        return {**cached, "age_s": round(now - _UNREAL_CACHE["ts"], 1)}
+    try:
+        with get_conn(_db_path()) as conn:
+            opens = [dict(r) for r in conn.execute(
+                "SELECT id, symbol, direction, qty, entry_fill FROM trades WHERE status='open'"
+            ).fetchall()]
+        if not opens:
+            data = {"total": 0.0, "positions": []}
+            _UNREAL_CACHE.update(ts=now, data=data)
+            return {**data, "age_s": 0.0}
+
+        import asyncio
+        from ib_async import IB, ContFuture
+        ibkr = load_config().ibkr
+        syms = sorted({str(o["symbol"]).upper() for o in opens})
+
+        async def _live_prices() -> dict[str, float]:
+            ib = IB()
+            # Dedicated clientId; retry once on a transient in-use collision so a
+            # race with another reader degrades to last-good rather than blanking.
+            for _try in range(2):
+                try:
+                    await ib.connectAsync(ibkr.host, ibkr.port,
+                                          clientId=int(ibkr.data_client_id) + 21, timeout=10)
+                    break
+                except Exception:
+                    try:
+                        ib.disconnect()
+                    except Exception:
+                        pass
+                    if _try == 1:
+                        raise
+                    await asyncio.sleep(2)
+            out: dict[str, float] = {}
+            try:
+                for s in syms:
+                    root = "JPY" if s == "6J" else s
+                    q = await ib.qualifyContractsAsync(ContFuture(root, exchange=_EXCH.get(s, "CME")))
+                    if not q:
+                        continue
+                    t = ib.reqMktData(q[0], "", True, False)
+                    await asyncio.sleep(2.0)
+                    p = t.last if (t.last and t.last == t.last) else (t.close or None)
+                    if p:
+                        out[s] = float(p)
+            finally:
+                ib.disconnect()
+            return out
+
+        px = asyncio.run(_live_prices())
+        positions, total = [], 0.0
+        for o in opens:
+            s = str(o["symbol"]).upper()
+            p = px.get(s)
+            if p is None:
+                continue
+            sign = 1 if o["direction"] == "long" else -1
+            u = (p - float(o["entry_fill"])) * sign * float(o["qty"]) * _DPP.get(s, 10.0)
+            total += u
+            positions.append({"id": o["id"], "symbol": s, "direction": o["direction"],
+                              "qty": o["qty"], "entry": o["entry_fill"], "price": p,
+                              "unrealized": round(u, 2)})
+        data = {"total": round(total, 2), "positions": positions}
+        _UNREAL_CACHE.update(ts=now, data=data)
+        return {**data, "age_s": 0.0}
+    except Exception:
+        if cached is not None:
+            return {**cached, "age_s": round(now - _UNREAL_CACHE["ts"], 1), "stale": True}
+        return {"total": None, "positions": [], "error": True}
+
+
 def _overview_payload() -> dict[str, Any]:
     session = json.loads(session_status_tool.run(input_json="{}"))
     signals = _fetch_recent_signals(limit=8)
@@ -1082,6 +1172,7 @@ def _overview_payload() -> dict[str, Any]:
         "research_stats": _fetch_research_stats(),
         "nt_account": _nt_account_snapshot(),
         "open_positions": _fetch_open_positions(),
+        "unrealized": _unrealized_snapshot(),
         "week_stats": week_stats,
         "youtube_stats": youtube_stats,
         "candidates": candidates,

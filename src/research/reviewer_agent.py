@@ -381,6 +381,33 @@ def _build_reviewer_kickoff(db_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _expire_stale_candidates(db_path: str, days: int = 7) -> int:
+    """Auto-reject 'candidate' rows older than `days` so the review queue stays
+    bounded. A candidate that's sat unreviewed for a week won't be promoted —
+    the reviewer always works fresh candidates first, so old ones just pile up.
+    The researcher can re-propose if an idea still has merit. Deterministic,
+    runs at the top of every reviewer cycle."""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        con = sqlite3.connect(db_path)
+        cur = con.execute(
+            "UPDATE strategy_candidates SET status='rejected', "
+            "rationale = COALESCE(rationale,'') || ' | auto-expired: stale >" + str(days)
+            + "d unreviewed' WHERE status='candidate' AND ts_utc < ?",
+            (cutoff,),
+        )
+        n = cur.rowcount
+        con.commit()
+        con.close()
+        if n:
+            log.info("reviewer.expired_stale_candidates n=%d cutoff=%s", n, cutoff)
+        return n
+    except Exception as exc:  # noqa: BLE001
+        log.warning("reviewer.expire_stale_failed: %s", exc)
+        return 0
+
+
 def run_reviewer_decision(
     *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
     minimax_model: str = "minimax/MiniMax-M3",
@@ -395,6 +422,10 @@ def run_reviewer_decision(
             turns_used=0, elapsed_s=time.time() - started,
             fallback_used=True, raw_messages=[], error=None,
         )
+
+    # Keep the review queue bounded: drop candidates that have sat unreviewed
+    # for over a week before building the briefing.
+    _expire_stale_candidates(db_path)
 
     tools, schemas = agent_tools.make_tools(
         db_path=db_path, include=INCLUDE_TOOLS, team="reviewer",

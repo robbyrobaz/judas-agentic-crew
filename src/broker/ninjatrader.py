@@ -136,9 +136,14 @@ class NTBroker:
         """Issue a single nt.Command("PLACE", ...). Returns NT GUID order_id ('' on failure)."""
         script = self._HEADER + (
             'oid = nt.NewOrderId()\n'
+            # GTC, not DAY: DAY stop/target orders are CANCELLED at the CME daily
+            # reset (5pm CT), which silently un-protected any position held across
+            # a session — they rode naked and one lost -$2,258 (MNQ, Jun 15). GTC
+            # survives resets. A re-arm guard in the scan is the backstop in case
+            # NT still drops one. (Entries are MARKET so TIF is moot for them.)
             f'r = nt.Command("PLACE", "{self.account}", "{instrument}", '
             f'"{action}", {qty}, "{order_type}", {limit_price:.4f}, {stop_price:.4f}, '
-            f'"DAY", "{oco_id}", oid, "", "")\n'
+            f'"GTC", "{oco_id}", oid, "", "")\n'
             'print(f"PLACE_RC:{r}")\n'
             'print(f"OID:{oid}")\n'
         )

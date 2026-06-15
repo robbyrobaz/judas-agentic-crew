@@ -20,6 +20,13 @@ from src.tools.judas_detector import run_judas_detection_rich
 
 log = logging.getLogger(__name__)
 
+_STATUS_DIR = Path(__file__).resolve().parent.parent / "outputs"
+
+
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 _CONTRACT_SPECS: dict[str, dict[str, Any]] = {
     "MGC": {"ibkr_symbol": "MGC", "exchange": "COMEX", "tick": 0.10, "tick_value": 1.0},
@@ -861,6 +868,59 @@ def _reconcile_open_trades(db_path: str, bars_by_sym: dict[str, pd.DataFrame]) -
     return closed
 
 
+def _check_position_protection(db_path: str) -> list[int]:
+    """Loud backstop: every scan, verify each OPEN trade still has a LIVE
+    protective stop on NT. DAY-TIF stops used to be cancelled at the CME daily
+    reset, silently leaving positions naked — they rode to large losses (the
+    Jun 15 cohort hit -$4,600 unprotected). Stops are GTC now, but if one still
+    goes missing (orphan / NT drop) this fires a CRITICAL alert within 5 min and
+    records it to outputs/naked_positions.json for the dashboard, instead of it
+    being discovered days later. Read-only — does NOT auto-modify orders.
+    Returns the ids of any unprotected open trades."""
+    from src.db.models import get_conn
+
+    with get_conn(db_path) as conn:
+        opens = [dict(r) for r in conn.execute(
+            "SELECT id, symbol, sl_order_id FROM trades WHERE status='open'"
+        ).fetchall()]
+    if not opens:
+        _STATUS_DIR.mkdir(parents=True, exist_ok=True)
+        (_STATUS_DIR / "naked_positions.json").write_text(json.dumps({"ts": None, "naked": []}))
+        return []
+
+    broker = _nt_broker()
+    # One WinRM round-trip: status of every stop GUID.
+    checks = "".join(
+        f'print("ST:{o["sl_order_id"]}:" + str(nt.OrderStatus("{o["sl_order_id"]}")))\n'
+        for o in opens if o.get("sl_order_id")
+    )
+    _, out = broker._nt_run(broker._HEADER + checks)
+    status: dict[str, str] = {}
+    for line in out.splitlines():
+        if line.startswith("ST:"):
+            _, oid, st = line.split(":", 2)
+            status[oid] = st.strip()
+
+    live = ("working", "accepted")
+    naked = [o for o in opens
+             if str(status.get(o.get("sl_order_id"), "absent")).lower() not in live]
+    for o in naked:
+        log.critical(
+            "nt.POSITION_UNPROTECTED trade=%s symbol=%s sl_status=%s — NAKED, no live stop!",
+            o["id"], o["symbol"], status.get(o.get("sl_order_id"), "absent"),
+        )
+    try:
+        _STATUS_DIR.mkdir(parents=True, exist_ok=True)
+        (_STATUS_DIR / "naked_positions.json").write_text(json.dumps({
+            "ts": _utc_now_iso(),
+            "naked": [{"id": o["id"], "symbol": o["symbol"],
+                       "sl_status": status.get(o.get("sl_order_id"), "absent")} for o in naked],
+        }))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("naked_positions.json write failed: %s", exc)
+    return [o["id"] for o in naked]
+
+
 def _reconcile_nt_fills(db_path: str) -> int:
     """Close open trades by reading REAL NT fills from the OIF outgoing files.
 
@@ -1165,6 +1225,10 @@ def run_portfolio_scan(
             _reconcile_nt_fills(db_path)
         except Exception as exc:  # noqa: BLE001
             log.error("nt fill reconcile failed: %s", exc, exc_info=True)
+        try:
+            _check_position_protection(db_path)
+        except Exception as exc:  # noqa: BLE001
+            log.error("position-protection check failed: %s", exc, exc_info=True)
     else:
         _reconcile_open_trades(db_path, bars_by_sym)
 

@@ -67,6 +67,13 @@ def normalize_tf(tf: str | None) -> str:
 _MONTH_CODES = {"F": 1, "G": 2, "H": 3, "J": 4, "K": 5, "M": 6,
                 "N": 7, "Q": 8, "U": 9, "V": 10, "X": 11, "Z": 12}
 
+# Volume-based roll: only run the front-vs-next volume probe within this many
+# days of the front's expiry (far from expiry the front is clearly active).
+_ROLL_WINDOW_DAYS = 45
+# Per-process memo so a symbol's contract is resolved once per scan (not once
+# per timeframe). Cleared implicitly each oneshot run.
+_ROLL_DECISION: dict[str, tuple] = {}
+
 _CONTRACT_SPECS: dict[str, dict[str, Any]] = {
     "MGC": {"ibkr_symbol": "MGC", "exchange": "COMEX"},
     "MNQ": {"ibkr_symbol": "MNQ", "exchange": "CME"},
@@ -201,29 +208,80 @@ async def _resolve_contract_month(ib, contract, spec: dict) -> str:
     return f"{year:04d}{month:02d}"
 
 
+async def _recent_volume(ib, contract) -> int:
+    """Recent (~1 trading day) traded volume for a contract — the roll signal."""
+    try:
+        bars = await _fetch_bars(ib, contract, duration="2 D", bar_size="1 hour")
+        return sum(int(getattr(b, "volume", 0) or 0) for b in bars[-24:])
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 async def _pick_contract(ib, spec: dict, symbol: str):
-    """Resolve the current ACTIVE contract via IBKR's continuous future.
+    """Resolve the ACTIVE contract via an explicit VOLUME-BASED roll.
 
-    ContFuture follows real liquidity, so it rolls correctly for every cycle
-    (quarterly ES/NQ/DX, monthly CL, bi-monthly gold) with no month arithmetic.
-    The previous +28-day next-month step landed on non-existent months for
-    quarterly contracts (the 202607 'no security definition' noise) and never
-    actually rolled — ContFuture already did the job underneath it.
+    Enumerate the real listed contracts, take the nearest-expiry ('front') and
+    the next one, and once we're inside the roll window, switch to the next
+    contract as soon as it is MORE actively traded than the front (next volume >
+    front volume). This rolls exactly when liquidity moves — not on IBKR's
+    ContFuture schedule, which can lead/lag the actual volume crossover.
 
-    Returns (contract, contract_month_yyyymm, err). contract_month is '' if it
-    could not be resolved (the contract is still usable for data; execution will
-    loud-skip rather than guess a month).
+    Returns (contract, contract_month_yyyymm, err).
     """
-    from ib_async import ContFuture
+    from datetime import date, datetime
+    from ib_async import Future
 
-    cont = ContFuture(spec["ibkr_symbol"], exchange=spec["exchange"])
-    qualified = await ib.qualifyContractsAsync(cont)
-    if not qualified or qualified[0] is None:
-        return None, "", "qualify_failed"
+    # Per-process memo: the chosen contract is per-SYMBOL, not per-timeframe, so
+    # resolve once per scan and reuse for that symbol's 5m/15m/1h refreshes.
+    memo = _ROLL_DECISION.get(symbol)
+    if memo is not None:
+        q = await ib.qualifyContractsAsync(Future(conId=memo[0], exchange=spec["exchange"]))
+        if q and q[0] is not None:
+            return q[0], memo[1], None
 
-    front = qualified[0]
-    contract_month = await _resolve_contract_month(ib, front, spec)
-    return front, contract_month, None
+    try:
+        cds = await ib.reqContractDetailsAsync(
+            Future(symbol=spec["ibkr_symbol"], exchange=spec["exchange"], includeExpired=False))
+    except Exception as exc:  # noqa: BLE001
+        return None, "", f"details_failed:{exc}"
+    rows = []
+    for cd in cds or []:
+        c = cd.contract
+        raw = c.lastTradeDateOrContractMonth or ""
+        ltd8 = raw[:8] if len(raw) >= 8 else (raw + "28" if len(raw) == 6 else "")
+        if ltd8:
+            rows.append((ltd8, cd.contractMonth or "", c))
+    rows.sort(key=lambda r: r[0])
+    today = date.today().strftime("%Y%m%d")
+    live = [r for r in rows if r[0] >= today] or rows
+    if not live:
+        return None, "", "no_live_contract"
+
+    front = live[0]
+    nxt = live[1] if len(live) > 1 else None
+    chosen = front
+    if nxt:
+        try:
+            dte = (datetime.strptime(front[0], "%Y%m%d").date() - date.today()).days
+        except ValueError:
+            dte = 0
+        # Only spend the volume probes inside the roll window; far from expiry
+        # the front is unambiguously the active contract.
+        if dte <= _ROLL_WINDOW_DAYS:
+            front_vol = await _recent_volume(ib, front[2])
+            next_vol = await _recent_volume(ib, nxt[2])
+            if next_vol > front_vol:
+                chosen = nxt
+                log.info("bar_cache.volume_roll symbol=%s %s(vol=%d,dte=%d) -> %s(vol=%d)",
+                         symbol, front[2].localSymbol, front_vol, dte, nxt[2].localSymbol, next_vol)
+            else:
+                log.info("bar_cache.no_roll symbol=%s front=%s(vol=%d,dte=%d) next=%s(vol=%d)",
+                         symbol, front[2].localSymbol, front_vol, dte, nxt[2].localSymbol, next_vol)
+
+    contract = chosen[2]
+    month = chosen[1] or await _resolve_contract_month(ib, contract, spec)
+    _ROLL_DECISION[symbol] = (contract.conId, month)
+    return contract, month, None
 
 
 def _merge_active_contracts(new: dict[str, dict]) -> None:

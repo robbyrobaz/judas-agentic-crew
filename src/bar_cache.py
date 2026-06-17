@@ -70,6 +70,10 @@ _MONTH_CODES = {"F": 1, "G": 2, "H": 3, "J": 4, "K": 5, "M": 6,
 # Volume-based roll: only run the front-vs-next volume probe within this many
 # days of the front's expiry (far from expiry the front is clearly active).
 _ROLL_WINDOW_DAYS = 45
+# Safety floor: force-roll to the next contract this many days before the
+# front's expiry regardless of volume, so we never trade an about-to-expire
+# contract (pure volume crossover can lag to ~1 day before expiry).
+_ROLL_MIN_DAYS = 4
 # Per-process memo so a symbol's contract is resolved once per scan (not once
 # per timeframe). Cleared implicitly each oneshot run.
 _ROLL_DECISION: dict[str, tuple] = {}
@@ -265,9 +269,17 @@ async def _pick_contract(ib, spec: dict, symbol: str):
             dte = (datetime.strptime(front[0], "%Y%m%d").date() - date.today()).days
         except ValueError:
             dte = 0
-        # Only spend the volume probes inside the roll window; far from expiry
-        # the front is unambiguously the active contract.
-        if dte <= _ROLL_WINDOW_DAYS:
+        # SAFETY FORCE-ROLL: never hold a contract into its last few days, even
+        # if it still has more volume. Pure volume crossover for some products
+        # (e.g. crude) doesn't happen until ~1 day before expiry, which is too
+        # late — roll off it _ROLL_MIN_DAYS out regardless of volume.
+        if dte <= _ROLL_MIN_DAYS:
+            chosen = nxt
+            log.info("bar_cache.expiry_roll symbol=%s %s(dte=%d) -> %s — force-roll near expiry",
+                     symbol, front[2].localSymbol, dte, nxt[2].localSymbol)
+        # Otherwise, within the wider window, roll as soon as the next contract
+        # is more actively traded than the front (the volume crossover).
+        elif dte <= _ROLL_WINDOW_DAYS:
             front_vol = await _recent_volume(ib, front[2])
             next_vol = await _recent_volume(ib, nxt[2])
             if next_vol > front_vol:

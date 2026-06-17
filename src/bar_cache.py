@@ -74,6 +74,9 @@ _ROLL_WINDOW_DAYS = 45
 # front's expiry regardless of volume, so we never trade an about-to-expire
 # contract (pure volume crossover can lag to ~1 day before expiry).
 _ROLL_MIN_DAYS = 4
+# Volume comparison uses the last N hours (responsive to the crossover without
+# the lag of a full-day sum or the flip-flop risk of a single hour).
+_ROLL_VOL_HOURS = 6
 # Per-process memo so a symbol's contract is resolved once per scan (not once
 # per timeframe). Cleared implicitly each oneshot run.
 _ROLL_DECISION: dict[str, tuple] = {}
@@ -213,10 +216,16 @@ async def _resolve_contract_month(ib, contract, spec: dict) -> str:
 
 
 async def _recent_volume(ib, contract) -> int:
-    """Recent (~1 trading day) traded volume for a contract — the roll signal."""
+    """Last few HOURS of traded volume — the roll signal.
+
+    A trailing 24h sum lagged the real crossover by ~7h (it kept averaging in
+    the prior day when the front still led). A short recent window tracks the
+    'which contract is the market trading now' shift quickly, while still
+    smoothing single-hour noise / thin overnight prints (so the pick can't
+    flip-flop scan-to-scan the way pure 1-hour volume could)."""
     try:
         bars = await _fetch_bars(ib, contract, duration="2 D", bar_size="1 hour")
-        return sum(int(getattr(b, "volume", 0) or 0) for b in bars[-24:])
+        return sum(int(getattr(b, "volume", 0) or 0) for b in bars[-_ROLL_VOL_HOURS:])
     except Exception:  # noqa: BLE001
         return 0
 

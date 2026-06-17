@@ -868,53 +868,107 @@ def _reconcile_open_trades(db_path: str, bars_by_sym: dict[str, pd.DataFrame]) -
     return closed
 
 
+def _close_zombie_trade(db_path: str, trade: dict) -> None:
+    """Mark a DB-open trade closed because NT shows the position FLAT (it closed
+    but the GUID-fill reconciler missed it). Exit price is estimated from the
+    latest cached bar — NT cash is the true P&L source; this just clears the
+    zombie so the DB/dashboard stop showing a phantom position."""
+    from src.db.models import get_conn
+
+    sym = str(trade["symbol"]).upper()
+    exit_px = float(trade["entry_fill"])
+    for tf in ("5m", "15m", "1h"):
+        try:
+            exit_px = float(bar_cache.read_cache(sym, tf).iloc[-1]["close"])
+            break
+        except Exception:  # noqa: BLE001
+            continue
+    spec = _CONTRACT_SPECS.get(sym, {})
+    dpp = (spec.get("tick_value", 1.0) / spec["tick"]) if spec.get("tick") else 1.0
+    sign = 1 if trade["direction"] == "long" else -1
+    pnl = round((exit_px - float(trade["entry_fill"])) * sign * float(trade.get("qty") or 1) * dpp, 2)
+    with get_conn(db_path) as conn:
+        conn.execute(
+            "UPDATE trades SET status='closed', exit_fill=?, pnl_dollars=?, closed_at=?, "
+            "exit_reason='reconciled_position_flat' WHERE id=?",
+            (exit_px, pnl, _utc_now_iso(), trade["id"]),
+        )
+        conn.commit()
+    log.warning("reconcile.zombie_closed trade=%s sym=%s est_exit=%.4f est_pnl=%.2f",
+                trade["id"], sym, exit_px, pnl)
+
+
 def _check_position_protection(db_path: str) -> list[int]:
-    """Loud backstop: every scan, verify each OPEN trade still has a LIVE
-    protective stop on NT. DAY-TIF stops used to be cancelled at the CME daily
-    reset, silently leaving positions naked — they rode to large losses (the
-    Jun 15 cohort hit -$4,600 unprotected). Stops are GTC now, but if one still
-    goes missing (orphan / NT drop) this fires a CRITICAL alert within 5 min and
-    records it to outputs/naked_positions.json for the dashboard, instead of it
-    being discovered days later. Read-only — does NOT auto-modify orders.
-    Returns the ids of any unprotected open trades."""
+    """Position-aware protection check + zombie reconciler, every scan.
+
+    For each DB-open trade, query NT for BOTH the symbol's live position and the
+    stop's status in one round-trip, then:
+      - stop LIVE              -> open & protected, fine.
+      - stop gone, position 0  -> the trade actually CLOSED (GUID-fill reconcile
+                                  missed it) -> close the zombie (no false alarm).
+      - stop gone, position!=0 -> genuinely NAKED -> CRITICAL alert +
+                                  outputs/naked_positions.json (the Jun-15 bug).
+    Read-only on NT (never modifies orders). Returns genuinely-naked trade ids."""
     from src.db.models import get_conn
 
     with get_conn(db_path) as conn:
         opens = [dict(r) for r in conn.execute(
-            "SELECT id, symbol, sl_order_id FROM trades WHERE status='open'"
+            "SELECT id, symbol, direction, qty, entry_fill, sl_order_id FROM trades WHERE status='open'"
         ).fetchall()]
+    naked_file = _STATUS_DIR / "naked_positions.json"
     if not opens:
         _STATUS_DIR.mkdir(parents=True, exist_ok=True)
-        (_STATUS_DIR / "naked_positions.json").write_text(json.dumps({"ts": None, "naked": []}))
+        naked_file.write_text(json.dumps({"ts": None, "naked": []}))
         return []
 
     broker = _nt_broker()
-    # One WinRM round-trip: status of every stop GUID.
-    checks = "".join(
-        f'print("ST:{o["sl_order_id"]}:" + str(nt.OrderStatus("{o["sl_order_id"]}")))\n'
-        for o in opens if o.get("sl_order_id")
-    )
-    _, out = broker._nt_run(broker._HEADER + checks)
-    status: dict[str, str] = {}
+    instr: dict[int, str] = {}
+    for o in opens:
+        try:
+            instr[o["id"]] = broker._resolve_instrument(o["symbol"])
+        except Exception:  # noqa: BLE001
+            instr[o["id"]] = ""
+    lines = []
+    for o in opens:
+        if instr[o["id"]]:
+            lines.append(f'print("P:{o["id"]}:"+str(nt.MarketPosition("{instr[o["id"]]}","{broker.account}")))')
+        if o.get("sl_order_id"):
+            lines.append(f'print("S:{o["id"]}:"+str(nt.OrderStatus("{o["sl_order_id"]}")))')
+    _, out = broker._nt_run(broker._HEADER + "\n".join(lines) + "\n")
+    pos: dict[int, float] = {}
+    stat: dict[int, str] = {}
     for line in out.splitlines():
-        if line.startswith("ST:"):
-            _, oid, st = line.split(":", 2)
-            status[oid] = st.strip()
+        if line.startswith("P:"):
+            _, tid, v = line.split(":", 2)
+            try:
+                pos[int(tid)] = float(v)
+            except ValueError:
+                pass
+        elif line.startswith("S:"):
+            _, tid, v = line.split(":", 2)
+            stat[int(tid)] = v.strip()
 
     live = ("working", "accepted")
-    naked = [o for o in opens
-             if str(status.get(o.get("sl_order_id"), "absent")).lower() not in live]
-    for o in naked:
-        log.critical(
-            "nt.POSITION_UNPROTECTED trade=%s symbol=%s sl_status=%s — NAKED, no live stop!",
-            o["id"], o["symbol"], status.get(o.get("sl_order_id"), "absent"),
-        )
+    naked: list[dict] = []
+    for o in opens:
+        tid = o["id"]
+        stop_live = str(stat.get(tid, "absent")).lower() in live
+        if stop_live:
+            continue
+        p = pos.get(tid)
+        if p == 0:
+            _close_zombie_trade(db_path, o)        # closed on NT — reconcile, no alarm
+        elif p is not None and p != 0:
+            naked.append(o)
+            log.critical("nt.POSITION_UNPROTECTED trade=%s symbol=%s pos=%s sl_status=%s — NAKED!",
+                         tid, o["symbol"], p, stat.get(tid, "absent"))
+        # p is None (position query failed): don't reconcile or alarm on a bad read
     try:
         _STATUS_DIR.mkdir(parents=True, exist_ok=True)
-        (_STATUS_DIR / "naked_positions.json").write_text(json.dumps({
+        naked_file.write_text(json.dumps({
             "ts": _utc_now_iso(),
-            "naked": [{"id": o["id"], "symbol": o["symbol"],
-                       "sl_status": status.get(o.get("sl_order_id"), "absent")} for o in naked],
+            "naked": [{"id": o["id"], "symbol": o["symbol"], "pos": pos.get(o["id"]),
+                       "sl_status": stat.get(o["id"], "absent")} for o in naked],
         }))
     except Exception as exc:  # noqa: BLE001
         log.warning("naked_positions.json write failed: %s", exc)

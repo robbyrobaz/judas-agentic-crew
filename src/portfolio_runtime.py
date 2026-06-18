@@ -28,6 +28,16 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _as_int(v: Any, default: int = 0) -> int:
+    """Tolerant int() for strategy params. A malformed/fractional value
+    (e.g. stop_buffer_ticks='0.5' from a bad promoter) must NOT crash the
+    entire scan via ValueError — round it and move on. Jun-18 fix."""
+    try:
+        return int(round(float(v)))
+    except (TypeError, ValueError):
+        return default
+
+
 _CONTRACT_SPECS: dict[str, dict[str, Any]] = {
     "MGC": {"ibkr_symbol": "MGC", "exchange": "COMEX", "tick": 0.10, "tick_value": 1.0},
     "MNQ": {"ibkr_symbol": "MNQ", "exchange": "CME", "tick": 0.25, "tick_value": 0.5},
@@ -90,7 +100,7 @@ class ActiveFire:
 
 
 def _evaluate_rsi(bars: pd.DataFrame, params: dict[str, Any]) -> tuple[str, float, float, float, dict[str, Any]] | None:
-    period = int(params.get("period", 14))
+    period = _as_int(params.get("period", 14))
     lo = float(params.get("lo_thr", 30))
     hi = float(params.get("hi_thr", 70))
     target_r = float(params.get("target_r", 2.0))
@@ -118,8 +128,8 @@ def _evaluate_rsi(bars: pd.DataFrame, params: dict[str, Any]) -> tuple[str, floa
 
 
 def _evaluate_ma_cross(bars: pd.DataFrame, params: dict[str, Any]) -> tuple[str, float, float, float, dict[str, Any]] | None:
-    fast = int(params.get("fast", 12))
-    slow = int(params.get("slow", 26))
+    fast = _as_int(params.get("fast", 12))
+    slow = _as_int(params.get("slow", 26))
     target_r = float(params.get("target_r", 2.0))
     sa = float(params.get("stop_atr_mult", 1.5))
     if len(bars) < slow + 5:
@@ -142,7 +152,7 @@ def _evaluate_ma_cross(bars: pd.DataFrame, params: dict[str, Any]) -> tuple[str,
 
 
 def _evaluate_bollinger(bars: pd.DataFrame, params: dict[str, Any]) -> tuple[str, float, float, float, dict[str, Any]] | None:
-    period = int(params.get("period", 20))
+    period = _as_int(params.get("period", 20))
     n_std = float(params.get("n_std", 2.0))
     target_r = float(params.get("target_r", 2.0))
     sa = float(params.get("stop_atr_mult", 1.5))
@@ -177,7 +187,7 @@ def _evaluate_pair(bars_by_sym: dict[str, pd.DataFrame], strategy_name: str, par
     bb = bars_by_sym.get(b)
     if ba is None or bb is None:
         return []
-    window = int(params["window"])
+    window = _as_int(params["window"])
     z_entry = float(params["z_entry"])
     z_exit = float(params["z_exit"])
     z_stop = float(params["z_stop"])
@@ -241,7 +251,7 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
     params = active["params"]
     engine = str(params.get("execution_engine", "judas_native"))
     strategy_name = str(params.get("strategy_name", f"strategy_{active['id']}"))
-    qty = int(params.get("qty", 1))
+    qty = _as_int(params.get("qty", 1))
 
     fires: list[ActiveFire] = []
     if engine == "judas_native":
@@ -256,15 +266,15 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
         spec = _CONTRACT_SPECS[symbol]
         det = run_judas_detection_rich(
             symbol=symbol,
-            bars_df=bars.tail(int(params.get("detector_lookback_bars", 120))).copy(),
+            bars_df=bars.tail(_as_int(params.get("detector_lookback_bars", 120))).copy(),
             prior_high=prior_high,
             prior_low=prior_low,
             tick_size=float(spec["tick"]),
-            confirmation_bars=int(params.get("confirmation_bars", 4)),
-            pivot_length=int(params.get("pivot_length", 2)),
+            confirmation_bars=_as_int(params.get("confirmation_bars", 4)),
+            pivot_length=_as_int(params.get("pivot_length", 2)),
             target_r=float(params.get("target_r", 2.0)),
-            stop_buffer_ticks=int(params.get("stop_buffer_ticks", 2)),
-            min_sweep_ticks=int(params.get("min_sweep_ticks", 3)),
+            stop_buffer_ticks=_as_int(params.get("stop_buffer_ticks", 2)),
+            min_sweep_ticks=_as_int(params.get("min_sweep_ticks", 3)),
             dollar_per_point=float(spec["tick_value"] / spec["tick"]),
         )
         if not det.get("pattern_found"):
@@ -277,7 +287,7 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
             return fires
         _sweep_bar = (det.get("sweep") or {}).get("bar_idx", 0)
         _choch_bar = (det.get("choch") or {}).get("bar_idx", 0)
-        if (_choch_bar - _sweep_bar) > int(params.get("max_sweep_age_bars", 9999)):
+        if (_choch_bar - _sweep_bar) > _as_int(params.get("max_sweep_age_bars", 9999)):
             return fires
         direction = str(det["direction"])
         fires.append(
@@ -347,7 +357,7 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
         )
 
         try:
-            custom_id = int(params.get("custom_strategy_id", 0))
+            custom_id = _as_int(params.get("custom_strategy_id", 0))
         except (TypeError, ValueError):
             return fires
         if custom_id <= 0:
@@ -898,6 +908,69 @@ def _close_zombie_trade(db_path: str, trade: dict) -> None:
                 trade["id"], sym, exit_px, pnl)
 
 
+def _try_rearm_stop(db_path: str, broker, trade: dict, instrument: str, position_qty: float) -> bool:
+    """Re-place a protective OCO stop+target for a position whose stop NT cancelled
+    (GTC orders die at the CME daily reset). Returns True only if a LIVE stop landed.
+
+    SAFETY: only re-arm when the stop is still protective vs the freshest price
+    (long: price > stop, short: price < stop). If price already breached the stop,
+    return False — re-placing then fills at market immediately, realizing a loss
+    worse than the original stop, which is Rob's decision, not the guard's."""
+    import uuid as _uuid
+    from src.db.models import get_conn
+
+    sym = str(trade["symbol"]).upper()
+    direction = str(trade["direction"]).lower()
+    if trade.get("stop_price") is None or not instrument:
+        return False
+    stop_price = float(trade["stop_price"])
+
+    price = None
+    for tf in ("5m", "15m", "1h"):
+        try:
+            price = float(bar_cache.read_cache(sym, tf).iloc[-1]["close"])
+            break
+        except Exception:  # noqa: BLE001
+            continue
+    if price is None:
+        return False
+    in_range = (direction == "long" and price > stop_price) or \
+               (direction == "short" and price < stop_price)
+    if not in_range:
+        return False  # already breached — keep the alert, let Rob decide
+
+    qty = int(trade.get("qty") or 1)
+    opp_action = "SELL" if direction == "long" else "BUY"
+    oco_id = f"JC_REARM_{sym}_{_uuid.uuid4().hex[:6]}"
+    try:
+        stop_oid = broker._place(action=opp_action, qty=qty, order_type="STOPMARKET",
+                                 limit_price=0.0, stop_price=stop_price, oco_id=oco_id,
+                                 instrument=instrument)
+        target_oid = ""
+        if trade.get("target_price") is not None:
+            target_oid = broker._place(action=opp_action, qty=qty, order_type="LIMIT",
+                                       limit_price=float(trade["target_price"]), stop_price=0.0,
+                                       oco_id=oco_id, instrument=instrument)
+    except Exception as exc:  # noqa: BLE001
+        log.critical("nt.STOP_REARM_ERROR trade=%s symbol=%s err=%s", trade["id"], sym, exc)
+        return False
+
+    if not stop_oid or str(broker.order_status(stop_oid)).lower() not in ("working", "accepted"):
+        log.critical("nt.STOP_REARM_FAILED trade=%s symbol=%s stop=%.5f stop_oid=%r — STILL NAKED",
+                     trade["id"], sym, stop_price, stop_oid)
+        return False
+
+    with get_conn(db_path) as conn:
+        conn.execute(
+            "UPDATE trades SET sl_order_id=?, tp_order_id=COALESCE(?, tp_order_id) WHERE id=?",
+            (stop_oid, (target_oid or None), trade["id"]),
+        )
+        conn.commit()
+    log.warning("nt.STOP_REARMED trade=%s symbol=%s stop=%.5f price=%.5f qty=%s new_sl=%s new_tp=%s",
+                trade["id"], sym, stop_price, price, qty, stop_oid, target_oid)
+    return True
+
+
 def _check_position_protection(db_path: str) -> list[int]:
     """Position-aware protection check + zombie reconciler, every scan.
 
@@ -913,7 +986,8 @@ def _check_position_protection(db_path: str) -> list[int]:
 
     with get_conn(db_path) as conn:
         opens = [dict(r) for r in conn.execute(
-            "SELECT id, symbol, direction, qty, entry_fill, sl_order_id FROM trades WHERE status='open'"
+            "SELECT id, symbol, direction, qty, entry_fill, stop_price, target_price, "
+            "sl_order_id FROM trades WHERE status='open'"
         ).fetchall()]
     naked_file = _STATUS_DIR / "naked_positions.json"
     if not opens:
@@ -950,6 +1024,7 @@ def _check_position_protection(db_path: str) -> list[int]:
 
     live = ("working", "accepted")
     naked: list[dict] = []
+    rearmed: list[int] = []
     for o in opens:
         tid = o["id"]
         stop_live = str(stat.get(tid, "absent")).lower() in live
@@ -959,10 +1034,21 @@ def _check_position_protection(db_path: str) -> list[int]:
         if p == 0:
             _close_zombie_trade(db_path, o)        # closed on NT — reconcile, no alarm
         elif p is not None and p != 0:
-            naked.append(o)
-            log.critical("nt.POSITION_UNPROTECTED trade=%s symbol=%s pos=%s sl_status=%s — NAKED!",
-                         tid, o["symbol"], p, stat.get(tid, "absent"))
+            # Position open but its stop is gone — NT cancels GTC stops at the CME
+            # daily reset. AUTO-RE-ARM a fresh OCO'd stop+target if the stop is
+            # still protective vs current price; only alert if already breached
+            # (re-placing a breached stop would auto-realize a worse-than-stop
+            # loss — that's Rob's call). Jun-18 fix.
+            if _try_rearm_stop(db_path, broker, o, instr[tid], p):
+                rearmed.append(tid)
+            else:
+                naked.append(o)
+                log.critical("nt.POSITION_UNPROTECTED trade=%s symbol=%s pos=%s sl_status=%s — NAKED "
+                             "(re-arm declined: breached or place failed)",
+                             tid, o["symbol"], p, stat.get(tid, "absent"))
         # p is None (position query failed): don't reconcile or alarm on a bad read
+    if rearmed:
+        log.warning("nt.protection_rearmed count=%s trades=%s", len(rearmed), rearmed)
     try:
         _STATUS_DIR.mkdir(parents=True, exist_ok=True)
         naked_file.write_text(json.dumps({

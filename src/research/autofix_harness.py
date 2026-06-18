@@ -79,6 +79,19 @@ When done, call run_tests one final time. If passed, signal completion
 in your reply. If you cannot fix without touching denylist files,
 explain why and stop.
 
+DON'T FAKE IT — DO THE WORK:
+- You MUST actually apply_patch a real change. A run that produces an
+  EMPTY diff is a FAILURE, not a success — never signal completion with
+  no diff. Check git_diff before you finish; if it's empty, you haven't
+  done the work.
+- Do not claim a fix "looks correct" or "should work" without having
+  applied it and run the tests. Saying you fixed it ≠ fixing it. The
+  harness verifies the diff and re-runs the tests; an empty/failed diff
+  is recorded as an error and the task is NOT marked done.
+- If you genuinely can't land the fix this run, say so plainly and stop —
+  an honest failure is far better than a fake success that hides a live
+  bug (a faked "done" on a naked-stop fix could cost real money).
+
 DO NOT GAME THE HARNESS:
 - A patch that only adds harmless meta files (e.g. `.autofix-denylist`,
   README scratch, dummy modules) without touching real source code is

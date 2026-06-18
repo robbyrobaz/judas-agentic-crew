@@ -66,6 +66,20 @@ def _hash_symptom(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
 
 
+def _autofix_status(db_path: str, autofix_id: int | None) -> str:
+    """Outcome of an autofix from its own record. 'completed' = a real, tested
+    change landed; anything else means it did NOT actually fix the bug."""
+    if autofix_id is None:
+        return "no_autofix_id"
+    from src.db.models import get_conn
+    try:
+        with get_conn(db_path) as conn:
+            row = conn.execute("SELECT status FROM auto_fixes WHERE id = ?", (autofix_id,)).fetchone()
+        return str(row[0]) if row else "missing"
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
 def _record_symptom(*, db_path: str, category: str, summary: str) -> int | None:
     from src.db.models import init_db
     init_db(db_path)
@@ -142,6 +156,11 @@ def run_coder_decision(
     fixed_one = False
     for task in open_tasks:
         tid = int(task["id"])
+        # One autofix per cycle. DON'T claim+fake-"done" the rest — leave them
+        # OPEN so a later cycle actually works them (the old code marked every
+        # claimed task done regardless of whether any fix ran).
+        if fixed_one:
+            break
         claimed = tools["claim_task"](task_id=tid)
         if not claimed.get("ok"):
             actions.append({"task_id": tid, "ok": False,
@@ -154,12 +173,10 @@ def run_coder_decision(
         autofix_id = _record_symptom(db_path=db_path, category=category,
                                      summary=f"{symptom}\n{context}")
         result = {"autofix_id": autofix_id, "symptom": symptom}
-        if not fixed_one and autofix_id is not None:
+        if autofix_id is not None:
             try:
                 from src.flows.operator_flow import OperatorFlow
-                # Borrow the existing _try_run_one_autofix machinery.
                 flow = OperatorFlow.__new__(OperatorFlow)
-                # _try_run_one_autofix only reads db_path + env, no state needed.
                 OperatorFlow._try_run_one_autofix(flow, db_path=db_path)
                 fixed_one = True
                 result["dispatched"] = True
@@ -167,10 +184,21 @@ def run_coder_decision(
                 log.exception("coder_agent.dispatch_failed")
                 result["dispatched"] = False
                 result["dispatch_error"] = f"{type(exc).__name__}: {exc}"
+
+        # VERIFY before marking done — never fake completion. The autofix records
+        # its own outcome in auto_fixes.status; only 'completed' means a real,
+        # tested code change actually landed. Anything else (error / empty diff /
+        # not-run) is NOT done -> mark the task FAILED so it stays visible and
+        # retryable instead of silently claiming success (the Jun-18 bug: the
+        # autofix errored on both tasks but they were marked 'done' anyway).
+        fix_status = _autofix_status(db_path, autofix_id)
+        result["autofix_status"] = fix_status
+        if fix_status == "completed":
+            tools["complete_task"](task_id=tid, result=result, status="done")
         else:
-            result["dispatched"] = False
-            result["reason"] = "single autofix per cycle"
-        tools["complete_task"](task_id=tid, result=result, status="done")
+            result["error"] = (f"autofix did not land (auto_fixes.status={fix_status}); "
+                               f"task NOT marked done")
+            tools["complete_task"](task_id=tid, result=result, status="failed")
         actions.append({"task_id": tid, **result})
 
     return CoderResult(

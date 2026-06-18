@@ -908,14 +908,57 @@ def _close_zombie_trade(db_path: str, trade: dict) -> None:
                 trade["id"], sym, exit_px, pnl)
 
 
+def _auto_flatten_breached(db_path: str, broker, trade: dict) -> bool:
+    """A position is naked AND price has already broken its stop level. Honor the
+    stop's intent: market-flatten the position now (capping the loss) and close the
+    DB trade with the REAL flatten price. Self-sufficient policy (Rob, Jun-18:
+    'let the AI manage this') — env-gate JUDAS_AUTO_FLATTEN_NAKED=0 to fall back to
+    alert-only. Returns True if the flatten was confirmed and the trade closed.
+
+    Re-arming a breached stop is unreliable (NT rejects a sell-stop already above
+    market), so a plain market flatten is the robust exit here."""
+    import os
+    from src.db.models import get_conn
+
+    if os.environ.get("JUDAS_AUTO_FLATTEN_NAKED") == "0":
+        return False
+    sym = str(trade["symbol"]).upper()
+    direction = str(trade["direction"]).lower()
+    qty = int(trade.get("qty") or 1)
+    try:
+        flat_px = broker.flatten(sym, direction=direction, quantity=qty)
+    except Exception as exc:  # noqa: BLE001
+        log.critical("nt.NAKED_AUTOFLAT_ERROR trade=%s sym=%s err=%s — STILL NAKED",
+                     trade["id"], sym, exc)
+        return False
+    if flat_px is None:
+        log.critical("nt.NAKED_AUTOFLAT_UNCONFIRMED trade=%s sym=%s — STILL NAKED, manual check",
+                     trade["id"], sym)
+        return False
+    spec = _CONTRACT_SPECS.get(sym, {})
+    dpp = (spec.get("tick_value", 1.0) / spec["tick"]) if spec.get("tick") else 1.0
+    sign = 1 if direction == "long" else -1
+    pnl = round((float(flat_px) - float(trade["entry_fill"])) * sign * qty * dpp, 2)
+    with get_conn(db_path) as conn:
+        conn.execute(
+            "UPDATE trades SET status='closed', exit_fill=?, pnl_dollars=?, closed_at=?, "
+            "exit_reason='naked_breach_autoflat' WHERE id=?",
+            (float(flat_px), pnl, _utc_now_iso(), trade["id"]),
+        )
+        conn.commit()
+    log.warning("nt.NAKED_AUTOFLATTENED trade=%s sym=%s exit=%.5f pnl=$%.2f (breached stop, auto-managed)",
+                trade["id"], sym, float(flat_px), pnl)
+    return True
+
+
 def _try_rearm_stop(db_path: str, broker, trade: dict, instrument: str, position_qty: float) -> bool:
     """Re-place a protective OCO stop+target for a position whose stop NT cancelled
     (GTC orders die at the CME daily reset). Returns True only if a LIVE stop landed.
 
-    SAFETY: only re-arm when the stop is still protective vs the freshest price
-    (long: price > stop, short: price < stop). If price already breached the stop,
-    return False — re-placing then fills at market immediately, realizing a loss
-    worse than the original stop, which is Rob's decision, not the guard's."""
+    Only re-arms when the stop is still protective vs the freshest price (long:
+    price > stop, short: price < stop). If price already breached the stop, returns
+    False so the caller auto-flattens instead (re-placing a breached stop fills at
+    market anyway and NT often rejects it)."""
     import uuid as _uuid
     from src.db.models import get_conn
 
@@ -1025,6 +1068,7 @@ def _check_position_protection(db_path: str) -> list[int]:
     live = ("working", "accepted")
     naked: list[dict] = []
     rearmed: list[int] = []
+    flattened: list[int] = []
     for o in opens:
         tid = o["id"]
         stop_live = str(stat.get(tid, "absent")).lower() in live
@@ -1035,20 +1079,24 @@ def _check_position_protection(db_path: str) -> list[int]:
             _close_zombie_trade(db_path, o)        # closed on NT — reconcile, no alarm
         elif p is not None and p != 0:
             # Position open but its stop is gone — NT cancels GTC stops at the CME
-            # daily reset. AUTO-RE-ARM a fresh OCO'd stop+target if the stop is
-            # still protective vs current price; only alert if already breached
-            # (re-placing a breached stop would auto-realize a worse-than-stop
-            # loss — that's Rob's call). Jun-18 fix.
+            # daily reset. Self-managed (Rob, Jun-18 'let the AI manage this'):
+            #   in-range  -> AUTO-RE-ARM a fresh OCO'd stop+target
+            #   breached  -> AUTO-FLATTEN at market (honor the stop, cap the loss)
+            # Only alerts as NAKED if BOTH the re-arm and the flatten fail.
             if _try_rearm_stop(db_path, broker, o, instr[tid], p):
                 rearmed.append(tid)
+            elif _auto_flatten_breached(db_path, broker, o):
+                flattened.append(tid)
             else:
                 naked.append(o)
                 log.critical("nt.POSITION_UNPROTECTED trade=%s symbol=%s pos=%s sl_status=%s — NAKED "
-                             "(re-arm declined: breached or place failed)",
+                             "(re-arm + auto-flatten both failed, manual check)",
                              tid, o["symbol"], p, stat.get(tid, "absent"))
         # p is None (position query failed): don't reconcile or alarm on a bad read
     if rearmed:
         log.warning("nt.protection_rearmed count=%s trades=%s", len(rearmed), rearmed)
+    if flattened:
+        log.warning("nt.protection_autoflattened count=%s trades=%s", len(flattened), flattened)
     try:
         _STATUS_DIR.mkdir(parents=True, exist_ok=True)
         naked_file.write_text(json.dumps({

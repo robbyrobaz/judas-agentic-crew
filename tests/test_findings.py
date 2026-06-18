@@ -169,12 +169,18 @@ def test_retract_finding_removes_record(fresh_memory, tmp_path):
 
 _REQUIRED = {"record_finding", "read_findings", "retract_finding",
              "get_strategy_dossier"}
+# The researcher runs the V2 "pre-loaded briefing" design: recent findings are
+# injected into its kickoff message, so it deliberately omits the on-demand
+# read_findings tool (see researcher_agent system prompt: "Do NOT call
+# read_findings"). It still WRITES findings via record/retract.
+_PRELOADED_EXEMPT = {"researcher_agent": {"read_findings"}}
 
 
 def test_all_agent_palettes_include_findings_tools():
     for mod in (operator_agent, researcher_agent, trader_agent,
                 registrar_agent, coder_agent):
-        missing = _REQUIRED - set(mod.INCLUDE_TOOLS)
+        exempt = _PRELOADED_EXEMPT.get(mod.__name__.rsplit(".", 1)[-1], set())
+        missing = (_REQUIRED - exempt) - set(mod.INCLUDE_TOOLS)
         assert not missing, (
             f"{mod.__name__}.INCLUDE_TOOLS missing findings tools: "
             f"{sorted(missing)}"

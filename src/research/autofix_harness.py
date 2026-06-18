@@ -19,6 +19,7 @@ import fnmatch
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -35,6 +36,34 @@ _DIFF_TEXT_CAP_BYTES = 8 * 1024
 _GIT_DIFF_CAP_BYTES = 16 * 1024
 _TEST_OUTPUT_TAIL_BYTES = 4 * 1024
 _PYTEST_TIMEOUT_S = 300
+
+# Known pre-existing test failures that are NOT this autofix's fault and must not
+# block it from landing a real fix. Without this, ANY red test makes the gate
+# require a fully-green suite, so a single unrelated stale/broken test
+# permanently blocks every autofix (the Jun-18 "fixes never land" root cause).
+# An autofix passes the gate iff it introduces NO failures OUTSIDE this set.
+# Keep this list EXPLICIT and SMALL — each entry is a real bug to fix and retire
+# from here, not a dumping ground. (Verified pre-existing at commit 54c5392.)
+_KNOWN_PREEXISTING_FAILURES: frozenset[str] = frozenset({
+    # reconcile tests reference functions that no longer exist on the NT route
+    # (portfolio_runtime._fetch_ibkr_fills_by_order_id, compute_live_metrics
+    # real_fills_only kwarg) — stale tests for a removed IBKR-reconcile path.
+    "tests/test_reconcile_real_fills.py::test_reconcile_uses_real_ibkr_fill_when_available",
+    "tests/test_reconcile_real_fills.py::test_reconcile_falls_back_to_bar_touch_when_ibkr_unreachable",
+    "tests/test_reconcile_real_fills.py::test_compute_live_metrics_real_fills_only_filter",
+    # dashboard briefs fixture seeds no daily_briefs rows -> endpoint returns [].
+    "tests/test_dashboard_briefs.py::test_list_briefs_returns_recent",
+    # promote_candidate self-heals bad params instead of raising — possible real
+    # integrity question, deliberately NOT silently "fixed" by editing the test.
+    "tests/test_registry_atomicity.py::test_promote_rejects_bad_params_json_not_a_dict",
+})
+
+_FAILED_NODE_RE = re.compile(r"^FAILED\s+(\S+)", re.MULTILINE)
+
+
+def _parse_failed_nodes(output: str) -> set[str]:
+    """Extract failed pytest node IDs from the `FAILED <nodeid>` summary lines."""
+    return {m.group(1) for m in _FAILED_NODE_RE.finditer(output or "")}
 
 _SYSTEM_PROMPT_TEMPLATE = """\
 You are an autonomous code-fix agent operating inside a git worktree of
@@ -71,13 +100,22 @@ CONSTRAINTS:
 TOOLS:
 - read_file, list_files, grep — exploration
 - apply_patch — make changes (unified diff format)
-- run_tests — run pytest -q
+- run_tests — run pytest. Pass args to scope it:
+  run_tests(["tests/test_foo.py::test_bar"]) runs ONE test fast (~secs);
+  the full suite is slow (~2 min) — use targeted runs while iterating.
 - git_status, git_diff — see your work
 
+TEST GATE — what "passed" means here:
+- You do NOT need a fully-green suite. The harness already TOLERATES a
+  known set of unrelated pre-existing failures; run_tests reports
+  "new_failures" (failures YOU introduced) separately. Your job: your
+  new test passes and "new_failures" is empty. Do NOT rabbit-hole trying
+  to fix unrelated red tests — that's not your symptom.
+
 OUTPUT:
-When done, call run_tests one final time. If passed, signal completion
-in your reply. If you cannot fix without touching denylist files,
-explain why and stop.
+When done, run the full suite once (run_tests with no args), confirm
+"new_failures" is empty and your new test passes, then signal completion.
+If you cannot fix without touching denylist files, explain why and stop.
 
 PROVE THE FIX (reproduce-first — this is how a fix actually WORKS):
 - The existing tests passing does NOT mean you fixed the symptom — it
@@ -361,7 +399,22 @@ def _make_tools(
             )
             output = (proc.stdout or "") + (proc.stderr or "")
             tail = output[-_TEST_OUTPUT_TAIL_BYTES:]
-            return {"passed": proc.returncode == 0, "output_tail": tail, "rc": proc.returncode}
+            # "passed" tolerates KNOWN pre-existing failures: the gate is "did
+            # THIS fix introduce a NEW failure?", not "is the whole suite green?"
+            # (a single unrelated stale test must not block every autofix).
+            failed = _parse_failed_nodes(output)
+            new_failures = sorted(failed - _KNOWN_PREEXISTING_FAILURES)
+            tolerated = sorted(failed & _KNOWN_PREEXISTING_FAILURES)
+            passed = (proc.returncode == 0) or not new_failures
+            if tolerated:
+                log.info("autofix.run_tests.tolerated_preexisting",
+                         extra={"tolerated": tolerated, "rc": proc.returncode})
+            if new_failures:
+                log.warning("autofix.run_tests.new_failures",
+                            extra={"new_failures": new_failures})
+            return {"passed": passed, "passed_strict": proc.returncode == 0,
+                    "new_failures": new_failures, "tolerated_preexisting": tolerated,
+                    "output_tail": tail, "rc": proc.returncode}
         except subprocess.TimeoutExpired as exc:
             tail = (exc.output or "")[-_TEST_OUTPUT_TAIL_BYTES:] if exc.output else "timeout"
             return {"passed": False, "output_tail": tail, "rc": -1}

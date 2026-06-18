@@ -74,15 +74,19 @@ def test_registrar_cannot_trade_or_ingest(tmp_path):
 def test_all_specialists_have_queue_tools(tmp_path):
     db = str(tmp_path / "j.db")
     init_db(db)
-    for include, team in (
-        (researcher_agent.INCLUDE_TOOLS, "researcher"),
-        (trader_agent.INCLUDE_TOOLS, "trader"),
-        (registrar_agent.INCLUDE_TOOLS, "registrar"),
+    # Every specialist must be able to claim + complete queued work. The
+    # researcher additionally omits get_open_tasks ON PURPOSE — its open tasks
+    # are pre-loaded into the V2 kickoff briefing (system prompt: "Do NOT call
+    # get_open_tasks"), so it claims/completes from that list without the tool.
+    for include, team, required in (
+        (researcher_agent.INCLUDE_TOOLS, "researcher", ("claim_task", "complete_task")),
+        (trader_agent.INCLUDE_TOOLS, "trader", ("claim_task", "complete_task", "get_open_tasks")),
+        (registrar_agent.INCLUDE_TOOLS, "registrar", ("claim_task", "complete_task", "get_open_tasks")),
     ):
         tools, _ = agent_tools.make_tools(
             db_path=db, include=include, team=team,
         )
-        for q in ("claim_task", "complete_task", "get_open_tasks"):
+        for q in required:
             assert q in tools, f"{team} missing {q}"
 
 

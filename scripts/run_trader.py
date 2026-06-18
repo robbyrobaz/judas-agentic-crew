@@ -26,7 +26,12 @@ def main() -> int:
     if pending == 0:
         print("trader: no pending tasks — skipping")
         return 0
-    result = run_trader_decision(db_path=db_path)
+    # Bound the ReAct loop (default 0 = unlimited turns → cache-read blowup). Jun 18.
+    result = run_trader_decision(
+        db_path=db_path,
+        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "15")),
+        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "300")),
+    )
     print(
         f"trader: success={result.success} actions={len(result.actions_taken)} "
         f"turns={result.turns_used} elapsed={result.elapsed_s:.1f}s "

@@ -1835,7 +1835,7 @@ def run_pm_decision(
     db_path: str,
     turn_budget: int = 0,
     time_budget_s: int = 0,
-    minimax_model: str = "minimax/MiniMax-M3",
+    minimax_model: str = "minimax/MiniMax-M2.7",
 ) -> PMDecisionResult:
     """Run one PM cycle. Pure function over ``db_path`` plus the LLM seam.
 

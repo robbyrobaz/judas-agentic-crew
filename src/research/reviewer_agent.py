@@ -410,7 +410,7 @@ def _expire_stale_candidates(db_path: str, days: int = 7) -> int:
 
 def run_reviewer_decision(
     *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
-    minimax_model: str = "minimax/MiniMax-M3",
+    minimax_model: str = "minimax/MiniMax-M2.7",
 ) -> AgentDecisionResult:
     """Run one Reviewer cycle."""
     started = time.time()

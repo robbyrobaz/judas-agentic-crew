@@ -204,6 +204,10 @@ def run_one_autofix(
             prompt=prompt, worktree_path=ctx.worktree_path,
             allowlist=list(ALLOWLIST_PATTERNS),
             denylist=list(DENYLIST_PATTERNS),
+            # Bound the loop (default 0 = unlimited turns → cache-read blowup),
+            # but leave enough room to explore + write a test + patch + verify.
+            turn_budget=int(os.environ.get("JUDAS_AUTOFIX_TURNS", "40")),
+            time_budget_s=int(os.environ.get("JUDAS_AUTOFIX_TIME_S", "900")),
         )
     except Exception as exc:  # noqa: BLE001
         log.exception("autofix_dispatch.harness_failed")

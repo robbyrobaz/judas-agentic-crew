@@ -1,10 +1,8 @@
 [Unit]
-Description=Reviewer cadence — every 20 min, 24/7 (registry mutations only)
+Description=Reviewer cadence — hourly, 24/7 (registry mutations only). Cut from 3x/hr (Jun 18) to curb MiniMax token burn.
 
 [Timer]
 OnCalendar=*-*-* *:00:00 UTC
-OnCalendar=*-*-* *:20:00 UTC
-OnCalendar=*-*-* *:40:00 UTC
 Persistent=false
 Unit=judas-reviewer.service
 

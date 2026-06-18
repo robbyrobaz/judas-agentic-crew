@@ -282,7 +282,7 @@ def _build_kickoff(db_path: str) -> str:
 
 def run_researcher_decision(
     *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
-    minimax_model: str = "minimax/MiniMax-M3",
+    minimax_model: str = "minimax/MiniMax-M2.7",
 ) -> AgentDecisionResult:
     """Run one Researcher cycle."""
     started = time.time()

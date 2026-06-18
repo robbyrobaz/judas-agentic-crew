@@ -79,6 +79,23 @@ When done, call run_tests one final time. If passed, signal completion
 in your reply. If you cannot fix without touching denylist files,
 explain why and stop.
 
+PROVE THE FIX (reproduce-first — this is how a fix actually WORKS):
+- The existing tests passing does NOT mean you fixed the symptom — it
+  only means you didn't break anything. To prove the fix WORKS, follow
+  red -> green:
+  1. FIRST write (or extend) a test in tests/ that reproduces the
+     described symptom — assert the buggy behavior. Run run_tests and
+     CONFIRM IT FAILS for the right reason (the symptom). A test that
+     passes before your fix proves nothing — it doesn't cover the bug.
+  2. THEN apply the source fix.
+  3. THEN run_tests again: the new test must now PASS and ALL other
+     tests must stay green.
+- Your final diff MUST contain BOTH the source change AND the test that
+  now guards it. A source-only fix with no failing-first test is weak
+  and often wrong — do not consider it done.
+- Reason from the actual symptom + the PROJECT MAP code path. Read the
+  real code before patching; never guess at line contents.
+
 DON'T FAKE IT — DO THE WORK:
 - You MUST actually apply_patch a real change. A run that produces an
   EMPTY diff is a FAILURE, not a success — never signal completion with
@@ -559,7 +576,7 @@ def run_harness(
     turn_budget: int = 0,
     time_budget_s: int = 0,
     pytest_args: list[str] | None = None,
-    minimax_model: str = "minimax/MiniMax-M3",
+    minimax_model: str = "minimax/MiniMax-M2.7",
 ) -> HarnessResult:
     """Run M3 against a git worktree to fix a focused symptom.
 

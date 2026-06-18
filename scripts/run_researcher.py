@@ -18,7 +18,13 @@ def main() -> int:
         "JUDAS_DB_PATH",
         str(Path(__file__).resolve().parents[1] / "judas_crew.db"),
     )
-    result = run_researcher_decision(db_path=db_path)
+    # Bound the ReAct loop: unbounded turns (the default 0) re-send the whole
+    # growing conversation every tool call → cache-read token blowup. Jun 18.
+    result = run_researcher_decision(
+        db_path=db_path,
+        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "25")),
+        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "600")),
+    )
     print(
         f"researcher: success={result.success} actions={len(result.actions_taken)} "
         f"turns={result.turns_used} elapsed={result.elapsed_s:.1f}s "

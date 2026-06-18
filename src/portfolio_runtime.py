@@ -28,6 +28,66 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_BLOCKED_INSTRUMENTS_FILE = _STATUS_DIR / "blocked_instruments.json"
+_NT_REJECT_BLOCK_THRESHOLD = 2          # consecutive NT entry rejections before skipping
+_NT_REJECT_COOLDOWN_S = 6 * 3600        # auto-retry the instrument after this (NT config may be fixed)
+
+
+def _load_blocked() -> dict:
+    try:
+        return json.loads(_BLOCKED_INSTRUMENTS_FILE.read_text())
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_blocked(d: dict) -> None:
+    try:
+        _STATUS_DIR.mkdir(parents=True, exist_ok=True)
+        _BLOCKED_INSTRUMENTS_FILE.write_text(json.dumps(d, indent=2))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("blocked_instruments.json write failed: %s", exc)
+
+
+def _is_instrument_blocked(symbol: str) -> bool:
+    """True if this symbol is in its auto-skip cooldown after repeated NT entry
+    rejections (e.g. 'No risk settings defined' on a freshly-rolled contract).
+    Self-clears after the cooldown so it resumes if the NT config is fixed.
+    Disable with JUDAS_AUTO_SKIP_REJECTED=0."""
+    import os
+    import time
+    if os.environ.get("JUDAS_AUTO_SKIP_REJECTED") == "0":
+        return False
+    rec = _load_blocked().get(symbol.upper())
+    return bool(rec and rec.get("blocked_until_epoch", 0) > time.time())
+
+
+def _record_entry_rejection(symbol: str) -> None:
+    """Count an NT entry rejection; block the symbol once it hits the threshold."""
+    import time
+    sym = symbol.upper()
+    d = _load_blocked()
+    rec = d.get(sym, {"count": 0})
+    rec["count"] = int(rec.get("count", 0)) + 1
+    rec["last_reject_iso"] = _utc_now_iso()
+    if rec["count"] >= _NT_REJECT_BLOCK_THRESHOLD:
+        rec["blocked_until_epoch"] = time.time() + _NT_REJECT_COOLDOWN_S
+        rec["blocked_until_iso"] = _utc_now_iso()
+        log.warning("nt.instrument_auto_blocked symbol=%s after %s consecutive entry rejections — "
+                    "skipping ~%sh (likely an NT risk-settings/config gap; define it in the NT GUI)",
+                    sym, rec["count"], _NT_REJECT_COOLDOWN_S // 3600)
+    d[sym] = rec
+    _save_blocked(d)
+
+
+def _clear_entry_rejection(symbol: str) -> None:
+    """A successful entry clears the symbol's rejection streak + any block."""
+    sym = symbol.upper()
+    d = _load_blocked()
+    if sym in d:
+        del d[sym]
+        _save_blocked(d)
+
+
 def _as_int(v: Any, default: int = 0) -> int:
     """Tolerant int() for strategy params. A malformed/fractional value
     (e.g. stop_buffer_ticks='0.5' from a bad promoter) must NOT crash the
@@ -1285,6 +1345,10 @@ def _place_fire_with_record(
         max_trades_per_day=max_trades_per_day,
         skip_strategy_open_check=skip_strategy_open_check,
     )
+    # Auto-skip instruments NT keeps rejecting (e.g. risk-settings gap on a
+    # freshly-rolled contract) until their cooldown lapses. Jun-18 self-mgmt.
+    if gate_reason is None and place_orders and _is_instrument_blocked(fire.symbol):
+        gate_reason = "instrument_blocked_nt_reject"
     if gate_reason is None and placed_so_far < max_new_trades and place_orders:
         side = "BUY" if fire.direction == "long" else "SELL"
         try:
@@ -1313,8 +1377,12 @@ def _place_fire_with_record(
             if order is None:
                 fire.features["skip_reason"] = "no_fill"
                 place_error = "no entry fill (None from broker)"
+                if route == "ninjatrader":
+                    _record_entry_rejection(fire.symbol)
             else:
                 decision = "TRADE"
+                if route == "ninjatrader":
+                    _clear_entry_rejection(fire.symbol)
         except Exception as exc:  # noqa: BLE001 - record and surface
             place_error = str(exc)
             log.error("place_bracket failed for %s: %s", fire.symbol, exc, exc_info=True)

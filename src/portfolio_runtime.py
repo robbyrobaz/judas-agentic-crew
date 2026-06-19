@@ -938,21 +938,67 @@ def _reconcile_open_trades(db_path: str, bars_by_sym: dict[str, pd.DataFrame]) -
     return closed
 
 
-def _close_zombie_trade(db_path: str, trade: dict) -> None:
-    """Mark a DB-open trade closed because NT shows the position FLAT (it closed
-    but the GUID-fill reconciler missed it). Exit price is estimated from the
-    latest cached bar — NT cash is the true P&L source; this just clears the
-    zombie so the DB/dashboard stop showing a phantom position."""
+def _close_zombie_trade(db_path: str, trade: dict, broker=None) -> None:
+    """Mark a DB-open trade closed because NT shows the position FLAT.
+
+    Queries NT fill records for sl_order_id and tp_order_id to determine the
+    real exit reason and price:
+      - stop filled  → exit_reason='stop',   exit_fill=actual fill price
+      - target filled → exit_reason='target', exit_fill=actual fill price
+      - neither filled → exit_reason='manual_close' (user or exchange closed it)
+                         — logs a WARNING so it's visible in the dashboard
+
+    Falls back to last-bar-close price estimate only when NT fill query fails.
+    """
     from src.db.models import get_conn
 
     sym = str(trade["symbol"]).upper()
-    exit_px = float(trade["entry_fill"])
-    for tf in ("5m", "15m", "1h"):
+    sl_oid = trade.get("sl_order_id") or ""
+    tp_oid = trade.get("tp_order_id") or ""
+
+    exit_px: float | None = None
+    exit_reason = "reconciled_position_flat"
+
+    # Try to get real fill info from NT for both legs.
+    if broker and (sl_oid or tp_oid):
         try:
-            exit_px = float(bar_cache.read_cache(sym, tf).iloc[-1]["close"])
-            break
-        except Exception:  # noqa: BLE001
-            continue
+            if sl_oid:
+                sl_filled, sl_price, sl_raw = broker._poll_fill(sl_oid)
+                if sl_filled and sl_price:
+                    exit_px = sl_price
+                    exit_reason = "stop"
+                    log.info("reconcile.zombie_stop_confirmed trade=%s sym=%s fill=%.4f raw=%s",
+                             trade["id"], sym, sl_price, sl_raw)
+            if exit_px is None and tp_oid:
+                tp_filled, tp_price, tp_raw = broker._poll_fill(tp_oid)
+                if tp_filled and tp_price:
+                    exit_px = tp_price
+                    exit_reason = "target"
+                    log.info("reconcile.zombie_target_confirmed trade=%s sym=%s fill=%.4f raw=%s",
+                             trade["id"], sym, tp_price, tp_raw)
+            if exit_px is None:
+                # Neither SL nor TP shows a fill — position closed by external action.
+                exit_reason = "manual_close"
+                log.warning(
+                    "reconcile.manual_close_detected trade=%s sym=%s direction=%s "
+                    "— position was flat on NT but neither stop nor target filled. "
+                    "Likely closed manually or by session/holiday forced-liquidation. "
+                    "REVIEW: was this intentional? Exit price estimated from last bar.",
+                    trade["id"], sym, trade.get("direction"),
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("reconcile.zombie_fill_query_failed trade=%s: %s", trade["id"], exc)
+
+    # Fall back to last bar close for price estimate when NT query didn't resolve it.
+    if exit_px is None:
+        exit_px = float(trade["entry_fill"])
+        for tf in ("5m", "15m", "1h"):
+            try:
+                exit_px = float(bar_cache.read_cache(sym, tf).iloc[-1]["close"])
+                break
+            except Exception:  # noqa: BLE001
+                continue
+
     spec = _CONTRACT_SPECS.get(sym, {})
     dpp = (spec.get("tick_value", 1.0) / spec["tick"]) if spec.get("tick") else 1.0
     sign = 1 if trade["direction"] == "long" else -1
@@ -960,12 +1006,12 @@ def _close_zombie_trade(db_path: str, trade: dict) -> None:
     with get_conn(db_path) as conn:
         conn.execute(
             "UPDATE trades SET status='closed', exit_fill=?, pnl_dollars=?, closed_at=?, "
-            "exit_reason='reconciled_position_flat' WHERE id=?",
-            (exit_px, pnl, _utc_now_iso(), trade["id"]),
+            "exit_reason=? WHERE id=?",
+            (exit_px, pnl, _utc_now_iso(), exit_reason, trade["id"]),
         )
         conn.commit()
-    log.warning("reconcile.zombie_closed trade=%s sym=%s est_exit=%.4f est_pnl=%.2f",
-                trade["id"], sym, exit_px, pnl)
+    log.warning("reconcile.zombie_closed trade=%s sym=%s reason=%s exit=%.4f est_pnl=%.2f",
+                trade["id"], sym, exit_reason, exit_px, pnl)
 
 
 def _auto_flatten_breached(db_path: str, broker, trade: dict) -> bool:
@@ -1090,7 +1136,7 @@ def _check_position_protection(db_path: str) -> list[int]:
     with get_conn(db_path) as conn:
         opens = [dict(r) for r in conn.execute(
             "SELECT id, symbol, direction, qty, entry_fill, stop_price, target_price, "
-            "sl_order_id FROM trades WHERE status='open'"
+            "sl_order_id, tp_order_id FROM trades WHERE status='open'"
         ).fetchall()]
     naked_file = _STATUS_DIR / "naked_positions.json"
     if not opens:
@@ -1136,7 +1182,7 @@ def _check_position_protection(db_path: str) -> list[int]:
             continue
         p = pos.get(tid)
         if p == 0:
-            _close_zombie_trade(db_path, o)        # closed on NT — reconcile, no alarm
+            _close_zombie_trade(db_path, o, broker=broker)  # closed on NT — reconcile, no alarm
         elif p is not None and p != 0:
             # Position open but its stop is gone — NT cancels GTC stops at the CME
             # daily reset. Self-managed (Rob, Jun-18 'let the AI manage this'):

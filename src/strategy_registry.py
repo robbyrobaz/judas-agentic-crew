@@ -422,6 +422,26 @@ def retire_strategy(
             raise
 
 
+def reject_candidate(candidate_id: int, reason: str) -> dict:
+    """Mark a strategy_candidates row as rejected without promoting it.
+
+    Returns {"ok": True, "candidate_id": int} or raises ValueError.
+    """
+    with get_conn(_ensure_db()) as conn:
+        row = conn.execute(
+            "SELECT id, status FROM strategy_candidates WHERE id = ?",
+            (candidate_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError(f"Candidate {candidate_id} not found")
+        conn.execute(
+            "UPDATE strategy_candidates SET status = 'rejected', rationale = ? WHERE id = ?",
+            (reason, candidate_id),
+        )
+        conn.commit()
+    return {"ok": True, "candidate_id": candidate_id}
+
+
 def reactivate_demoted(*, demotion_id: int) -> int:
     """Re-insert active_strategies row from preserved auto_demotions snapshot.
 

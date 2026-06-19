@@ -891,6 +891,14 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         return {"ok": True, "new_strategy_id": int(new.id), "version": int(new.version)}
 
+    def reject_candidate_tool(*, id: int, reason: str) -> dict:
+        from src import strategy_registry
+
+        try:
+            return strategy_registry.reject_candidate(int(id), reason)
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
     def insert_active_strategy_tool(
         *, symbol: str, strategy_family: str,
         params: dict | None = None, notes: str = "",
@@ -1330,6 +1338,7 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
         "retire_strategy": _safe_tool(retire_strategy_tool),
         "propose_candidate": _safe_tool(propose_candidate_tool),
         "promote_candidate": _safe_tool(promote_candidate_tool),
+        "reject_candidate": _safe_tool(reject_candidate_tool),
         "insert_active_strategy": _safe_tool(insert_active_strategy_tool),
         "modify_strategy_params": _safe_tool(modify_strategy_params_tool),
         "place_paper_order": _safe_tool(place_paper_order),
@@ -1354,6 +1363,7 @@ _ACTION_TOOL_NAMES = {
     "retire_strategy",
     "propose_candidate",
     "promote_candidate",
+    "reject_candidate",
     "modify_strategy_params",
     "place_paper_order",
     "run_judas_threshold_sweep",
@@ -1548,6 +1558,21 @@ def _tool_schemas() -> list[dict]:
                         "notes": {"type": "string"},
                     },
                     "required": ["id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "reject_candidate",
+                "description": "Mark a strategy_candidates row as rejected without promoting it. Use when a candidate fails the promotion gate.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "integer"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["id", "reason"],
                 },
             },
         },

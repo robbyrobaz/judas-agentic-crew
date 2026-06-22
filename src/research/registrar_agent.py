@@ -47,10 +47,10 @@ promote and hope — bad strategies fire bad trades.
 
 ## Other tools
 
+  - reject_candidate(id, reason) — mark a candidate rejected with a reason
   - insert_active_strategy(symbol, strategy_family, params_json) — for
     brand-new strategies with verified parameters
-  - modify_strategy_params(id, new_params) — atomic retire+promote with
-    new params (use when tuning an existing edge)
+  - modify_strategy_params(id, new_params) — atomic retire+promote with new params
   - retire_strategy(id, reason) — retire on: cumulative negative P&L
     on real sample, no fires in 14+ days (if active > 14 days), or
     broken regime fit with evidence
@@ -66,6 +66,7 @@ the team would benefit from on a later cycle.
 
 INCLUDE_TOOLS = {
     "insert_active_strategy",
+    "reject_candidate",
     "retire_strategy", "promote_candidate", "modify_strategy_params",
     "reactivate_demoted", "get_active_strategies", "get_candidates_queue",
     "get_strategy_detail",

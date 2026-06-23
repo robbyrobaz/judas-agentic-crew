@@ -85,14 +85,17 @@ PROJECT MAP (start here, don't grep blind):
 - src/strategy_registry.py — active_strategies table CRUD.
 - src/db/models.py — SQLite schema + get_conn helper.
 - src/dashboard/app.py — Flask dashboard API.
-- src/tools/ibkr_executor.py — IBKR order placement (DENYLISTED — do
-  not edit). All broker writes happen here.
-- src/risk/** — sleeve cap + kill switch (DENYLISTED).
-- config.yaml, src/config.py — runtime config (DENYLISTED).
+- src/tools/ibkr_executor.py / src/broker/ninjatrader.py — broker order
+  placement. You CAN edit these now (full access).
+- src/tools/risk_policy.py — position/trade caps + risk gates. Editable.
+- config.yaml, src/config.py — runtime config. Editable.
 - tests/ — pytest. ~177 tests. Must stay green.
 
 CONSTRAINTS:
-- You may modify any file EXCEPT files matching the denylist patterns.
+- You have FULL repo access — no file is off-limits. The denylist is empty. The
+  only gate is the test suite: a patch auto-merges only if pytest passes. When you
+  touch the live order path, risk caps, or config, write/extend a test that proves
+  the new behavior — there is no human review before it goes live.
 - You have {turn_budget} tool calls and {time_budget_s} seconds.
 - Goal: land a real production fix that makes pytest pass AND would
   unblock the described symptom in real execution.
@@ -629,7 +632,7 @@ def run_harness(
     turn_budget: int = 0,
     time_budget_s: int = 0,
     pytest_args: list[str] | None = None,
-    minimax_model: str = "minimax/MiniMax-M2.7",
+    minimax_model: str = "minimax/MiniMax-M3",
 ) -> HarnessResult:
     """Run M3 against a git worktree to fix a focused symptom.
 

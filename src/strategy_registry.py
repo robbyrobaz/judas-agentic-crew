@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 from src.config import load_config
 from src.db.models import get_conn, init_db
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -128,6 +131,10 @@ def insert_active_strategy(
     # Ensure symbol/strategy_family inside params match the row.
     use_params = {**use_params, "symbol": sym, "strategy_family": fam}
     with get_conn(_ensure_db()) as conn:
+        # BEGIN IMMEDIATE so the MAX(version) read and the INSERT are atomic —
+        # otherwise two concurrent inserts read the same max and create duplicate
+        # active rows (db version race).
+        conn.execute("BEGIN IMMEDIATE")
         prior = conn.execute(
             "SELECT MAX(version) AS v FROM active_strategies "
             "WHERE symbol = ? AND strategy_family = ?",
@@ -146,6 +153,25 @@ def insert_active_strategy(
              _utc_now(), notes or "Inserted by registrar."),
         )
         new_id = int(cur.lastrowid)
+        # Supersede the prior active version of this (symbol, family) so two
+        # versions of the same setup can't both be active and double-fire.
+        # Cross-family diversity per symbol is preserved.
+        superseded = conn.execute(
+            """
+            UPDATE active_strategies
+            SET state = 'superseded',
+                deactivated_at_utc = ?,
+                notes = COALESCE(notes, '') || ' [superseded by v' || ? || ']'
+            WHERE symbol = ? AND strategy_family = ? AND state = 'active'
+              AND id != ?
+            """,
+            (_utc_now(), next_version, sym, fam, new_id),
+        ).rowcount
+        if superseded:
+            log.info(
+                "registry.superseded_prior_active symbol=%s family=%s n=%d new_version=%d",
+                sym, fam, superseded, next_version,
+            )
         row = conn.execute(
             "SELECT * FROM active_strategies WHERE id = ?", (new_id,),
         ).fetchone()
@@ -224,6 +250,12 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
 
             # Inject family/name into params if missing, then validate.
             _pre_params = json.loads(candidate["params_json"] or "{}")
+            if not isinstance(_pre_params, dict):
+                # Valid JSON but not an object (e.g. a list) → reject cleanly
+                # instead of crashing with AttributeError on .setdefault below.
+                raise ValueError(
+                    f"params_json must decode to a dict, got {type(_pre_params).__name__}"
+                )
             _pre_params.setdefault("strategy_family", family)
             _pre_params.setdefault("strategy_name", f"{family}_{symbol.lower()}_auto")
             _pre_params.setdefault("execution_engine", "judas_native")
@@ -241,14 +273,12 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
             ).fetchone()
             next_version = (int(current["version"]) + 1) if current else 1
 
-            # Insert new active row WITHOUT retiring any prior actives for
-            # this (symbol, family). Multiple strategies per symbol are
-            # explicitly allowed per the Operator's goals preamble —
-            # diversity reduces blow-up risk and increases dollar capture
-            # across regimes. Retiring should be a deliberate decision
-            # (negative P&L on a real sample, broken regime fit, etc.)
-            # via retire_strategy(), not an automatic side effect of
-            # promoting another candidate.
+            # Insert the new active version. Cross-FAMILY diversity per symbol is
+            # intentional, but stacking multiple VERSIONS of the SAME (symbol,
+            # family) is not diversity — they fire the same setup on the same bar
+            # (1 trade becomes 2-3x size/loss; observed live 2026-06-17). Supersede
+            # the prior active version of this (symbol, family) ATOMICALLY below so
+            # there's no window where two versions double-fire.
             cur = conn.execute(
                 """
                 INSERT INTO active_strategies
@@ -269,6 +299,22 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
             )
             new_id = int(cur.lastrowid)
 
+            superseded = conn.execute(
+                """
+                UPDATE active_strategies
+                SET state = 'superseded',
+                    deactivated_at_utc = ?,
+                    notes = COALESCE(notes, '') || ' [superseded by v' || ? || ']'
+                WHERE symbol = ? AND strategy_family = ? AND state = 'active'
+                  AND id != ?
+                """,
+                (_utc_now(), next_version, symbol, family, new_id),
+            ).rowcount
+            if superseded:
+                log.info(
+                    "registry.superseded_prior_active symbol=%s family=%s n=%d new_version=%d",
+                    symbol, family, superseded, next_version,
+                )
             conn.execute(
                 "UPDATE strategy_candidates SET status = 'promoted' WHERE id = ?",
                 (candidate_id,),

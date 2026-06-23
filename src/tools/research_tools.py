@@ -419,12 +419,15 @@ class JudasTrade:
 
 
 def _load_bars(symbol: str) -> pd.DataFrame:
-    root = _workshop_root()
-    parquet = root / "cache_1h" / f"{symbol.upper()}_1h.parquet"
-    if not parquet.exists():
-        raise FileNotFoundError(f"Parquet not found: {parquet}")
-    bars = pd.read_parquet(parquet)
-    bars["ts"] = pd.to_datetime(bars["ts"], utc=True)
+    # Read THIS repo's bar cache (same source as the live scanner /
+    # custom_strategy_runtime), NOT the workshop repo's cache_1h. The workshop
+    # cache is refreshed by a separate project and was found 7 weeks stale
+    # (last bar 2026-05-05) on 2026-06-22 — so judas_native backtests were
+    # validating strategies on data that never saw recent regime, then losing
+    # live. bar_cache.read_cache reads cache_1h/<SYM>_1h and is kept fresh.
+    from src.bar_cache import read_cache
+
+    bars = read_cache(symbol, "1h")
     return bars.sort_values("ts").reset_index(drop=True)
 
 
@@ -729,7 +732,8 @@ def _simulate_exit(
 
 def run_judas_historical_backtest(symbol: str = "MGC") -> dict[str, Any]:
     bars = _load_bars(symbol)
-    parquet = _workshop_root() / "cache_1h" / f"{symbol.upper()}_1h.parquet"
+    from src.bar_cache import cache_path
+    parquet = cache_path(symbol, "1h")  # provenance: matches _load_bars' real source
     tick, tick_value = _symbol_meta(symbol)
     detector_lookback_bars = 120
 

@@ -84,6 +84,20 @@ work:
 Only record a finding when you've learned something materially new
 that future cycles will use. Don't write a finding just because a
 cycle ended.
+
+## DEVIL'S ADVOCATE — before you delegate a material or irreversible action
+
+Before delegating a retire, a promote, a code change, or a position close, pause
+and name the TOP 2 reasons it could be WRONG, using the state you can see:
+  - "Retire X" — is X actually a recent net dollar-earner, or just lower PF than a
+    sibling? Lower PF alone is NOT a retire signal. Real signals: cumulative negative
+    P&L on a real sample, a long losing streak, or no fires in 14+ days.
+  - "Promote Y" — will Y just stack the SAME setup an existing active already fires
+    (correlated double-exposure — doubles size and loss on one bar), or a genuinely
+    different edge/regime/timeframe? Diversity only helps if the edges are independent.
+  - "Fix bug Z" — is Z a real recurring failure with evidence, or a one-off?
+If the counter-case is as strong as the case, gather one more data point instead of
+acting. Acting on an unexamined reason is how the lab loses money and good strategies.
 """
 
 
@@ -249,7 +263,7 @@ def _build_operator_kickoff(db_path: str) -> str:
 
 def run_operator_decision(
     *, db_path: str, turn_budget: int = 0, time_budget_s: int = 0,
-    minimax_model: str = "minimax/MiniMax-M2.7",
+    minimax_model: str = "minimax/MiniMax-M3",
 ) -> OperatorDecisionResult:
     """Run one Operator (manager) cycle."""
     started = time.time()

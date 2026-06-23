@@ -1809,17 +1809,32 @@ def _tool_schemas() -> list[dict]:
 def _call_llm(
     *, messages: list[dict], tools: list[dict], model: str, timeout_s: int
 ) -> Any:
-    """Wrap litellm so tests can monkeypatch this single seam."""
+    """Wrap litellm so tests can monkeypatch this single seam.
+
+    This is THE completion call for every standard agent (they all forward here
+    via agent_runner). max_tokens=8192 gives M3's reasoning chains room, and
+    reasoning_split (M3's deliberate-reasoning mode) is driven by the config flag
+    `crew.llm_reasoning_split` — flip it false to revert instantly if it ever
+    destabilizes tool-call formatting.
+    """
     import litellm  # type: ignore[import-not-found]
 
-    return litellm.completion(
+    kwargs: dict[str, Any] = dict(
         model=model,
         messages=messages,
         tools=tools,
         tool_choice="auto",
         timeout=timeout_s,
         temperature=0.2,
+        max_tokens=8192,
     )
+    try:
+        from src.config import load_config
+        if load_config().crew.llm_reasoning_split:
+            kwargs["extra_body"] = {"reasoning_split": True}
+    except Exception:  # noqa: BLE001 — never let a config hiccup kill the call
+        pass
+    return litellm.completion(**kwargs)
 
 
 def _extract_message(response: Any) -> dict:
@@ -1860,7 +1875,7 @@ def run_pm_decision(
     db_path: str,
     turn_budget: int = 0,
     time_budget_s: int = 0,
-    minimax_model: str = "minimax/MiniMax-M2.7",
+    minimax_model: str = "minimax/MiniMax-M3",
 ) -> PMDecisionResult:
     """Run one PM cycle. Pure function over ``db_path`` plus the LLM seam.
 

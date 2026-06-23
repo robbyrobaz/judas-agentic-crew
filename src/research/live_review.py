@@ -323,7 +323,7 @@ def _call_llm(prompt: str) -> str:
     import litellm  # type: ignore[import-not-found]
 
     resp = litellm.completion(
-        model="minimax/MiniMax-M2.7",
+        model="minimax/MiniMax-M3",
         messages=[{"role": "user", "content": prompt}],
         timeout=_LLM_TIMEOUT_S,
         temperature=0.0,

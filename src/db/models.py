@@ -272,6 +272,7 @@ def init_db(db_path: str | Path) -> None:
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA foreign_keys=ON;")
+        conn.execute("PRAGMA busy_timeout=30000;")
         conn.execute(_CREATE_SIGNALS)
         conn.execute(_CREATE_TRADES)
         conn.execute(_CREATE_RESEARCH_EXPERIMENTS)
@@ -299,6 +300,10 @@ def get_conn(db_path: str | Path) -> Generator[sqlite3.Connection, None, None]:
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA foreign_keys=ON;")
+        # 7+ specialist timers write this DB concurrently. Without busy_timeout a
+        # colliding writer raises "database is locked" instantly and drops the
+        # write (lost signal/trade/registry mutation). Wait up to 30s instead.
+        conn.execute("PRAGMA busy_timeout=30000;")
         yield conn
         conn.commit()
     except Exception:

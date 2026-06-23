@@ -33,23 +33,19 @@ from typing import Iterable, Sequence
 # Allow / deny list (per PHASE3_DESIGN.md)
 # ---------------------------------------------------------------------------
 
-# Coder may touch ANY file by default. The denylist below is the real
-# safety rail — broker / risk / config / kill switches remain
-# write-protected. Anything else is fair game so the team can actually
-# fix bugs in main.py, portfolio_runtime.py, execution glue, etc.
+# Coder may touch ANY file — full repo access, including the live order path,
+# risk logic, and config (2026-06-22, Rob's call: give the autonomous system
+# everything it needs). Nothing is write-protected.
 ALLOWLIST_PATTERNS: list[str] = [
     "**/*",
 ]
 
-# Coder may touch ANY file by default. The denylist below is the real
-# safety rail — broker / risk / config / kill switches remain
-# write-protected. Anything else is fair game so the team can actually
-# fix bugs in main.py, portfolio_runtime.py, execution glue, etc.
-DENYLIST_PATTERNS: list[str] = [
-    "src/tools/ibkr_executor.py",
-    "src/risk/**",
-    "config.yaml",
-]
+# Empty by design — no file is off-limits to the autonomous coder. Quality
+# control is the pytest gate (a patch auto-merges only if the suite passes) plus
+# git history (`git revert`). To wall off a file again, add its path here; the
+# worktree's .autofix-denylist + post-commit hook are regenerated from this list.
+# Manual kill: `autofix.disable` file or JUDAS_AUTOFIX_INHIBIT=1.
+DENYLIST_PATTERNS: list[str] = []
 
 # No daily ceiling — the system is fully autonomous and must be able to
 # drain its own bug backlog. Manual halt via `autofix.disable` (file) or

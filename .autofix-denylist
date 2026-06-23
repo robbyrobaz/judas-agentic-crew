@@ -1,3 +1,5 @@
-src/tools/ibkr_executor.py
-src/risk/**
-config.yaml
+# Autofix denylist — INTENTIONALLY EMPTY (2026-06-22).
+# The autonomous coder has full repo access. Quality control is the pytest gate
+# + git revert. Real enforcement reads DENYLIST_PATTERNS in
+# src/research/autofix_executor.py (the worktree hook regenerates this file each
+# run). To wall off a file again, add one path per line below.

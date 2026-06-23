@@ -153,9 +153,10 @@ def test_insert_active_strategy_creates_new_row(db_path):
     assert a.version == 1
 
 
-def test_insert_active_strategy_allows_multi_active(db_path):
-    """Multiple actives per (symbol, family) are allowed — promote/insert
-    no longer force-retires the prior row."""
+def test_insert_active_strategy_supersedes_prior_version(db_path):
+    """A new version of the SAME (symbol, family) supersedes the prior active
+    one — only the newest is active, so two versions of the same setup can't
+    both fire the same bar. Cross-family diversity is unaffected."""
     from src import strategy_registry as sr
 
     a = sr.insert_active_strategy(symbol="MGC", strategy_family="judas_1h")
@@ -164,11 +165,17 @@ def test_insert_active_strategy_allows_multi_active(db_path):
 
     actives = [r for r in sr.list_active_strategies()
                if r["symbol"] == "MGC" and r["strategy_family"] == "judas_1h"]
-    assert len(actives) == 3
-    versions = sorted(r["version"] for r in actives)
-    assert versions == [a.version, b.version, c.version]
+    assert len(actives) == 1
+    assert actives[0]["version"] == c.version
     assert b.version == a.version + 1
     assert c.version == b.version + 1
+
+    # A DIFFERENT family on the same symbol stays active alongside it.
+    sr.insert_active_strategy(symbol="MGC", strategy_family="buffet_zoo",
+                              params={"symbol": "MGC", "strategy_family": "buffet_zoo",
+                                      "execution_engine": "buffet_zoo", "strategy_type": "rsi"})
+    fams = {r["strategy_family"] for r in sr.list_active_strategies() if r["symbol"] == "MGC"}
+    assert fams == {"judas_1h", "buffet_zoo"}
 
 
 def test_insert_active_strategy_respects_passed_params(db_path):

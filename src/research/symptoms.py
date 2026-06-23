@@ -24,6 +24,10 @@ CATEGORIES = {
     "looping_research",
     "naked_position",
     "silent_dryrun",
+    # Added 2026-06-22 — three previously-silent classes now feed the self-fix loop:
+    "db_contention",   # SQLite "database is locked" — a connect path needs ro/busy_timeout
+    "active_dup",      # >1 active strategy per (symbol,family) → same-setup double-fire
+    "stale_data",      # backtest bar cache gone stale → strategies validated on old data
 }
 
 
@@ -304,6 +308,154 @@ def detect_silent_dryrun(*, log_path: str = "logs/judas_crew.log") -> list[Sympt
     ]
 
 
+def detect_db_contention(*, log_path: str = "logs/judas_crew.log") -> list[Symptom]:
+    """SQLite "database is locked" errors in the log over the last 24h.
+
+    A lock error means a writer gave up — a lost signal/trade/registry write.
+    The fixable root is usually a code path: a connect that should be read-only,
+    or a missing busy_timeout. >=3 in 24h is a real pattern.
+    """
+    p = Path(log_path)
+    if not p.exists():
+        return []
+    try:
+        size = p.stat().st_size
+        with p.open("rb") as fh:
+            if size > 512 * 1024:
+                fh.seek(-512 * 1024, 2)
+            blob = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+
+    cutoff = datetime.now(timezone.utc).timestamp() - 86400
+    hits: list[str] = []
+    for line in blob.splitlines():
+        if "database is locked" not in line.lower():
+            continue
+        ts_match = re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", line)
+        if ts_match:
+            try:
+                t = datetime.strptime(ts_match.group(0), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+                if t.timestamp() < cutoff:
+                    continue
+            except ValueError:
+                pass
+        hits.append(line.strip())
+
+    if len(hits) < 3:
+        return []
+    h = sha1_symptom("db_contention", "database is locked")
+    return [
+        Symptom(
+            category="db_contention",
+            hash=h,
+            summary=(
+                f"SQLite 'database is locked' x{len(hits)} in 24h — a writer is losing "
+                f"writes under contention. Find the offending connect site (a read path "
+                f"opening read-write, or one missing PRAGMA busy_timeout) and fix it."
+            ),
+            evidence={"count": len(hits), "first": hits[0][:200]},
+        )
+    ]
+
+
+def detect_active_set_duplicates(*, db_path: str) -> list[Symptom]:
+    """Two+ active strategies sharing the same (symbol, strategy_family).
+
+    They fire the same setup on the same bar — 2-3x size and loss, not
+    diversification (observed live 2026-06-17). promote_candidate /
+    insert_active_strategy supersede the prior version atomically; a group here
+    means that invariant regressed and the coder should re-assert it.
+    """
+    try:
+        conn = sqlite3.connect(str(db_path))
+    except sqlite3.Error:
+        return []
+    try:
+        if not _has_table(conn, "active_strategies"):
+            return []
+        try:
+            rows = conn.execute(
+                """
+                SELECT symbol, strategy_family, COUNT(*) AS n,
+                       GROUP_CONCAT(version) AS versions
+                FROM active_strategies
+                WHERE state='active'
+                GROUP BY symbol, strategy_family
+                HAVING n > 1
+                """
+            ).fetchall()
+        except sqlite3.Error:
+            return []
+    finally:
+        conn.close()
+    if not rows:
+        return []
+    groups = [f"{r[0]}/{r[1]} (versions {r[3]})" for r in rows]
+    sig = ",".join(sorted(f"{r[0]}/{r[1]}" for r in rows))
+    h = sha1_symptom("active_dup", sig)
+    return [
+        Symptom(
+            category="active_dup",
+            hash=h,
+            summary=(
+                f"{len(rows)} (symbol,family) group(s) have >1 ACTIVE strategy → same-setup "
+                f"double-fire: {'; '.join(groups[:8])}. promote_candidate/insert_active_strategy "
+                f"must atomically supersede the prior active version of the same (symbol,family)."
+            ),
+            evidence={"groups": groups},
+        )
+    ]
+
+
+def detect_stale_backtest_bars(*, repo_root: str, max_age_days: float = 4.0) -> list[Symptom]:
+    """Newest bar in THIS repo's 1h cache is older than max_age_days.
+
+    The researcher backtests on cache_1h/. If it goes stale, strategies are
+    validated on data that never saw recent regime — then lose live. 4-day
+    default is weekend/holiday-safe.
+    """
+    cache_dir = Path(repo_root) / "cache_1h"
+    if not cache_dir.exists():
+        return []
+    try:
+        import pandas as pd
+    except Exception:  # noqa: BLE001
+        return []
+    newest = None
+    checked = 0
+    for p in sorted(cache_dir.glob("*_1h.parquet")):
+        try:
+            df = pd.read_parquet(p, columns=["ts"])
+            if df.empty:
+                continue
+            ts = pd.to_datetime(df["ts"], utc=True).max()
+            checked += 1
+            if newest is None or ts > newest:
+                newest = ts
+        except Exception:  # noqa: BLE001
+            continue
+    if newest is None or checked == 0:
+        return []
+    age_days = (datetime.now(timezone.utc) - newest.to_pydatetime()).total_seconds() / 86400.0
+    if age_days < max_age_days:
+        return []
+    h = sha1_symptom("stale_data", f"stale_1h_bars>{max_age_days}d")
+    return [
+        Symptom(
+            category="stale_data",
+            hash=h,
+            summary=(
+                f"Backtest bar cache is {age_days:.1f} days stale (newest 1h bar "
+                f"{str(newest)[:10]}). The researcher is validating strategies on old data. "
+                f"Check the bar-cache refresh path and that _load_bars reads THIS repo's "
+                f"cache_1h, not a stale external one."
+            ),
+            evidence={"age_days": round(age_days, 1), "newest": str(newest), "checked": checked},
+        )
+    ]
+
+
 def detect_all_symptoms(*, db_path: str, repo_root: str) -> list[Symptom]:
     """Run all detectors, dedupe by hash, return flat list."""
     out: list[Symptom] = []
@@ -315,6 +467,10 @@ def detect_all_symptoms(*, db_path: str, repo_root: str) -> list[Symptom]:
         lambda: detect_looping_research(repo_root=repo_root),
         lambda: detect_naked_position(db_path=db_path),
         lambda: detect_silent_dryrun(log_path=str(Path(repo_root) / "logs" / "judas_crew.log")),
+        # Added 2026-06-22 — three previously-silent classes now self-fix via the loop.
+        lambda: detect_db_contention(log_path=str(Path(repo_root) / "logs" / "judas_crew.log")),
+        lambda: detect_active_set_duplicates(db_path=db_path),
+        lambda: detect_stale_backtest_bars(repo_root=repo_root),
     ]
     for fn in detectors:
         try:

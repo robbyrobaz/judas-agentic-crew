@@ -25,7 +25,7 @@ def _build_research_manager_llm() -> LLM:
     cfg = load_config()
     additional_params: dict[str, object] = {"extra_body": {"reasoning_split": True}}
     return LLM(
-        model="MiniMax-M3",
+        model="minimax/MiniMax-M3",
         api_key=cfg.minimax_api_key,
         api_base=cfg.crew.llm_base_url,
         provider=cfg.crew.llm_provider,

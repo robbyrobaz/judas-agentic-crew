@@ -16,10 +16,13 @@ if str(REPO_ROOT) not in sys.path:
 from src.db.models import init_db
 from src.research.symptoms import (
     Symptom,
+    detect_active_set_duplicates,
     detect_all_symptoms,
+    detect_db_contention,
     detect_failing_pytest,
     detect_looping_research,
     detect_silent_dryrun,
+    detect_stale_backtest_bars,
     detect_tool_failure,
     sha1_symptom,
 )
@@ -166,3 +169,75 @@ def test_sha1_symptom_stable():
     h1 = sha1_symptom("tool_failure", "  Connection  reset  ")
     h2 = sha1_symptom("tool_failure", "Connection reset")
     assert h1 == h2
+
+
+# --- 2026-06-22: detectors that feed the self-fix loop ---------------------
+
+def _write_log(tmp_path, lines):
+    log = tmp_path / "judas_crew.log"
+    log.write_text("\n".join(lines) + "\n")
+    return str(log)
+
+
+def test_detect_db_contention_emits_above_threshold(tmp_path):
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    lines = [f'{{"ts": "{now}", "msg": "sqlite3.OperationalError: database is locked"}}'
+             for _ in range(3)]
+    syms = detect_db_contention(log_path=_write_log(tmp_path, lines))
+    assert len(syms) == 1 and syms[0].category == "db_contention"
+
+
+def test_detect_db_contention_below_threshold_empty(tmp_path):
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    assert detect_db_contention(log_path=_write_log(tmp_path, [f'{now} database is locked'])) == []
+
+
+def test_detect_active_set_duplicates_emits_on_dupe(tmp_path):
+    db = str(tmp_path / "j.db")
+    init_db(db)
+    with sqlite3.connect(db) as conn:
+        for ver in (1, 2):
+            conn.execute(
+                "INSERT INTO active_strategies (symbol, strategy_family, version, "
+                "params_json, metrics_json, state, activated_at_utc, notes) "
+                "VALUES ('MGC','custom_5m',?,'{}','{}','active','2026-06-22T00:00:00Z','t')",
+                (ver,),
+            )
+        conn.commit()
+    syms = detect_active_set_duplicates(db_path=db)
+    assert len(syms) == 1 and syms[0].category == "active_dup" and "MGC" in syms[0].summary
+
+
+def test_detect_active_set_duplicates_clean_when_one_active(tmp_path):
+    db = str(tmp_path / "j.db")
+    init_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "INSERT INTO active_strategies (symbol, strategy_family, version, params_json, "
+            "metrics_json, state, activated_at_utc, notes) "
+            "VALUES ('MGC','custom_5m',2,'{}','{}','active','2026-06-22T00:00:00Z','t')")
+        conn.execute(
+            "INSERT INTO active_strategies (symbol, strategy_family, version, params_json, "
+            "metrics_json, state, activated_at_utc, notes) "
+            "VALUES ('MGC','custom_5m',1,'{}','{}','superseded','2026-06-22T00:00:00Z','t')")
+        conn.commit()
+    assert detect_active_set_duplicates(db_path=db) == []
+
+
+def test_detect_stale_backtest_bars_emits_when_old(tmp_path):
+    pd = pytest.importorskip("pandas")
+    cache = tmp_path / "cache_1h"; cache.mkdir()
+    pd.DataFrame({"ts": [pd.Timestamp("2026-05-05T11:00:00Z")], "open": [1.0], "high": [1.0],
+                  "low": [1.0], "close": [1.0], "volume": [1]}).to_parquet(
+        cache / "MGC_1h.parquet", index=False)
+    syms = detect_stale_backtest_bars(repo_root=str(tmp_path), max_age_days=4.0)
+    assert len(syms) == 1 and syms[0].category == "stale_data"
+
+
+def test_detect_stale_backtest_bars_clean_when_fresh(tmp_path):
+    pd = pytest.importorskip("pandas")
+    cache = tmp_path / "cache_1h"; cache.mkdir()
+    pd.DataFrame({"ts": [pd.Timestamp.now(tz="UTC")], "open": [1.0], "high": [1.0],
+                  "low": [1.0], "close": [1.0], "volume": [1]}).to_parquet(
+        cache / "MGC_1h.parquet", index=False)
+    assert detect_stale_backtest_bars(repo_root=str(tmp_path), max_age_days=4.0) == []

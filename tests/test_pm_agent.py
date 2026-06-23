@@ -217,17 +217,20 @@ def test_promote_via_tool_atomic(tmp_path, monkeypatch):
     result = pm_agent.run_pm_decision(db_path=str(db), turn_budget=5, time_budget_s=30)
     assert result.success
 
-    # Multi-active is allowed (Operator goals: "multiple strategies per
-    # symbol are fine"). Prior active stays alongside the newly promoted
-    # row; retiring is a separate deliberate action.
+    # Same-setup dedup: promoting a new version of the SAME (symbol, family)
+    # supersedes the prior active row atomically, so two versions of one setup
+    # can't both fire the same bar. Only the new version stays active.
     with sqlite3.connect(str(db)) as conn:
         active = conn.execute(
             "SELECT id, version FROM active_strategies "
             "WHERE state='active' ORDER BY version"
         ).fetchall()
-    assert len(active) == 2  # both prior and new live side-by-side
-    versions = [row[1] for row in active]
-    assert max(versions) == 2  # the new one got version 2
+        superseded = conn.execute(
+            "SELECT version FROM active_strategies WHERE state='superseded'"
+        ).fetchall()
+    assert len(active) == 1  # only the newest version is live
+    assert active[0][1] == 2  # the new one got version 2
+    assert [row[0] for row in superseded] == [1]  # prior version 1 superseded
 
 
 # ---------------------------------------------------------------------------

@@ -84,7 +84,7 @@ def run_agent_loop(
     schemas: list[dict],
     turn_budget: int,
     time_budget_s: int,
-    minimax_model: str = "minimax/MiniMax-M2.7",
+    minimax_model: str = "minimax/MiniMax-M3",
 ) -> AgentDecisionResult:
     """Run the standard ReAct-ish loop. Pure-deterministic when LLM is mocked."""
     started = time.time()

@@ -30,7 +30,11 @@ def main() -> int:
         f"turns={result.turns_used} elapsed={result.elapsed_s:.1f}s "
         f"fallback={result.fallback_used} error={result.error}"
     )
-    return 0 if result.success else 1
+    # A time-budget stop is a NORMAL early-stop (the ReAct loop is intentionally
+    # bounded), NOT a crash. Only exit non-zero on a genuine error, so the
+    # systemd unit doesn't sit `failed` (and mask real failures) every run.
+    clean_budget_stop = bool(result.error) and result.error.startswith("time budget exhausted")
+    return 0 if (result.success or clean_budget_stop) else 1
 
 
 if __name__ == "__main__":

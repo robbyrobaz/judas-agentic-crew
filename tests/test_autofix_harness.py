@@ -380,13 +380,12 @@ def test_read_file_path_traversal(worktree: Path) -> None:
 
 
 def test_grep_caps_results(worktree: Path) -> None:
-    big = "\n".join(["needle here"] * 1000) + "\n"
-    (worktree / "src" / "big.py").write_text(big)
+    # Cap raised 2026-06-23 so the coder sees full grep sweeps. Verify it returns
+    # everything below the (now generous) cap, and caps at _GREP_RESULT_CAP above it.
+    cap = ah._GREP_RESULT_CAP
+    (worktree / "src" / "small.py").write_text("\n".join(["needle here"] * 1000) + "\n")
+    tools = ah._make_tools(worktree_path=str(worktree), allowlist=["**/*"], denylist=[])
+    assert len(tools["grep"]("needle", "**/*.py")) == 1000  # all returned, under cap
 
-    tools = ah._make_tools(
-        worktree_path=str(worktree),
-        allowlist=["**/*"],
-        denylist=[],
-    )
-    matches = tools["grep"]("needle", "**/*.py")
-    assert len(matches) == 100
+    (worktree / "src" / "big.py").write_text("\n".join(["needle here"] * (cap + 50)) + "\n")
+    assert len(tools["grep"]("needle", "**/*.py")) == cap  # capped above the limit

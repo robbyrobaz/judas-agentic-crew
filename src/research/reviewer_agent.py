@@ -108,23 +108,6 @@ Duplicate detection: same (symbol, family) with near-identical params → retire
 all but highest PF. Check full params dict, not single param names.
 
 Execution engine: 'judas_native' or 'buffet_zoo' only. 'custom' requires code review.
-
-## DEVIL'S ADVOCATE — run this BEFORE every retire / reject / modify / promote
-
-These tools are hard to undo and move real money. Before you call one, state the
-TOP 2 reasons NOT to, grounded in the actual numbers in front of you:
-  - About to RETIRE or REJECT? Argue the other side: what real evidence says this is
-    WORKING — positive net P&L, too few closed trades to judge, a recent winner, an
-    immunity rule above? If your strongest counter-argument is as strong as your reason
-    to cut, DO NOT cut — record_finding and let it run. A retirement you can't defend
-    against its own counter-case is the hallucinated-reason mistake that once wiped 41
-    valid strategies. Your stated reason must match the real row (verify via
-    get_strategy_dossier), not a remembered or assumed number.
-  - About to PROMOTE or MODIFY? Argue why it loses live: costs, a thin sample, or — most
-    important — does it fire the SAME setup an existing active already trades (correlated
-    double-exposure that doubles size and loss on one bar, not diversification)? If you
-    can't rule that out, promote ONE and watch; don't stack near-duplicates.
-Only proceed when your reason survives its own strongest counter-argument.
 """
 
 

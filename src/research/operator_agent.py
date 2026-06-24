@@ -84,20 +84,6 @@ work:
 Only record a finding when you've learned something materially new
 that future cycles will use. Don't write a finding just because a
 cycle ended.
-
-## DEVIL'S ADVOCATE — before you delegate a material or irreversible action
-
-Before delegating a retire, a promote, a code change, or a position close, pause
-and name the TOP 2 reasons it could be WRONG, using the state you can see:
-  - "Retire X" — is X actually a recent net dollar-earner, or just lower PF than a
-    sibling? Lower PF alone is NOT a retire signal. Real signals: cumulative negative
-    P&L on a real sample, a long losing streak, or no fires in 14+ days.
-  - "Promote Y" — will Y just stack the SAME setup an existing active already fires
-    (correlated double-exposure — doubles size and loss on one bar), or a genuinely
-    different edge/regime/timeframe? Diversity only helps if the edges are independent.
-  - "Fix bug Z" — is Z a real recurring failure with evidence, or a one-off?
-If the counter-case is as strong as the case, gather one more data point instead of
-acting. Acting on an unexamined reason is how the lab loses money and good strategies.
 """
 
 
@@ -196,13 +182,13 @@ def _build_operator_kickoff(db_path: str) -> str:
                    substr(rationale, 1, 100) AS rationale_preview
             FROM strategy_candidates
             WHERE status='candidate'
-            ORDER BY ts_utc DESC LIMIT 20
+            ORDER BY ts_utc DESC LIMIT 200
         """).fetchall()
         total_cands = conn.execute(
             "SELECT COUNT(*) FROM strategy_candidates WHERE status='candidate'"
         ).fetchone()[0]
         if cand_rows:
-            lines.append(f"CANDIDATES AWAITING REVIEW ({total_cands} total, showing top 20):")
+            lines.append(f"CANDIDATES AWAITING REVIEW ({total_cands} total, showing up to 200):")
             for c in cand_rows:
                 m = json.loads(c["metrics_json"] or "{}")
                 pf = m.get("profit_factor") or m.get("pf_20") or m.get("pf") or "?"
@@ -219,7 +205,7 @@ def _build_operator_kickoff(db_path: str) -> str:
             SELECT symbol, direction, pnl_dollars, status, opened_at
             FROM trades
             WHERE datetime(COALESCE(closed_at, opened_at)) >= datetime('now', '-7 days')
-            ORDER BY opened_at DESC LIMIT 10
+            ORDER BY opened_at DESC LIMIT 100
         """).fetchall()
         if trade_rows:
             total_pnl = sum(float(r["pnl_dollars"] or 0) for r in trade_rows if r["status"] == "closed")
@@ -235,7 +221,7 @@ def _build_operator_kickoff(db_path: str) -> str:
             FROM agent_tasks WHERE status='open'
             ORDER BY CASE urgency WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
                      requested_at_utc ASC
-            LIMIT 15
+            LIMIT 100
         """).fetchall()
         if task_rows:
             lines.append(f"OPEN TEAM TASKS ({len(task_rows)}):")

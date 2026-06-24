@@ -81,7 +81,7 @@ def build_leaderboard_block(db_path: str) -> str:
             )
         out.append("")
 
-        stats = ls.all_active_stats(conn, limit=30)
+        stats = ls.all_active_stats(conn, limit=1000)  # show ALL actives, not a slice
         if stats:
             out.append("ACTIVE STRATEGIES (rich stats; sorted cost-aware → live PF → BT PF):")
             out.append(
@@ -94,7 +94,7 @@ def build_leaderboard_block(db_path: str) -> str:
                     "FLAGS",
                 ])
             )
-            for r in stats[:20]:
+            for r in stats:  # every active strategy — full visibility, not top-20
                 flags: list[str] = []
                 if r["gap_flag"]: flags.append("⚠GAP")
                 if r.get("no_backtest_metrics"): flags.append("⚠NO_BT")

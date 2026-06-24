@@ -29,13 +29,18 @@ from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
-_READ_FILE_CAP_BYTES = 32 * 1024
-_GREP_RESULT_CAP = 100
-_LIST_FILES_CAP = 200
-_DIFF_TEXT_CAP_BYTES = 8 * 1024
-_GIT_DIFF_CAP_BYTES = 16 * 1024
-_TEST_OUTPUT_TAIL_BYTES = 4 * 1024
-_PYTEST_TIMEOUT_S = 300
+# The coder runs on M3 (512k context) with a huge token budget — let it SEE the
+# whole thing it's editing instead of through a keyhole (2026-06-23). A 32KB read
+# cap meant it edited 2000-line files ~800 lines at a time with no clue what it
+# was breaking elsewhere. These are now generous enough to read whole files,
+# full grep sweeps, and complete diffs/test output.
+_READ_FILE_CAP_BYTES = 1024 * 1024     # 1 MB — read entire source files
+_GREP_RESULT_CAP = 2000
+_LIST_FILES_CAP = 5000
+_DIFF_TEXT_CAP_BYTES = 256 * 1024
+_GIT_DIFF_CAP_BYTES = 512 * 1024
+_TEST_OUTPUT_TAIL_BYTES = 64 * 1024    # see the full failure, not a 4KB tail
+_PYTEST_TIMEOUT_S = 600
 
 # Known pre-existing test failures that are NOT this autofix's fault and must not
 # block it from landing a real fix. Without this, ANY red test makes the gate

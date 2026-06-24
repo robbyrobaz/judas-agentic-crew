@@ -18,11 +18,13 @@ def main() -> int:
         "JUDAS_DB_PATH",
         str(Path(__file__).resolve().parents[1] / "judas_crew.db"),
     )
-    # Bound the ReAct loop (default 0 = unlimited turns → cache-read blowup). Jun 18.
+    # UNCAPPED (2026-06-23): no artificial turn/time limit — the reviewer runs
+    # until done (verify the dossier, run the devil's-advocate pass, then act).
+    # Wall-clock ceiling is the systemd TimeoutStartSec (20min). 0 = unlimited.
     result = run_reviewer_decision(
         db_path=db_path,
-        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "20")),
-        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "420")),
+        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "0")),
+        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "0")),
     )
     print(
         f"reviewer: success={result.success} actions={len(result.actions_taken)} "

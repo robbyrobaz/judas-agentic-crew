@@ -29,8 +29,10 @@ def main() -> int:
     # Bound the ReAct loop (default 0 = unlimited turns → cache-read blowup). Jun 18.
     result = run_trader_decision(
         db_path=db_path,
-        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "15")),
-        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "300")),
+        # UNCAPPED (2026-06-23): no artificial turn/time limit. Wall-clock ceiling
+        # is the systemd TimeoutStartSec (15min). 0 = unlimited.
+        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "0")),
+        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "0")),
     )
     print(
         f"trader: success={result.success} actions={len(result.actions_taken)} "

@@ -206,8 +206,11 @@ def run_one_autofix(
             denylist=list(DENYLIST_PATTERNS),
             # Bound the loop (default 0 = unlimited turns → cache-read blowup),
             # but leave enough room to explore + write a test + patch + verify.
-            turn_budget=int(os.environ.get("JUDAS_AUTOFIX_TURNS", "40")),
-            time_budget_s=int(os.environ.get("JUDAS_AUTOFIX_TIME_S", "900")),
+            # UNCAPPED (2026-06-23): no artificial turn/time limit — the coder has
+            # full repo access and runs until the fix is done + tested. Wall-clock
+            # ceiling is the systemd TimeoutStartSec (45min). 0 = unlimited.
+            turn_budget=int(os.environ.get("JUDAS_AUTOFIX_TURNS", "0")),
+            time_budget_s=int(os.environ.get("JUDAS_AUTOFIX_TIME_S", "0")),
         )
     except Exception as exc:  # noqa: BLE001
         log.exception("autofix_dispatch.harness_failed")

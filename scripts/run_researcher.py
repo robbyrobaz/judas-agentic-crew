@@ -22,8 +22,12 @@ def main() -> int:
     # growing conversation every tool call → cache-read token blowup. Jun 18.
     result = run_researcher_decision(
         db_path=db_path,
-        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "25")),
-        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "600")),
+        # UNCAPPED (2026-06-23): no artificial turn/time limit — let the researcher
+        # work until it's done. The only ceiling is the systemd TimeoutStartSec
+        # (50min wall-clock), which already bounds total token spend. (0 = unlimited;
+        # matches operator/registrar.) Override via env if ever needed.
+        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "0")),
+        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "0")),
     )
     print(
         f"researcher: success={result.success} actions={len(result.actions_taken)} "

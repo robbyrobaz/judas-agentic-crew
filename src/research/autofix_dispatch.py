@@ -94,6 +94,79 @@ def insert_symptom_row(
         return None
 
 
+def _review_patch_is_real(
+    *, worktree_path: str, symptom_category: str, symptom_summary: str,
+    files_changed: list[str],
+) -> dict:
+    """Independent second-pass reviewer before an autofix merges to master.
+
+    pytest passing only proves "didn't break anything" — it does NOT prove the
+    patch actually fixes the symptom. A fix can pass the suite and fix nothing
+    (autofix #352 passed but only edited .autofix-denylist). This adds a second
+    set of eyes:
+
+      1. Deterministic gate — the diff MUST touch a real source/test file. A patch
+         that only edits meta files (.autofix-denylist, *.md, *.txt) is a no-op
+         fake. (This alone would have caught #352.)
+      2. LLM gate — an independent M3 call reads the ACTUAL diff + the symptom and
+         votes REAL/FAKE, catching subtler no-ops and gamed fixes.
+
+    Returns {"real": bool, "reason": str}. Fail-OPEN on a reviewer error (don't
+    block a genuine fix on a flaky reviewer); fail-CLOSED on a clear FAKE verdict.
+    """
+    def _is_real_source(f: str) -> bool:
+        f = f.replace("\\", "/")
+        return f == "main.py" or (
+            f.endswith(".py") and any(f.startswith(d) for d in ("src/", "tests/", "scripts/"))
+        )
+
+    if files_changed and not any(_is_real_source(f) for f in files_changed):
+        return {"real": False,
+                "reason": f"meta-only diff — touches no real source/test file: {files_changed}"}
+
+    from src.research.autofix_executor import _git
+    try:
+        _git(worktree_path, "add", "-A")
+        diff = (_git(worktree_path, "diff", "--cached").stdout or "")[:60000]
+    except Exception as exc:  # noqa: BLE001
+        log.warning("autofix_review.diff_failed: %s", exc)
+        return {"real": True, "reason": "could not compute diff — allowing (fail-open)"}
+    if not diff.strip():
+        return {"real": False, "reason": "empty diff"}
+
+    try:
+        import litellm  # type: ignore[import-not-found]
+        model = os.environ.get("JUDAS_REVIEW_MODEL", "minimax/MiniMax-M3")
+        sys_prompt = (
+            "You are an INDEPENDENT code-fix reviewer for an autonomous trading lab. "
+            "A coder agent claims it fixed a symptom; the test suite passed. Your job: "
+            "judge ONLY whether the diff GENUINELY addresses the described symptom in the "
+            "real production code path. Vote FAKE if the diff is a no-op, only edits "
+            "config/meta/test files to make the gate pass without fixing the real code, is "
+            "unrelated to the symptom, or is obviously insufficient. Vote REAL only if it "
+            "plausibly fixes the described problem. Be skeptical — a fake fix that ships to "
+            "a live trading system costs real money. First line MUST be exactly "
+            "'VERDICT: REAL' or 'VERDICT: FAKE', then one sentence why."
+        )
+        user_prompt = f"SYMPTOM ({symptom_category}):\n{symptom_summary}\n\nDIFF:\n{diff}"
+        resp = litellm.completion(
+            model=model,
+            messages=[{"role": "system", "content": sys_prompt},
+                      {"role": "user", "content": user_prompt}],
+            api_key=os.environ.get("MINIMAX_API_KEY", ""),
+            api_base=os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
+            temperature=0.0, max_tokens=512, timeout=120,
+        )
+        txt = str(resp["choices"][0]["message"].get("content") or "")
+        reason = txt.strip().replace("\n", " ")[:300]
+        if "VERDICT: FAKE" in txt.upper() or "VERDICT:FAKE" in txt.upper():
+            return {"real": False, "reason": f"reviewer: {reason}"}
+        return {"real": True, "reason": f"reviewer: {reason}"}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("autofix_review.llm_failed: %s", exc)
+        return {"real": True, "reason": f"reviewer error (fail-open): {exc}"}
+
+
 def run_one_autofix(
     *, db_path: str, target_autofix_id: int | None = None,
     operator_context: str | None = None,
@@ -249,6 +322,30 @@ def run_one_autofix(
                 "test_passed": bool(result.test_passed),
                 "error": (result.error or "")[:400],
                 "diff_summary": result.diff_summary}
+
+    # SECOND CHECK (2026-06-25): independent reviewer before this merges to
+    # master. pytest only proves "didn't break anything"; this proves the patch
+    # actually fixes the symptom. Catches gamed/no-op fixes (e.g. #352, which
+    # passed pytest but only edited .autofix-denylist).
+    review = _review_patch_is_real(
+        worktree_path=ctx.worktree_path,
+        symptom_category=symptom_category, symptom_summary=symptom_summary,
+        files_changed=result.files_changed,
+    )
+    if not review.get("real"):
+        log.warning("autofix_dispatch.review_rejected",
+                    extra={"autofix_id": autofix_id, "reason": review.get("reason")})
+        cleanup_worktree(worktree_path=ctx.worktree_path,
+                         branch_name=ctx.branch_name, keep_branch=False)
+        update_autofix(
+            db_path=db_path, autofix_id=autofix_id, status="rejected_review",
+            test_result="passed" if result.test_passed else "failed",
+            diff_summary=result.diff_summary, files_changed_json=files_changed_json,
+            test_output_tail=("REVIEW REJECTED: " + str(review.get("reason")))[:4000],
+            pushed=0, finished=True,
+        )
+        return {"ok": False, "status": "rejected_review",
+                "autofix_id": autofix_id, "reason": review.get("reason")}
 
     commit_message = f"autofix({symptom_category}): {symptom_summary[:60]}"
     push_result = commit_and_push(

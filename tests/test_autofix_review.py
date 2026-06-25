@@ -34,13 +34,23 @@ def test_docs_and_text_only_rejected():
     assert _review(["docs/README.md", "notes.txt", "CHANGELOG"])["real"] is False
 
 
-def test_real_source_change_passes_deterministic_gate():
-    # A diff that touches real source/test files passes the deterministic gate
-    # (then the LLM gate would run — not exercised here without an API key).
-    # We assert it is NOT rejected by the meta-only rule.
+def test_real_source_not_rejected_as_meta_only():
+    # A diff that touches a real source file must NOT be rejected by the
+    # deterministic meta-only rule (it proceeds to the diff/LLM gate, which is
+    # not exercised here). Assert specifically that the meta-only reason did NOT
+    # fire — the final verdict beyond that depends on the diff/LLM step.
     r = _review_patch_is_real(
         worktree_path="/tmp", symptom_category="x", symptom_summary="y",
         files_changed=["src/portfolio_runtime.py"],
     )
-    # With no git worktree at /tmp, the diff step fails open → real=True.
-    assert r["real"] is True
+    assert "meta-only" not in r["reason"]
+
+
+def test_empty_files_changed_not_meta_rejected():
+    # No file list at all shouldn't trigger the meta-only rule (the diff/LLM
+    # step handles emptiness); just confirm the meta gate doesn't false-fire.
+    r = _review_patch_is_real(
+        worktree_path="/tmp", symptom_category="x", symptom_summary="y",
+        files_changed=[],
+    )
+    assert "meta-only" not in r["reason"]

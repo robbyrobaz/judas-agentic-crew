@@ -1045,8 +1045,13 @@ def _nt_account_snapshot() -> dict[str, Any] | None:
         return None
 
 
-_UNREAL_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_UNREAL_CACHE: dict[str, Any] = {"ts": 0.0, "data": None, "fail_ts": 0.0}
 _UNREAL_TTL_S = 30.0
+# After a failed live-IBKR snapshot, don't retry (and block the page on a ~10s
+# connect) for this long. IBKR is frequently unreachable from this box
+# (clientId-in-use / TimeoutError); without this, EVERY /api/overview blocks
+# ~6-7s once the TTL expires and the dashboard appears "down" (2026-06-25).
+_UNREAL_FAIL_BACKOFF_S = 180.0
 # Canonical $ per 1.0 price point (mirrors judas_detector._dpp_map) + exchanges.
 _DPP = {"MGC": 10.0, "MNQ": 2.0, "MCL": 100.0, "MBT": 0.1, "MET": 0.1,
         "DX": 1000.0, "ZF": 1000.0, "6J": 12.5, "ZN": 1000.0}
@@ -1065,6 +1070,14 @@ def _unrealized_snapshot() -> dict[str, Any]:
     cached = _UNREAL_CACHE.get("data")
     if cached is not None and (now - _UNREAL_CACHE["ts"]) < _UNREAL_TTL_S:
         return {**cached, "age_s": round(now - _UNREAL_CACHE["ts"], 1)}
+    # Circuit breaker: if the last live-IBKR attempt failed recently, do NOT
+    # block this request on another ~10s connect. Serve last-good (or empty)
+    # instantly; retry IBKR only once per backoff window. Keeps the page snappy
+    # even when IBKR is down.
+    if (now - _UNREAL_CACHE.get("fail_ts", 0.0)) < _UNREAL_FAIL_BACKOFF_S:
+        if cached is not None:
+            return {**cached, "age_s": round(now - _UNREAL_CACHE["ts"], 1), "stale": True}
+        return {"total": None, "positions": [], "stale": True, "ibkr_unreachable": True}
     try:
         with get_conn(_db_path()) as conn:
             opens = [dict(r) for r in conn.execute(
@@ -1087,7 +1100,7 @@ def _unrealized_snapshot() -> dict[str, Any]:
             for _try in range(2):
                 try:
                     await ib.connectAsync(ibkr.host, ibkr.port,
-                                          clientId=int(ibkr.data_client_id) + 21, timeout=10)
+                                          clientId=int(ibkr.data_client_id) + 21, timeout=3)
                     break
                 except Exception:
                     try:
@@ -1130,6 +1143,7 @@ def _unrealized_snapshot() -> dict[str, Any]:
         _UNREAL_CACHE.update(ts=now, data=data)
         return {**data, "age_s": 0.0}
     except Exception:
+        _UNREAL_CACHE["fail_ts"] = now  # trip the circuit breaker → next calls don't block
         if cached is not None:
             return {**cached, "age_s": round(now - _UNREAL_CACHE["ts"], 1), "stale": True}
         return {"total": None, "positions": [], "error": True}

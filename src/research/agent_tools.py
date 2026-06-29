@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import sqlite3
+import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1108,6 +1109,114 @@ def _new_schemas() -> list[dict]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Write/edit/shell tools — give the agents real hands (2026-06-29).
+# The ONE limit (Rob): they must NOT edit files outside this repo or touch
+# other repos. write_file/edit_file enforce that AIRTIGHT (resolve realpath,
+# refuse any escape via .., symlinks, or absolute paths outside the repo).
+# run_shell can't be kernel-jailed here (unprivileged userns is disabled, no
+# root), so it's confined best-effort: cwd=repo + reject commands referencing
+# out-of-repo /home paths or parent-traversal. Not a hard wall — a guard.
+# ---------------------------------------------------------------------------
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _confine_to_repo(path: str) -> Path:
+    """Resolve `path` (relative to repo root if not absolute) and REFUSE if it
+    escapes the repo — other repos, system files, via .. or symlinks. Raises
+    ValueError on escape."""
+    p = Path(path)
+    if not p.is_absolute():
+        p = _REPO_ROOT / p
+    rp = p.resolve()
+    if rp != _REPO_ROOT and _REPO_ROOT not in rp.parents:
+        raise ValueError(
+            f"refused: '{path}' resolves outside the repo ({_REPO_ROOT}). "
+            f"Agents may only write within this repo."
+        )
+    return rp
+
+
+def write_file(*, path: str, content: str) -> dict:
+    """Write `content` to `path` (confined to this repo). Creates parent dirs."""
+    try:
+        rp = _confine_to_repo(path)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    try:
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        rp.write_text(content, encoding="utf-8")
+        return {"ok": True, "path": str(rp), "bytes": len(content)}
+    except OSError as exc:
+        return {"ok": False, "error": f"write failed: {exc}"}
+
+
+def edit_file(*, path: str, old: str, new: str) -> dict:
+    """Replace the (unique) `old` substring with `new` in `path` (repo-confined)."""
+    try:
+        rp = _confine_to_repo(path)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    if not rp.exists():
+        return {"ok": False, "error": f"file not found: {rp}"}
+    try:
+        text = rp.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {"ok": False, "error": f"read failed: {exc}"}
+    n = text.count(old)
+    if n == 0:
+        return {"ok": False, "error": "old string not found"}
+    if n > 1:
+        return {"ok": False, "error": f"old string not unique ({n} matches) — add context"}
+    try:
+        rp.write_text(text.replace(old, new, 1), encoding="utf-8")
+        return {"ok": True, "path": str(rp)}
+    except OSError as exc:
+        return {"ok": False, "error": f"write failed: {exc}"}
+
+
+# Out-of-repo write vectors a shell command must not reference. /home/rob/<other>
+# is the explicit concern (other repos). cwd is forced to the repo.
+_SHELL_OUT_OF_REPO = re.compile(
+    r"(^|[\s'\"=(])(/home/[^\s'\"]+|\.\.(/|\\)|/etc/|/usr/(?!bin|lib|share)|/root/|~/)",
+)
+
+
+def _shell_escape_reason(command: str) -> str | None:
+    repo = str(_REPO_ROOT)
+    for m in _SHELL_OUT_OF_REPO.finditer(command):
+        tok = m.group(2)
+        # Allow absolute references that stay inside the repo.
+        if tok.startswith("/home/") and not tok.startswith(repo):
+            return f"references an out-of-repo path: {tok}"
+        if tok.startswith((".." "/", "..\\")) or tok == "..":
+            return "uses parent-directory traversal (..)"
+        if tok.startswith(("/etc/", "/root/", "~/")):
+            return f"references a system/home path: {tok}"
+    return None
+
+
+def run_shell(*, command: str, timeout_s: int = 120) -> dict:
+    """Run a shell command with cwd=repo. Best-effort confined to the repo
+    (NOT a kernel jail — see module note). Rejects out-of-repo path references."""
+    reason = _shell_escape_reason(command)
+    if reason:
+        return {"ok": False, "error": f"refused: command {reason}. "
+                f"run_shell is confined to {_REPO_ROOT}."}
+    try:
+        proc = subprocess.run(
+            command, shell=True, cwd=str(_REPO_ROOT),
+            capture_output=True, text=True, timeout=timeout_s,
+        )
+        return {"ok": proc.returncode == 0, "returncode": proc.returncode,
+                "stdout": (proc.stdout or "")[-8000:],
+                "stderr": (proc.stderr or "")[-4000:]}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"timeout after {timeout_s}s"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"run_shell failed: {exc}"}
+
+
 def make_tools(*, db_path: str, include: set[str] | None = None,
                team: str | None = None,
                claimed_by: str | None = None,
@@ -1148,6 +1257,11 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
     extras["retract_finding"] = _safe_tool(
         make_retract_finding(db_path=db_path, author=effective_author))
     extras["get_strategy_dossier"] = _safe_tool(make_get_strategy_dossier(db_path=db_path))
+    # Real hands — repo-confined write/edit/shell (2026-06-29). Available to every
+    # agent that includes them; the confinement lives in the tools themselves.
+    extras["write_file"] = _safe_tool(write_file)
+    extras["edit_file"] = _safe_tool(edit_file)
+    extras["run_shell"] = _safe_tool(run_shell)
     if operator_mode:
         enq = make_enqueue_task(db_path=db_path, requester="operator")
 
@@ -1267,6 +1381,65 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
     all_tools.update(extras)
 
     extra_schemas = _new_schemas()
+    # Schemas for the repo-confined write/edit/shell tools.
+    extra_schemas.append({
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": (
+                "Write a file inside this repo (creates parent dirs). Path is "
+                "relative to the repo root, or absolute within it. REFUSED if it "
+                "escapes the repo (other repos / system files)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "repo-relative path"},
+                    "content": {"type": "string"},
+                },
+                "required": ["path", "content"],
+            },
+        },
+    })
+    extra_schemas.append({
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "description": (
+                "Replace a unique `old` substring with `new` in a repo file. "
+                "Fails if `old` is missing or not unique. Repo-confined."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "old": {"type": "string"},
+                    "new": {"type": "string"},
+                },
+                "required": ["path", "old", "new"],
+            },
+        },
+    })
+    extra_schemas.append({
+        "type": "function",
+        "function": {
+            "name": "run_shell",
+            "description": (
+                "Run a shell command with the working directory set to this repo. "
+                "Confined to the repo: commands referencing out-of-repo paths "
+                "(other repos, /etc, home dirs) or '..' traversal are refused. "
+                "Use for git, sqlite3 on judas_crew.db, running repo scripts/tests."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string"},
+                    "timeout_s": {"type": "integer", "minimum": 1, "maximum": 600},
+                },
+                "required": ["command"],
+            },
+        },
+    })
     # Schema for flatten_position
     extra_schemas.append({
         "type": "function",

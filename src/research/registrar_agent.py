@@ -74,6 +74,9 @@ INCLUDE_TOOLS = {
     # shared findings memory
     "record_finding", "read_findings", "retract_finding",
     "get_strategy_dossier",
+    # Real hands — repo-confined file+shell (2026-06-29, per max-autonomy policy)
+    "read_file", "list_files", "read_research_artifact",
+    "write_file", "edit_file", "run_shell",
 }
 
 

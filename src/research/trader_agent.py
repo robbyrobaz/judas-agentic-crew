@@ -42,6 +42,7 @@ INCLUDE_TOOLS = {
     # shared findings memory
     "record_finding", "read_findings", "retract_finding",
     "get_strategy_dossier",
+    # NOTE: trader is a focused ORDER executor — no ingestion/file hands by design.
 }
 
 

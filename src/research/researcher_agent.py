@@ -137,6 +137,8 @@ INCLUDE_TOOLS = {
     "web_search", "web_fetch",
     "fetch_youtube_transcript", "search_youtube_trading_videos",
     "read_file", "list_files", "read_research_artifact",
+    # real hands — repo-confined write/edit/shell (2026-06-29, per max-autonomy policy)
+    "write_file", "edit_file", "run_shell",
     # backtesting
     "run_judas_threshold_sweep", "run_walk_forward", "run_custom_backtest",
     # proposals

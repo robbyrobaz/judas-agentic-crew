@@ -100,6 +100,8 @@ INCLUDE_TOOLS = {    # delegations
     # shared findings memory
     "record_finding", "read_findings", "retract_finding",
     "get_strategy_dossier",
+    # NOTE: operator is a DELEGATOR — it has no direct file/shell/action hands by
+    # design; it delegates fixes to the coder/registrar (who now have them).
 }
 
 

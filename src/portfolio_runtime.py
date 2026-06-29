@@ -1499,7 +1499,15 @@ def run_portfolio_scan(
     route: str = "ibkr",
 ) -> dict[str, Any]:
     init_db(db_path)
-    active = [row for row in list_active_strategies() if str(row["params"].get("execution_engine", "")).startswith(("judas", "buffet"))]
+    # Engines the scan routes to live orders. "custom" added 2026-06-28: the
+    # custom-engine branch in evaluate_active_strategy is fully implemented but was
+    # never in this filter, so well-formed agent-authored ("custom") strategies
+    # were promoted active yet silently never evaluated. This intentionally opens
+    # the agent-code -> live (sim) path. Custom rows missing a custom_strategy_id
+    # bail cleanly inside the branch (no code = no fire), so this only wakes the
+    # well-formed ones.
+    _LIVE_ENGINES = ("judas", "buffet", "custom")
+    active = [row for row in list_active_strategies() if str(row["params"].get("execution_engine", "")).startswith(_LIVE_ENGINES)]
 
     def _row_symbols(row: dict[str, Any]) -> list[str]:
         params = row["params"]

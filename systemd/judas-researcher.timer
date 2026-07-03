@@ -1,19 +1,8 @@
 [Unit]
-Description=Researcher cadence — key session anchors only. Cut from ~21x/day to 6x/day (Jun 18) to curb MiniMax token burn.
+Description=Researcher cadence — every 3h (raised from 6x/day 2026-07-03; only ~21% of the weekly MiniMax quota was being used)
 
 [Timer]
-# Pre-London warmup
-OnCalendar=*-*-* 12:30:00 UTC
-# NY pre-open / market-hours blitz start
-OnCalendar=*-*-* 13:30:00 UTC
-# Mid-morning NY
-OnCalendar=*-*-* 15:45:00 UTC
-# Afternoon NY
-OnCalendar=*-*-* 18:00:00 UTC
-# Post-NY close
-OnCalendar=*-*-* 21:00:00 UTC
-# Sunday weekly overhaul
-OnCalendar=Sun *-*-* 14:00:00 UTC
+OnCalendar=*-*-* 00/3:30:00 UTC
 Persistent=false
 Unit=judas-researcher.service
 

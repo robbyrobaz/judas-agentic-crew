@@ -885,11 +885,24 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
         from src import strategy_registry
 
         cid = int(id)
+        # SECOND OPINION (2026-07-03): an independent M3 call reviews the
+        # candidate against its metrics + the live book BEFORE it goes live —
+        # the mirror of the autofix reviewer, aimed at the decision that loses
+        # money (promoting net-losers). Fail-open on reviewer error; a clear
+        # REJECT blocks the promotion and returns the reason so the promoting
+        # agent can gather more evidence or reject the candidate itself.
+        review = _promotion_second_opinion(db_path=db_path, candidate_id=cid)
+        if not review.get("approve", True):
+            return {"ok": False, "blocked_by_review": True,
+                    "reason": review.get("reason", "second opinion rejected")}
         try:
             new = strategy_registry.promote_candidate(cid, notes=notes or None)
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-        return {"ok": True, "new_strategy_id": int(new.id), "version": int(new.version)}
+        out = {"ok": True, "new_strategy_id": int(new.id), "version": int(new.version)}
+        if review.get("reason"):
+            out["review"] = str(review["reason"])[:200]
+        return out
 
     def reject_candidate_tool(*, id: int, reason: str) -> dict:
         from src import strategy_registry
@@ -1804,6 +1817,89 @@ def _tool_schemas() -> list[dict]:
 # ---------------------------------------------------------------------------
 # litellm seam
 # ---------------------------------------------------------------------------
+
+
+def _promotion_second_opinion(*, db_path: str, candidate_id: int) -> dict:
+    """Independent M3 review of a candidate BEFORE it goes live.
+
+    Mirror of the autofix second-check: one fresh, no-stake M3 call reads the
+    candidate's metrics + the live book for its symbol and votes PROMOTE/REJECT.
+    Spends spare quota exactly where money is lost (net-loser promotions).
+    Fail-OPEN on any reviewer error (never block a promotion on a flaky call);
+    fail-CLOSED only on a clear REJECT. Kill switch: JUDAS_PROMO_REVIEW=0.
+    Skipped under pytest (the gate is for live agent promotions, and unit tests
+    must not make network calls).
+    """
+    if os.environ.get("JUDAS_PROMO_REVIEW", "1") == "0":
+        return {"approve": True, "reason": "review disabled"}
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return {"approve": True, "reason": "pytest"}
+    try:
+        import sqlite3 as _sq
+        conn = _sq.connect(db_path)
+        conn.row_factory = _sq.Row
+        cand = conn.execute(
+            "SELECT symbol, strategy_family, params_json, metrics_json, rationale "
+            "FROM strategy_candidates WHERE id = ?", (candidate_id,),
+        ).fetchone()
+        if cand is None:
+            conn.close()
+            return {"approve": True, "reason": "candidate not found — let registry error"}
+        book = conn.execute(
+            """
+            SELECT a.strategy_family,
+                   COUNT(t.id) AS n_trades,
+                   ROUND(COALESCE(SUM(t.pnl_dollars),0),0) AS pnl
+            FROM active_strategies a
+            LEFT JOIN trades t ON t.strategy_id = a.id AND t.status='closed'
+            WHERE a.state='active' AND a.symbol = ?
+            GROUP BY a.strategy_family
+            """, (cand["symbol"],),
+        ).fetchall()
+        conn.close()
+        book_txt = "\n".join(
+            f"  {r['strategy_family']}: n={r['n_trades']} pnl=${r['pnl']}" for r in book
+        ) or "  (no active strategies on this symbol)"
+
+        import litellm  # type: ignore[import-not-found]
+        resp = litellm.completion(
+            model=os.environ.get("JUDAS_REVIEW_MODEL", "minimax/MiniMax-M3"),
+            messages=[
+                {"role": "system", "content": (
+                    "You are an INDEPENDENT promotion reviewer for a live futures "
+                    "trading book. A candidate strategy is about to go LIVE. Judge "
+                    "only: does the evidence support live promotion? REJECT if the "
+                    "backtest sample is tiny (<15 trades), PF is marginal (<1.2 "
+                    "net), metrics are missing/implausible, or it near-duplicates "
+                    "an active strategy on the same symbol (correlated "
+                    "double-exposure, not diversity). Otherwise PROMOTE — paper "
+                    "evidence-gathering is cheap and slots are not scarce. First "
+                    "line exactly 'VERDICT: PROMOTE' or 'VERDICT: REJECT', then "
+                    "one sentence why."
+                )},
+                {"role": "user", "content": (
+                    f"CANDIDATE #{candidate_id} {cand['symbol']} "
+                    f"{cand['strategy_family']}\n"
+                    f"metrics: {cand['metrics_json']}\n"
+                    f"params: {str(cand['params_json'])[:800]}\n"
+                    f"rationale: {str(cand['rationale'])[:300]}\n\n"
+                    f"LIVE BOOK on {cand['symbol']} (family: closed trades, net pnl):\n"
+                    f"{book_txt}"
+                )},
+            ],
+            api_key=os.environ.get("MINIMAX_API_KEY", ""),
+            api_base=os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
+            temperature=0.0, max_tokens=400, timeout=90,
+        )
+        txt = str(resp["choices"][0]["message"].get("content") or "")
+        reason = txt.strip().replace("\n", " ")[:250]
+        if "VERDICT: REJECT" in txt.upper() or "VERDICT:REJECT" in txt.upper():
+            log.warning("promotion_review.rejected cid=%s: %s", candidate_id, reason)
+            return {"approve": False, "reason": reason}
+        return {"approve": True, "reason": reason}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("promotion_review.error (fail-open): %s", exc)
+        return {"approve": True, "reason": f"review error (fail-open): {exc}"}
 
 
 def _call_llm(

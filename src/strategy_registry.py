@@ -131,6 +131,7 @@ def insert_active_strategy(
     # Ensure symbol/strategy_family inside params match the row.
     use_params = {**use_params, "symbol": sym, "strategy_family": fam}
     with get_conn(_ensure_db()) as conn:
+        _validate_custom_link(conn, use_params)
         # BEGIN IMMEDIATE so the MAX(version) read and the INSERT are atomic —
         # otherwise two concurrent inserts read the same max and create duplicate
         # active rows (db version race).
@@ -261,6 +262,7 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
             _pre_params.setdefault("execution_engine", "judas_native")
             _fixed_params = json.dumps(_pre_params)
             _validate_params_json(_fixed_params)
+            _validate_custom_link(conn, _pre_params)
             current = conn.execute(
                 """
                 SELECT *
@@ -371,6 +373,37 @@ def _params_look_zombie(params: dict[str, Any]) -> bool:
     # judas_native (and anything judas-like / unknown defaults to judas rules)
     present = [k for k in _JUDAS_NATIVE_RUNTIME_KEYS if k in params]
     return len(present) < 3
+
+
+def _validate_custom_link(conn, params: dict[str, Any]) -> None:
+    """Refuse to activate an execution_engine='custom' row without a LOADABLE
+    code link. Root cause of the 2026-06 idle-strategies bug: custom rows were
+    promoted with no custom_strategy_id, so the scan's custom branch bailed
+    (custom_id<=0 → no signal, ever) and they sat silently dead for a week.
+    Raises ValueError so the promotion fails loudly instead of birthing a
+    zombie — the registrar can look up the right code id and retry."""
+    if str(params.get("execution_engine", "")).lower() != "custom":
+        return
+    try:
+        csid = int(params.get("custom_strategy_id") or 0)
+    except (TypeError, ValueError):
+        csid = 0
+    if csid <= 0:
+        raise ValueError(
+            "custom engine requires a custom_strategy_id linking code in "
+            "custom_strategies — without it the strategy can never fire. "
+            "Find it: SELECT id,name FROM custom_strategies WHERE name LIKE '%...%'"
+        )
+    row = conn.execute(
+        "SELECT id FROM custom_strategies WHERE id = ? AND active = 1 "
+        "AND retired_at_utc IS NULL",
+        (csid,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(
+            f"custom_strategy_id={csid} does not match an active row in "
+            f"custom_strategies — the code link is dead; strategy could never fire."
+        )
 
 
 def _validate_params_json(raw: str | None) -> dict[str, Any]:

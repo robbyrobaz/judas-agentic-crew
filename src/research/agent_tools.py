@@ -1217,6 +1217,38 @@ def run_shell(*, command: str, timeout_s: int = 120) -> dict:
         return {"ok": False, "error": f"run_shell failed: {exc}"}
 
 
+def reap_stale_claims(*, db_path: str, max_age_hours: float = 24.0) -> int:
+    """Abandon tasks stuck in 'claimed' longer than max_age_hours.
+
+    An agent that claims a task then dies/times out before complete_task wedges
+    the task in 'claimed' FOREVER — it never reappears in get_open_tasks, so the
+    work is silently lost (38 zombies accumulated May-Jun 2026 this way). Mark
+    them 'abandoned' (not 'open': re-opening ancient tasks would flood the queue
+    with stale work; the operator re-delegates anything still relevant).
+    Returns the number reaped. Never raises."""
+    try:
+        with _connect(db_path) as conn:
+            cur = conn.execute(
+                """
+                UPDATE agent_tasks
+                SET status = 'abandoned',
+                    result_json = json_object('reaped',
+                        'claimed > ' || ? || 'h without completion')
+                WHERE status = 'claimed'
+                  AND claimed_at_utc < datetime('now', ?)
+                """,
+                (max_age_hours, f"-{max_age_hours} hours"),
+            )
+            n = cur.rowcount
+            conn.commit()
+        if n:
+            log.warning("agent_tasks.reaped_stale_claims n=%d", n)
+        return int(n)
+    except Exception:  # noqa: BLE001
+        log.exception("reap_stale_claims failed")
+        return 0
+
+
 def make_tools(*, db_path: str, include: set[str] | None = None,
                team: str | None = None,
                claimed_by: str | None = None,

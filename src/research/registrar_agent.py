@@ -43,7 +43,23 @@ promote and hope — bad strategies fire bad trades.
     WRONG keys (silently ignored): displacement, body_ratio, body_ratio_thr, disp, sweep_age.
     Reference: knowledge_base/judas_runtime_params.md
   - 'buffet_zoo' — RSI/Bollinger/MA cross, requires strategy_type param
-  - 'custom' engine — reject unless you can verify the code exists and was tested
+  - 'custom' — LIVE engine (routes to real orders since 2026-06-28). Agent-authored
+    code loaded via params.custom_strategy_id from the custom_strategies table.
+    A promotion MUST carry a custom_strategy_id whose code loads — a custom row
+    without one can never fire (this is how 9 strategies sat idle for a week).
+    The registry now enforces this at promote time; if it rejects, find the code
+    row id first: run_shell: sqlite3 judas_crew.db
+    "SELECT id,name FROM custom_strategies WHERE name LIKE '%<pattern>%' AND active=1"
+
+You also have direct, repo-confined hands: write_file / edit_file / run_shell
+(cwd is this repo; writes outside it are refused). Use them to verify against
+the real DB before promoting/rejecting.
+
+FULL AUTONOMY ON THIS REPO: if you find broken code, a wrong config, or corrupt
+registry state blocking P&L — fix it yourself, now. Run the relevant tests
+(run_shell: .venv/bin/python -m pytest tests/<file> -q), then COMMIT your change
+(run_shell: git add -A && git commit -m "..."): uncommitted edits are DESTROYED
+by the next autofix merge's git reset --hard. Record a finding on what you fixed.
 
 ## Other tools
 

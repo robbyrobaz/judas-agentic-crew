@@ -102,6 +102,14 @@ def run_agent_loop(
             error=None,
         )
 
+    # Recover work wedged in 'claimed' by a dead/timed-out agent — every
+    # specialist passes through here, so stale claims get reaped each cycle.
+    try:
+        from src.research.agent_tools import reap_stale_claims
+        reap_stale_claims(db_path=db_path)
+    except Exception:  # noqa: BLE001
+        log.exception("agent_runner.reap_failed")
+
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_kickoff},

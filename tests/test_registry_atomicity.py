@@ -193,3 +193,23 @@ def test_insert_active_strategy_respects_passed_params(db_path):
     assert a.params["symbol"] == "MNQ"
     assert a.params["strategy_family"] == "judas_1h"
     assert a.notes == "custom params seed"
+
+
+def test_custom_engine_requires_loadable_code_link(db_path):
+    """2026-07-03 guard: engine='custom' rows must carry a custom_strategy_id
+    that loads real code — promoting without one births a strategy that can
+    never fire (the June idle-strategies bug)."""
+    import pytest
+    from src import strategy_registry as sr
+
+    with pytest.raises(ValueError, match="custom_strategy_id"):
+        sr.insert_active_strategy(
+            symbol="MGC", strategy_family="custom_x",
+            params={"execution_engine": "custom", "strategy_name": "x", "symbol": "MGC"},
+        )
+    with pytest.raises(ValueError, match="does not match an active row"):
+        sr.insert_active_strategy(
+            symbol="MGC", strategy_family="custom_x",
+            params={"execution_engine": "custom", "custom_strategy_id": 999999,
+                    "strategy_name": "x", "symbol": "MGC"},
+        )

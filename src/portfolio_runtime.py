@@ -436,7 +436,7 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
         bars = bars_by_sym.get(symbol)
         if bars is None:
             return fires
-        sig = evaluate_custom_strategy(code=code, bars=bars, params=custom_params)
+        sig = evaluate_custom_strategy(code=code, bars=bars, params={**custom_params, "__csid__": custom_id})
         if sig is None or not isinstance(sig, dict):
             return fires
         try:

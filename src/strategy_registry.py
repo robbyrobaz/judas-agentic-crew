@@ -154,24 +154,31 @@ def insert_active_strategy(
              _utc_now(), notes or "Inserted by registrar."),
         )
         new_id = int(cur.lastrowid)
-        # Supersede the prior active version of this (symbol, family) so two
-        # versions of the same setup can't both be active and double-fire.
-        # Cross-family diversity per symbol is preserved.
+        # Supersede the prior active version of this (symbol, family, slot_key)
+        # so two versions of the same setup can't both be active and double-fire
+        # (cost real money 2026-06-17). For the `custom` family, the slot_key is
+        # the custom_strategy_id (different csids load different code/architectures,
+        # so they coexist). For non-custom families, slot_key == strategy_family
+        # (param tweaks of the same setup supersede prior). Cross-symbol and
+        # cross-family diversity per symbol is always preserved.
+        new_slot_key = _slot_key_for(use_params)
+        slot_filter, slot_params = _supersede_where_clause(
+            sym, fam, new_slot_key, new_id
+        )
         superseded = conn.execute(
-            """
+            f"""
             UPDATE active_strategies
             SET state = 'superseded',
                 deactivated_at_utc = ?,
                 notes = COALESCE(notes, '') || ' [superseded by v' || ? || ']'
-            WHERE symbol = ? AND strategy_family = ? AND state = 'active'
-              AND id != ?
+            WHERE {slot_filter}
             """,
-            (_utc_now(), next_version, sym, fam, new_id),
+            (_utc_now(), next_version, *slot_params),
         ).rowcount
         if superseded:
             log.info(
-                "registry.superseded_prior_active symbol=%s family=%s n=%d new_version=%d",
-                sym, fam, superseded, next_version,
+                "registry.superseded_prior_active symbol=%s family=%s slot_key=%s n=%d new_version=%d",
+                sym, fam, new_slot_key, superseded, next_version,
             )
         row = conn.execute(
             "SELECT * FROM active_strategies WHERE id = ?", (new_id,),
@@ -301,21 +308,27 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
             )
             new_id = int(cur.lastrowid)
 
+            # See insert_active_strategy for the slot_key rationale. Same
+            # csid-aware semantics: `custom` family uses custom_strategy_id,
+            # other families use strategy_family as the slot key.
+            new_slot_key = _slot_key_for(_pre_params)
+            slot_filter, slot_params = _supersede_where_clause(
+                symbol, family, new_slot_key, new_id
+            )
             superseded = conn.execute(
-                """
+                f"""
                 UPDATE active_strategies
                 SET state = 'superseded',
                     deactivated_at_utc = ?,
                     notes = COALESCE(notes, '') || ' [superseded by v' || ? || ']'
-                WHERE symbol = ? AND strategy_family = ? AND state = 'active'
-                  AND id != ?
+                WHERE {slot_filter}
                 """,
-                (_utc_now(), next_version, symbol, family, new_id),
+                (_utc_now(), next_version, *slot_params),
             ).rowcount
             if superseded:
                 log.info(
-                    "registry.superseded_prior_active symbol=%s family=%s n=%d new_version=%d",
-                    symbol, family, superseded, next_version,
+                    "registry.superseded_prior_active symbol=%s family=%s slot_key=%s n=%d new_version=%d",
+                    symbol, family, new_slot_key, superseded, next_version,
                 )
             conn.execute(
                 "UPDATE strategy_candidates SET status = 'promoted' WHERE id = ?",
@@ -373,6 +386,60 @@ def _params_look_zombie(params: dict[str, Any]) -> bool:
     # judas_native (and anything judas-like / unknown defaults to judas rules)
     present = [k for k in _JUDAS_NATIVE_RUNTIME_KEYS if k in params]
     return len(present) < 3
+
+
+def _slot_key_for(params: dict[str, Any]) -> str:
+    """The slot key for supersede semantics.
+
+    For the `custom` family, the slot key is the custom_strategy_id —
+    different csids load different code (different architectures/setup), so
+    they coexist as separate actives on the same symbol. Without this,
+    promoting a new iFVG variant on MBT would supersede an existing ATR-disp
+    variant on the same symbol (loss of architectural diversity).
+
+    For all other families (judas_native, buffet_zoo, etc.), the slot key is
+    the strategy_family itself: param tweaks of the same setup type
+    supersede prior versions (per the 2026-06-17 double-fire dedup rationale
+    in commit 299aae5).
+
+    Returns "" when the params lack the slot identifier (shouldn't happen
+    for custom rows because _validate_custom_link runs first, but we handle
+    it gracefully by falling back to family semantics).
+    """
+    engine = str(params.get("execution_engine", "")).lower()
+    if engine == "custom":
+        try:
+            csid = int(params.get("custom_strategy_id") or 0)
+        except (TypeError, ValueError):
+            csid = 0
+        if csid > 0:
+            return f"csid:{csid}"
+    # Non-custom: the family itself is the slot key (param tweaks supersede).
+    return f"family:{params.get('strategy_family', '')}"
+
+
+def _supersede_where_clause(
+    symbol: str, family: str, slot_key: str, new_id: int
+) -> tuple[str, tuple]:
+    """Build the WHERE clause + params for a slot-aware supersede UPDATE.
+
+    For csid:* slot keys, the clause matches only rows in the same (symbol,
+    family) with the same custom_strategy_id — different csids coexist.
+    For family:* slot keys, the clause matches all active rows in the
+    (symbol, family) — param tweaks of the same setup supersede prior.
+    """
+    if slot_key.startswith("csid:"):
+        csid = slot_key.split(":", 1)[1]
+        return (
+            "symbol = ? AND strategy_family = ? AND state = 'active' "
+            "AND id != ? AND JSON_EXTRACT(params_json, '$.custom_strategy_id') = ?",
+            (symbol, family, new_id, int(csid)),
+        )
+    # family:* — same as before (param tweaks supersede).
+    return (
+        "symbol = ? AND strategy_family = ? AND state = 'active' AND id != ?",
+        (symbol, family, new_id),
+    )
 
 
 def _validate_custom_link(conn, params: dict[str, Any]) -> None:

@@ -64,6 +64,9 @@ ALLOWED_BUILTINS = {
     # Required for `class Foo:` declarations; harmless on its own.
     "__build_class__": __build_class__,
     "__name__": "<custom_strategy>",
+    # NOTE: __import__ is NOT in the bare dict — agent code can't issue raw
+    # imports. Instead, _safe_import is injected at runtime via the
+    # _build_namespace() helper so it can close over the live `sys` module.
 }
 
 
@@ -74,15 +77,24 @@ def _build_namespace() -> dict[str, Any]:
     """Build a fresh restricted namespace for evaluating agent code.
 
     Only ``pandas``, ``numpy``, ``datetime`` modules and the ``ALLOWED_BUILTINS``
-    subset are exposed. Notably absent: ``os``, ``sys``, ``subprocess``,
-    ``socket``, ``open``, ``__import__``, ``eval``, ``exec``.
+    subset are exposed. Notably absent from builtins: ``os``, ``sys``,
+    ``subprocess``, ``socket``, ``open``, ``eval``, ``exec``.
+
+    ``__import__`` IS injected (as ``_safe_import``) so that numpy/pandas
+    internals can lazy-import their own already-loaded submodules
+    (e.g. ``ndarray.max`` -> ``numpy._methods``). Without this, any code
+    that uses ``arr.max()`` / ``arr.min()`` style method calls dies with
+    ``KeyError: '__import__'``. The guard only returns modules already in
+    ``sys.modules`` so agent code can't pull in fresh modules.
     """
     import numpy as np
     import pandas as pd
     import datetime as _dt
 
+    bi = dict(ALLOWED_BUILTINS)
+    bi["__import__"] = _safe_import
     return {
-        "__builtins__": dict(ALLOWED_BUILTINS),
+        "__builtins__": bi,
         "np": np,
         "pd": pd,
         "datetime": _dt,
@@ -191,7 +203,7 @@ def evaluate_custom_strategy(
         log.warning("custom_strategy.timeout: %s", exc)
         return None
     except Exception as exc:  # noqa: BLE001
-        log.warning("custom_strategy.eval_failed: %s: %s", type(exc).__name__, exc)
+        log.warning("custom_strategy.eval_failed csid=%s: %s: %s", params.get("__csid__", "?") if isinstance(params, dict) else "?", type(exc).__name__, exc)
         return None
     if result is None:
         return None
@@ -199,6 +211,56 @@ def evaluate_custom_strategy(
         log.warning("custom_strategy.bad_return_type: %s", type(result).__name__)
         return None
     return result
+
+
+# Modules agent code must NEVER be able to import, even via __import__.
+# (numpy/pandas internals are NOT in this set — see _safe_import.)
+_BLOCKED_IMPORTS = frozenset({
+    "os", "sys", "subprocess", "socket", "shutil", "pathlib", "pathspec",
+    "importlib", "ctypes", "cffi", "multiprocessing", "threading",
+    "http", "urllib", "urllib3", "requests", "ftplib", "smtplib",
+    "ssl", "asyncio", "select", "fcntl", "pwd", "grp", "resource",
+    "tempfile", "glob", "fnmatch", "fileinput", "zipfile", "tarfile",
+    "pickle", "marshal", "shelve", "dbm", "sqlite3",
+    "builtins", "_io", "io",
+    "antigravity", "this", "__future__",
+    # Anything starting with "src." or our own packages — never let an agent
+    # reach into the runtime internals.
+    # (We don't list each submodule here; the prefix check in _safe_import
+    # catches them.)
+})
+
+
+def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+    """Restricted ``__import__`` for the agent-strategy sandbox.
+
+    Strategy code in the sandbox never directly issues ``import`` statements,
+    but **numpy/pandas internals** do: e.g. ``ndarray.max()`` lazily imports
+    ``numpy._methods``. With the bare ``ALLOWED_BUILTINS`` that lookup hits
+    ``KeyError: '__import__'`` and the strategy silently dies. We:
+
+      1. Always reject top-level imports from ``_BLOCKED_IMPORTS`` and any
+         submodule of an internal package (``src.*``, ``crewai.*``).
+      2. Allow ``__import__`` for modules already loaded in ``sys.modules``
+         so numpy/pandas's own lazy imports succeed.
+      3. Reject new (not-yet-loaded) module imports outright — agent code
+         can't pull in fresh modules via this path.
+
+    Net effect: an agent that writes ``__import__('os')`` still gets
+    ``ImportError``; an agent that writes ``arr.max()`` works because numpy
+    can lazily import its own already-registered submodules.
+    """
+    import sys as _sys
+
+    # 1. Block the dangerous top-levels entirely.
+    top = name.split(".", 1)[0]
+    if top in _BLOCKED_IMPORTS or top.startswith("src") or top.startswith("crewai"):
+        raise ImportError(f"import of {name!r} is not permitted in the strategy sandbox")
+    # 2. Only return modules already loaded.
+    if name in _sys.modules:
+        return _sys.modules[name]
+    # 3. Fresh modules are forbidden.
+    raise ImportError(f"import of {name!r} is not permitted in the strategy sandbox")
 
 
 _BARS_PER_DAY = {"5m": 288, "15m": 96, "1h": 24}

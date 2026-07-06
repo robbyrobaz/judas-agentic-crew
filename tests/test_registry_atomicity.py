@@ -178,6 +178,81 @@ def test_insert_active_strategy_supersedes_prior_version(db_path):
     assert fams == {"judas_1h", "buffet_zoo"}
 
 
+def test_insert_active_strategy_custom_different_csids_coexist(db_path):
+    """Regression (2026-07-05): for the `custom` family, the slot key is the
+    custom_strategy_id, not the family. Different csids load different code
+    (different architectures), so multiple customs on the same symbol MUST
+    coexist. Before the fix, promoting a new iFVG variant on MBT would
+    supersede an existing ATR-disp variant on the same symbol — loss of
+    architectural diversity the brief explicitly allows."""
+    from src import strategy_registry as sr
+
+    # Insert two distinct test custom_strategy_id rows so the test doesn't
+    # depend on specific production csids.
+    conn = sqlite3.connect(sr._db_path())
+    cur = conn.execute(
+        "INSERT INTO custom_strategies (name, code, active, created_at_utc, symbol, rationale, backtest_metrics_json) VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), 'MBT', 'test stub', '{}')",
+        ("test_slotkey_csid_a", "def evaluate(bars, params): return []"),
+    )
+    csid_a = cur.lastrowid
+    cur = conn.execute(
+        "INSERT INTO custom_strategies (name, code, active, created_at_utc, symbol, rationale, backtest_metrics_json) VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), 'MBT', 'test stub', '{}')",
+        ("test_slotkey_csid_b", "def evaluate(bars, params): return []"),
+    )
+    csid_b = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    try:
+        # Two distinct customs on MBT — different csids. Both must stay active.
+        sr.insert_active_strategy(
+            symbol="MBT", strategy_family="custom",
+            params={"symbol": "MBT", "strategy_family": "custom",
+                    "execution_engine": "custom", "custom_strategy_id": csid_a,
+                    "timeframe": "5m"},
+        )
+        sr.insert_active_strategy(
+            symbol="MBT", strategy_family="custom",
+            params={"symbol": "MBT", "strategy_family": "custom",
+                    "execution_engine": "custom", "custom_strategy_id": csid_b,
+                    "timeframe": "5m"},
+        )
+
+        actives = [r for r in sr.list_active_strategies()
+                   if r["symbol"] == "MBT" and r["strategy_family"] == "custom"
+                   and r["state"] == "active"]
+        active_csids = sorted(
+            r["params"].get("custom_strategy_id") for r in actives
+        )
+        assert active_csids == sorted([csid_a, csid_b]), (
+            f"expected both csids active, got {active_csids}"
+        )
+
+        # A THIRD insert with the SAME csid as the first should supersede
+        # ONLY the first row — the second (different csid) must stay active.
+        sr.insert_active_strategy(
+            symbol="MBT", strategy_family="custom",
+            params={"symbol": "MBT", "strategy_family": "custom",
+                    "execution_engine": "custom", "custom_strategy_id": csid_a,
+                    "timeframe": "5m"},
+        )
+        actives = [r for r in sr.list_active_strategies()
+                   if r["symbol"] == "MBT" and r["strategy_family"] == "custom"
+                   and r["state"] == "active"]
+        active_csids = sorted(
+            r["params"].get("custom_strategy_id") for r in actives
+        )
+        assert active_csids == sorted([csid_a, csid_b]), (
+            f"same-csid re-insert should supersede prior a but leave b active; got {active_csids}"
+        )
+    finally:
+        conn = sqlite3.connect(sr._db_path())
+        conn.execute("DELETE FROM custom_strategies WHERE id IN (?, ?)",
+                     (csid_a, csid_b))
+        conn.commit()
+        conn.close()
+
+
 def test_insert_active_strategy_respects_passed_params(db_path):
     from src import strategy_registry as sr
 

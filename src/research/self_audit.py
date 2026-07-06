@@ -159,42 +159,33 @@ def build_leaderboard_block(db_path: str) -> str:
     # --- Workshop cross-reference: what's actually working in the
     # non-agentic sibling repo. Use this as a seed source for what
     # strategy families to bring into the agentic crew.
+    # NB: knowledge_base/buffet.yaml is a STATIC backtest file (no live paper
+    # trade data). Keys actually present per row: id, symbol, kind, type,
+    # pf, trades, params. live-paper columns (paper_n, paper_pnl_dollars,
+    # fires_total) are NOT in this file — drop them rather than KeyError.
     try:
         from src.research.explore import _load_workshop_leaderboard_compact
         wb = _load_workshop_leaderboard_compact(limit=20)
-        # Sort: paper P&L desc (None last), then backtest PF desc.
-        wb_sorted = sorted(
-            wb,
-            key=lambda r: (
-                -1 if r.get("paper_pnl_dollars") is not None else 0,
-                -(r.get("paper_pnl_dollars") or 0),
-                -float(r.get("backtest_pf") or 0.0),
-            ),
-        )
+        # Sort by pf desc.
+        wb_sorted = sorted(wb, key=lambda r: -float(r.get("pf") or 0.0))
         if wb_sorted:
             out.append("")
             out.append("=== WORKSHOP CROSS-REFERENCE (the non-agentic system's Strategy Buffet) ===")
-            out.append("These are running RIGHT NOW in /home/rob/judas-futures-workshop")
-            out.append("with REAL paper-live P&L on the same symbols. Use them as seeds.")
+            out.append("Static backtest file at /home/rob/judas-futures-workshop")
+            out.append("→ knowledge_base/buffet.yaml. Use as a seed source for new strategy families.")
+            out.append("Live paper-trade data not currently exported — this block is backtest-only.")
             out.append("")
             out.append(
-                f"  {'strategy_id':<30} {'sym':<7} {'kind':<6} {'BT_PF':>6} {'BT_WR':>6} "
-                f"{'BT_n':>5} {'paper_n':>8} {'paper_$':>10} {'fires':>6}"
+                f"  {'strategy_id':<30} {'sym':<7} {'kind':<6} {'BT_PF':>6} "
+                f"{'BT_n':>5} {'type':<10}"
             )
             for r in wb_sorted[:12]:
-                paper_pnl = r.get("paper_pnl_dollars")
-                paper_n = r.get("paper_n")
-                fires = r.get("fires_total")
                 out.append(
                     f"  {str(r['id'])[:30]:<30} {str(r['symbol'])[:7]:<7} "
-                    f"{str(r['kind'])[:6]:<6} {r['backtest_pf']:6.2f} "
-                    f"{r['backtest_winrate']*100:5.0f}% {r['backtest_trades']:>5} "
-                    f"{str(paper_n) if paper_n is not None else '—':>8} "
-                    f"${(paper_pnl if paper_pnl is not None else 0):>+9.2f} "
-                    f"{str(fires) if fires is not None else '—':>6}"
+                    f"{str(r['kind'])[:6]:<6} {float(r.get('pf') or 0):6.2f} "
+                    f"{int(r.get('trades') or 0):>5} {str(r.get('type') or '')[:10]:<10}"
                 )
             out.append("")
-            out.append("  Use query_workshop_db(sql=...) for deeper drill-down on any of these.")
             out.append("  Use get_workshop_leaderboard(limit=N) for the full ranked list.")
     except Exception as exc:  # noqa: BLE001
         out.append(f"[workshop_block error: {exc}]")

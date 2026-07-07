@@ -1557,6 +1557,15 @@ def run_portfolio_scan(
             continue
         fires = evaluate_active_strategy(row, tf_bars)
         is_pair = engine == "buffet_pair" and len(fires) == 2
+        # Per-strategy override: eval_only_no_orders in params forces
+        # place_orders=False for THIS strategy even when the scan-level flag
+        # is True. Signal evaluation + recording still happen, but no orders
+        # are placed (skip_reason='eval_only_no_orders' is set downstream).
+        # Used by operator MCL ghost-containment to stop live fills while
+        # still running the evaluation pass.
+        _strategy_place_orders = place_orders and not bool(
+            row["params"].get("eval_only_no_orders", False)
+        )
 
         if not is_pair:
             for fire in fires:
@@ -1568,7 +1577,7 @@ def run_portfolio_scan(
                     client_id=exec_client_id,
                     max_open_positions=max_open_positions,
                     max_trades_per_day=max_trades_per_day,
-                    place_orders=place_orders,
+                    place_orders=_strategy_place_orders,
                     placed_so_far=placed,
                     max_new_trades=max_new_trades,
                     route=route,
@@ -1601,7 +1610,7 @@ def run_portfolio_scan(
             client_id=exec_client_id,
             max_open_positions=max_open_positions,
             max_trades_per_day=max_trades_per_day,
-            place_orders=place_orders,
+            place_orders=_strategy_place_orders,
             placed_so_far=placed,
             max_new_trades=max_new_trades,
             route=route,
@@ -1618,7 +1627,7 @@ def run_portfolio_scan(
             client_id=exec_client_id,
             max_open_positions=max_open_positions,
             max_trades_per_day=max_trades_per_day,
-            place_orders=place_orders,
+            place_orders=_strategy_place_orders,
             placed_so_far=placed,
             max_new_trades=max_new_trades,
             route=route,

@@ -201,6 +201,19 @@ def run_one_autofix(
     try:
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
+        # Reap rows stuck in 'running' — a coder process that dies mid-run never
+        # updates its row, wedging it forever (382/385 sat "running" 20-30h,
+        # 2026-07-07). NOTE the T-format: rows store ISO-with-T; datetime('now')
+        # emits a space, and 'T' > ' ' makes same-day string compares silently
+        # never match.
+        conn.execute(
+            "UPDATE auto_fixes SET status='error', "
+            "test_output_tail='reaped: stuck in running >6h (process died mid-run)', "
+            "finished_at_utc=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+            "WHERE status='running' "
+            "AND started_at_utc < strftime('%Y-%m-%dT%H:%M:%SZ','now','-6 hours')"
+        )
+        conn.commit()
         if target_autofix_id is not None:
             row = conn.execute(
                 """SELECT id, symptom_category, symptom_hash, symptom_summary

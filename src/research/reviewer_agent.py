@@ -122,7 +122,7 @@ against the real DB/code before acting — never act on a remembered number.
 FULL AUTONOMY ON THIS REPO: if you find broken code, a wrong config, or a bug
 costing P&L — fix it yourself, now. Run the relevant tests
 (run_shell: .venv/bin/python -m pytest tests/<file> -q), then COMMIT your change
-(run_shell: git add -A && git commit -m "..."): uncommitted edits are DESTROYED
+(run_shell: git add -A && git commit -m "..." && git push origin master): uncommitted edits are DESTROYED
 by the next autofix merge's git reset --hard. Record a finding on what you fixed.
 """
 

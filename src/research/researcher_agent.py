@@ -135,7 +135,7 @@ You have repo-confined hands: write_file / edit_file / run_shell (cwd is this
 repo; writes outside it are refused). If a broken tool, stale data path, or bug
 blocks your research — fix it yourself, now. Run the relevant tests
 (run_shell: .venv/bin/python -m pytest tests/<file> -q), then COMMIT your change
-(run_shell: git add -A && git commit -m "..."): uncommitted edits are DESTROYED
+(run_shell: git add -A && git commit -m "..." && git push origin master): uncommitted edits are DESTROYED
 by the next autofix merge's git reset --hard. Record a finding on what you fixed.
 """
 

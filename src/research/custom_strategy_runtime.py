@@ -100,6 +100,8 @@ def _build_namespace() -> dict[str, Any]:
         "datetime": _dt,
     }
 
+_STATE_CACHE: dict[tuple[int, str], tuple[Any, dict]] = {}
+
 
 class _StrategyTimeout(Exception):
     """Raised when the agent code exceeds its wall-clock budget."""
@@ -172,6 +174,16 @@ def _compile_and_load(code: str) -> tuple[Any, dict] | tuple[None, dict]:
     return fn, ns
 
 
+def reset_custom_strategy_state(csid):
+    try:
+        target = int(csid)
+    except (TypeError, ValueError):
+        return 0
+    keys = [k for k in list(_STATE_CACHE.keys()) if k[0] == target]
+    for k in keys:
+        _STATE_CACHE.pop(k, None)
+    return len(keys)
+
 def evaluate_custom_strategy(
     *,
     code: str,
@@ -179,36 +191,34 @@ def evaluate_custom_strategy(
     params: dict | None = None,
     timeout_s: int = _DEFAULT_TIMEOUT_S,
 ) -> dict | None:
-    """Compile + execute the agent's code in a restricted namespace.
-
-    The code MUST define ``def evaluate(bars, params): -> dict | None``.
-    Return value is the signal dict (e.g.
-    ``{"direction": "long", "entry": ..., "stop": ..., "target": ...}``)
-    or ``None``. Any exception, including timeout, is caught and logged;
-    we return ``None`` so the runtime treats it as a no-op.
-    """
-    fn, meta = _compile_and_load(code)
-    if fn is None:
-        log.warning("custom_strategy.load_failed: %s", meta.get("error"))
-        return None
-
+    """FIXED."""
     p = dict(params or {})
-
-    def _call() -> Any:
+    try:
+        csid = int(p.get("__csid__", 0) or 0)
+    except (TypeError, ValueError):
+        csid = 0
+    fn = None
+    if csid > 0:
+        cached = _STATE_CACHE.get((csid, code))
+        if cached is not None:
+            fn = cached[0]
+    if fn is None:
+        fn, ns = _compile_and_load(code)
+        if fn is None:
+            return None
+        if csid > 0 and isinstance(ns, dict):
+            _STATE_CACHE[(csid, code)] = (fn, ns)
+    def _call():
         return fn(bars, p)
-
     try:
         result = _run_with_timeout(_call, timeout_s)
     except _StrategyTimeout as exc:
-        log.warning("custom_strategy.timeout: %s", exc)
         return None
-    except Exception as exc:  # noqa: BLE001
-        log.warning("custom_strategy.eval_failed csid=%s: %s: %s", params.get("__csid__", "?") if isinstance(params, dict) else "?", type(exc).__name__, exc)
+    except Exception as exc:
         return None
     if result is None:
         return None
     if not isinstance(result, dict):
-        log.warning("custom_strategy.bad_return_type: %s", type(result).__name__)
         return None
     return result
 

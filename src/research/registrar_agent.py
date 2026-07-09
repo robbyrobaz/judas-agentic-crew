@@ -11,7 +11,7 @@ import time
 
 from src.research import agent_tools
 from src.research.agent_runner import (
-    AgentDecisionResult, run_agent_loop,
+    AgentAction, AgentDecisionResult, run_agent_loop,
 )
 
 log = logging.getLogger(__name__)
@@ -115,6 +115,10 @@ def run_registrar_decision(
         db_path=db_path, include=INCLUDE_TOOLS, team="registrar",
         claimed_by="registrar_agent", author="registrar",
     )
+    deterministic = _run_structured_queue(db_path=db_path, tools=tools, started=started)
+    if deterministic is not None:
+        return deterministic
+
     return run_agent_loop(
         db_path=db_path,
         system_prompt=SYSTEM_PROMPT.format(
@@ -124,4 +128,121 @@ def run_registrar_decision(
         tools=tools, schemas=schemas,
         turn_budget=turn_budget, time_budget_s=time_budget_s,
         minimax_model=minimax_model,
+    )
+
+
+_STRUCTURED_QUEUE_ACTIONS = {
+    "retire_strategy",
+    "modify_strategy_params",
+    "promote_candidate",
+    "reject_candidate",
+    "reactivate_demoted",
+}
+
+
+def _task_payload(task: dict) -> dict:
+    payload = task.get("payload") or {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _task_reason(task: dict, payload: dict) -> str:
+    reason = payload.get("reason") or payload.get("rationale") or task.get("rationale")
+    return str(reason or "queued registry mutation")
+
+
+def _target_id(payload: dict, *keys: str) -> int:
+    for key in keys:
+        if payload.get(key) is not None:
+            return int(payload[key])
+    raise ValueError("queued registry task missing target id")
+
+
+def _run_structured_queue(*, db_path: str, tools: dict, started: float) -> AgentDecisionResult | None:
+    tasks = tools["get_open_tasks"](limit=25)
+    if isinstance(tasks, dict):
+        return None
+    structured = [
+        t for t in (tasks or [])
+        if str(t.get("action") or "") in _STRUCTURED_QUEUE_ACTIONS
+    ]
+    if not structured:
+        return None
+
+    previous_db_path = os.environ.get("JUDAS_DB_PATH")
+    os.environ["JUDAS_DB_PATH"] = db_path
+    actions: list[AgentAction] = []
+    processed = 0
+    try:
+        for task in structured:
+            tid = int(task["id"])
+            payload = _task_payload(task)
+            rationale = _task_reason(task, payload)
+            claim = tools["claim_task"](task_id=tid)
+            actions.append(AgentAction(
+                action="claim_task", target_id=tid, payload={"task_id": tid},
+                rationale=rationale,
+                tool_result=claim if isinstance(claim, dict) else {"value": claim},
+            ))
+            if not isinstance(claim, dict) or not claim.get("ok"):
+                continue
+            action = str(task.get("action") or "")
+            target_id: int | None = None
+            try:
+                if action == "retire_strategy":
+                    target_id = _target_id(payload, "target_id", "strategy_id", "id")
+                    result = tools["retire_strategy"](id=target_id, reason=rationale)
+                elif action == "modify_strategy_params":
+                    target_id = _target_id(payload, "target_id", "strategy_id", "id")
+                    new_params = payload.get("new_params")
+                    if not isinstance(new_params, dict):
+                        new_params = payload.get("params")
+                    if not isinstance(new_params, dict):
+                        new_params = {
+                            k: v for k, v in payload.items()
+                            if k not in {"target_id", "strategy_id", "id", "reason", "rationale"}
+                        }
+                    result = tools["modify_strategy_params"](
+                        id=target_id, new_params=dict(new_params), rationale=rationale,
+                    )
+                elif action == "promote_candidate":
+                    target_id = _target_id(payload, "target_id", "candidate_id", "id")
+                    result = tools["promote_candidate"](id=target_id, notes=rationale)
+                elif action == "reject_candidate":
+                    target_id = _target_id(payload, "target_id", "candidate_id", "id")
+                    result = tools["reject_candidate"](id=target_id, reason=rationale)
+                elif action == "reactivate_demoted":
+                    target_id = _target_id(payload, "target_id", "demotion_id", "id")
+                    result = tools["reactivate_demoted"](demotion_id=target_id)
+                else:
+                    result = {"ok": False, "error": f"unsupported structured action: {action}"}
+            except Exception as exc:  # noqa: BLE001
+                result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+            if not isinstance(result, dict):
+                result = {"ok": True, "value": result}
+            actions.append(AgentAction(
+                action=action, target_id=target_id, payload=payload,
+                rationale=rationale, tool_result=result,
+            ))
+            status = "done" if result.get("ok") else "failed"
+            complete = tools["complete_task"](task_id=tid, result=result, status=status)
+            actions.append(AgentAction(
+                action="complete_task", target_id=tid,
+                payload={"task_id": tid, "status": status},
+                rationale=rationale,
+                tool_result=complete if isinstance(complete, dict) else {"value": complete},
+            ))
+            processed += 1
+    finally:
+        if previous_db_path is None:
+            os.environ.pop("JUDAS_DB_PATH", None)
+        else:
+            os.environ["JUDAS_DB_PATH"] = previous_db_path
+
+    if processed == 0:
+        return None
+    return AgentDecisionResult(
+        success=True, actions_taken=actions,
+        narrative=f"Registrar deterministically processed {processed} queued registry task(s).",
+        turns_used=0, elapsed_s=time.time() - started, fallback_used=False,
+        raw_messages=[], error=None,
     )

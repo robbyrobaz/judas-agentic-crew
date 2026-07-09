@@ -992,16 +992,23 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
             old_params_json = str(row["params_json"] or "{}")
             now = _utc_now()
 
-            # Ensure new_params has identifying keys for validation parity.
+            # Start with the requested patch, then merge it over old params.
             merged = dict(new_params)
-            merged.setdefault("symbol", symbol)
             try:
                 old_params = json.loads(old_params_json)
             except (TypeError, json.JSONDecodeError):
                 old_params = {}
+            if not isinstance(old_params, dict):
+                old_params = {}
             for alt in ("strategy_name", "strategy_family"):
                 if alt not in merged and alt in old_params:
                     merged[alt] = old_params[alt]
+            # Treat new_params as a patch. A queued eval_only modify often sends
+            # only {"eval_only_no_orders": true}; preserve the runtime engine,
+            # custom_strategy_id, timeframe, sizing, etc. from the old row.
+            merged = {**old_params, **merged}
+            merged.setdefault("symbol", symbol)
+            merged.setdefault("strategy_family", family)
 
             # 1) Audit: write candidate row showing the modify intent.
             cur = conn.execute(

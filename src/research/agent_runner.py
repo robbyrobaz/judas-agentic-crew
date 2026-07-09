@@ -48,6 +48,46 @@ class AgentDecisionResult:
     error: str | None = None
 
 
+def _record_llm_usage(*, db_path: str, tokens: int) -> None:
+    """Append one call's token usage to llm_usage. Never raises."""
+    import sqlite3
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS llm_usage ("
+            "ts_utc TEXT NOT NULL, tokens INTEGER NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO llm_usage (ts_utc, tokens) VALUES "
+            "(strftime('%Y-%m-%dT%H:%M:%SZ','now'), ?)", (int(tokens),))
+        conn.commit()
+        conn.close()
+    except Exception:  # noqa: BLE001
+        log.exception("llm_usage.record_failed")
+
+
+def daily_tokens_used(*, db_path: str) -> int:
+    """Total recorded tokens since UTC midnight. 0 on any error."""
+    import sqlite3
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA busy_timeout=30000")
+        row = conn.execute(
+            "SELECT COALESCE(SUM(tokens),0) FROM llm_usage "
+            "WHERE ts_utc >= strftime('%Y-%m-%dT00:00:00Z','now')"
+        ).fetchone()
+        conn.close()
+        return int(row[0] or 0)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+# Teams that keep running even over budget — position protection beats pacing.
+_BUDGET_EXEMPT_TEAMS = {"trader"}
+_DEFAULT_DAILY_TOKEN_BUDGET = 300_000_000  # ~2.1B/wk quota ≈ 2.8B; leave headroom
+
+
 def _sanitize_tool_call_json(msg: dict) -> dict:
     """Force every tool_call's `arguments` to be a VALID JSON string before the
     assistant message enters history.
@@ -85,6 +125,7 @@ def run_agent_loop(
     turn_budget: int,
     time_budget_s: int,
     minimax_model: str = "minimax/MiniMax-M3",
+    team: str | None = None,
 ) -> AgentDecisionResult:
     """Run the standard ReAct-ish loop. Pure-deterministic when LLM is mocked."""
     started = time.time()
@@ -110,6 +151,23 @@ def run_agent_loop(
     except Exception:  # noqa: BLE001
         log.exception("agent_runner.reap_failed")
 
+    # Daily token budget — pace the crew so it lives all week instead of
+    # slamming into the MiniMax quota wall mid-week (2026-07-09: 100% burned,
+    # every agent dead INCLUDING the trader during a live position emergency).
+    # The trader is exempt: position protection beats pacing.
+    budget = int(os.environ.get("JUDAS_DAILY_TOKEN_BUDGET", _DEFAULT_DAILY_TOKEN_BUDGET))
+    if budget > 0 and (team or "") not in _BUDGET_EXEMPT_TEAMS:
+        used = daily_tokens_used(db_path=db_path)
+        if used >= budget:
+            log.warning("agent_runner.daily_budget_reached team=%s used=%d budget=%d — skipping cycle",
+                        team, used, budget)
+            return AgentDecisionResult(
+                success=True, actions_taken=[],
+                narrative=f"daily token budget reached ({used:,}/{budget:,}) — cycle skipped",
+                turns_used=0, elapsed_s=time.time() - started,
+                fallback_used=True, raw_messages=[], error=None,
+            )
+
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_kickoff},
@@ -132,6 +190,7 @@ def run_agent_loop(
         else:
             remaining = max(1, int(time_budget_s - elapsed))
         response = None
+        quota_exhausted = False
         for _llm_try in range(3):
             try:
                 response = _call_llm(
@@ -143,11 +202,39 @@ def run_agent_loop(
                 error = None
                 break
             except Exception as exc:  # noqa: BLE001
+                # Quota exhaustion (MiniMax 429 "Token Plan usage limit reached")
+                # is NOT a crash — retrying just burns time, and exiting failed
+                # leaves the systemd unit red masking real failures (2026-07-09:
+                # the trader died mid-emergency this way). Skip cleanly; the
+                # timer retries next cycle after the window resets.
+                s = str(exc)
+                if "rate_limit" in s or "usage limit" in s or '"429"' in s:
+                    quota_exhausted = True
+                    log.warning("agent_runner.quota_exhausted — skipping cycle cleanly")
+                    break
                 error = f"llm call failed: {exc}"
                 log.warning("agent_runner.llm_retry attempt=%d err=%s", _llm_try + 1, exc)
                 time.sleep(2)
+        if quota_exhausted:
+            return AgentDecisionResult(
+                success=True, actions_taken=actions,
+                narrative="MiniMax quota exhausted — cycle skipped, timer retries after reset.",
+                turns_used=turn, elapsed_s=time.time() - started,
+                fallback_used=True, raw_messages=messages, error=None,
+            )
         if response is None:
             break  # all retries exhausted
+
+        # Token accounting → llm_usage(day, tokens). The daily budget guard in
+        # the runners reads this; without metering nothing stops a runaway from
+        # hitting the MiniMax wall mid-week (2.33B burned in 7 days, 2026-07-09).
+        try:
+            u = response.get("usage") if isinstance(response, dict) else getattr(response, "usage", None)
+            tok = int((u or {}).get("total_tokens", 0) if isinstance(u, dict) else getattr(u, "total_tokens", 0) or 0)
+            if tok:
+                _record_llm_usage(db_path=db_path, tokens=tok)
+        except Exception:  # noqa: BLE001
+            pass
 
         # Sanitize tool-call JSON BEFORE it enters history (M3 can emit malformed
         # arguments that 400 the next request and abort the cycle).

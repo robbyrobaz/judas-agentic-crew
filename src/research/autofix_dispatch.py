@@ -242,6 +242,36 @@ def run_one_autofix(
     symptom_summary = row["symptom_summary"]
     slug = (symptom_category or "fix").replace(" ", "-")[:32]
 
+    # Retry-storm cap: after 3 failed attempts on the SAME symptom, park it as
+    # needs_human instead of burning another 40-turn coder run on the identical
+    # wall (the OCO bug alone ate 6 failed runs; failed autofix retries were a
+    # top token sink in the 2026-07-09 quota blowout). A human (or a re-filed,
+    # sharper task) resets the loop.
+    try:
+        conn = sqlite3.connect(str(db_path))
+        prior_failures = conn.execute(
+            "SELECT COUNT(*) FROM auto_fixes WHERE symptom_hash = "
+            "(SELECT symptom_hash FROM auto_fixes WHERE id = ?) "
+            "AND status IN ('error','denied','rejected_review') AND id != ?",
+            (autofix_id, autofix_id),
+        ).fetchone()[0]
+        if prior_failures >= 3:
+            conn.execute(
+                "UPDATE auto_fixes SET status='needs_human', "
+                "test_output_tail='parked: ' || ? || ' prior failed attempts on this symptom', "
+                "finished_at_utc=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?",
+                (prior_failures, autofix_id),
+            )
+            conn.commit()
+            conn.close()
+            log.warning("autofix_dispatch.parked_needs_human id=%s failures=%d",
+                        autofix_id, prior_failures)
+            return {"ok": False, "status": "needs_human", "autofix_id": autofix_id,
+                    "reason": f"{prior_failures} prior failed attempts — parked for human review"}
+        conn.close()
+    except sqlite3.Error:
+        log.exception("autofix_dispatch.failure_count_check_failed")
+
     try:
         ctx = create_autofix_worktree(
             autofix_id=autofix_id, symptom_slug=slug, repo_root=repo_root,

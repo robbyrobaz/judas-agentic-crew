@@ -66,6 +66,7 @@ def run_trader_decision(
         claimed_by="trader_agent", author="trader",
     )
     return run_agent_loop(
+        team="trader",
         db_path=db_path,
         system_prompt=SYSTEM_PROMPT.format(
             turn_budget=turn_budget, time_budget_s=time_budget_s,

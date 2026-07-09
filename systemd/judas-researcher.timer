@@ -1,8 +1,8 @@
 [Unit]
-Description=Researcher cadence — every 3h (raised from 6x/day 2026-07-03; only ~21% of the weekly MiniMax quota was being used)
+Description=Researcher cadence — every 6h (trimmed 2026-07-09 after quota blowout: 2.33B/wk burned vs ~2.8B quota)
 
 [Timer]
-OnCalendar=*-*-* 00/3:30:00 UTC
+OnCalendar=*-*-* 00/6:30:00 UTC
 Persistent=false
 Unit=judas-researcher.service
 

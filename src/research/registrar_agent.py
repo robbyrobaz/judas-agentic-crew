@@ -116,6 +116,7 @@ def run_registrar_decision(
         claimed_by="registrar_agent", author="registrar",
     )
     return run_agent_loop(
+        team="registrar",
         db_path=db_path,
         system_prompt=SYSTEM_PROMPT.format(
             turn_budget=turn_budget, time_budget_s=time_budget_s,

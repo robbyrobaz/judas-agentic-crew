@@ -1,8 +1,8 @@
 [Unit]
-Description=Operator cadence — every 4h (raised from 2x/day 2026-07-03; quota headroom, faster book management)
+Description=Operator cadence — every 6h (trimmed 2026-07-09 after quota blowout)
 
 [Timer]
-OnCalendar=*-*-* 00/4:00:00 UTC
+OnCalendar=*-*-* 00/6:00:00 UTC
 Persistent=false
 Unit=judas-operator.service
 

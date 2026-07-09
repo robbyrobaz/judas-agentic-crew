@@ -278,6 +278,7 @@ def run_operator_decision(
     today_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     preload = _build_operator_kickoff(db_path)
     base = run_agent_loop(
+        team="operator",
         db_path=db_path,
         system_prompt=SYSTEM_PROMPT.format(
             turn_budget=turn_budget, time_budget_s=time_budget_s,

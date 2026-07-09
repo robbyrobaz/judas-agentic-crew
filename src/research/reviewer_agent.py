@@ -448,6 +448,7 @@ def run_reviewer_decision(
         claimed_by="reviewer_agent", author="reviewer",
     )
     return run_agent_loop(
+        team="reviewer",
         db_path=db_path,
         system_prompt=SYSTEM_PROMPT.format(
             turn_budget=turn_budget, time_budget_s=time_budget_s,

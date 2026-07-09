@@ -313,6 +313,7 @@ def run_researcher_decision(
     kickoff = _build_kickoff(db_path)
 
     return run_agent_loop(
+        team="researcher",
         db_path=db_path,
         system_prompt=SYSTEM_PROMPT.format(
             turn_budget=turn_budget, time_budget_s=time_budget_s,

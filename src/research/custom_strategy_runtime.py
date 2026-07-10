@@ -147,9 +147,9 @@ def _run_with_timeout(callable_fn, timeout_s: int) -> Any:
     if "error" in holder:
         raise holder["error"]  # type: ignore[misc]
     return holder.get("result")
+_STATE_CACHE = {}
 
-
-def _compile_and_load(code: str) -> tuple[Any, dict] | tuple[None, dict]:
+def _compile_and_load(code: str, *, csid: int = 0):
     """Compile ``code`` and exec into a fresh namespace.
 
     Returns ``(evaluate_fn, ns)`` on success, ``(None, {"error": ...})`` on
@@ -169,7 +169,14 @@ def _compile_and_load(code: str) -> tuple[Any, dict] | tuple[None, dict]:
     fn = ns.get("evaluate")
     if not callable(fn):
         return None, {"error": "code must define a top-level callable named 'evaluate'"}
-    return fn, ns
+    _STATE_CACHE[(int(csid or 0), code)] = (fn, ns); return fn, ns
+def _compile_and_load_for_csid(code: str, *, csid: int):
+    cached = _STATE_CACHE.get((int(csid or 0), code))
+    if cached is not None and callable(cached[0]):
+        return cached[0], cached[1]
+    return _compile_and_load(code, csid=csid)
+def _csid_from_params(params) -> int:
+    return int(params.get("__csid__") or 0) if isinstance(params, dict) else 0
 
 
 def evaluate_custom_strategy(
@@ -187,7 +194,7 @@ def evaluate_custom_strategy(
     or ``None``. Any exception, including timeout, is caught and logged;
     we return ``None`` so the runtime treats it as a no-op.
     """
-    fn, meta = _compile_and_load(code)
+    fn, meta = _compile_and_load_for_csid(code, csid=_csid_from_params(params))
     if fn is None:
         log.warning("custom_strategy.load_failed: %s", meta.get("error"))
         return None
@@ -328,8 +335,8 @@ def run_custom_backtest_on_bars(
         return {"error": "insufficient bars", "n_signals": 0, "n_wins": 0,
                 "n_losses": 0, "total_pnl": 0.0, "pf": 0.0,
                 "expectancy_r": 0.0, "max_drawdown": 0.0}
+    fn, meta = _compile_and_load_for_csid(code, csid=_csid_from_params(params))
 
-    fn, meta = _compile_and_load(code)
     if fn is None:
         return {"error": meta.get("error"), "n_signals": 0, "n_wins": 0,
                 "n_losses": 0, "total_pnl": 0.0, "pf": 0.0,

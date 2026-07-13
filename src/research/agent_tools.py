@@ -406,9 +406,49 @@ def make_flatten_position(*, db_path: str) -> Callable[..., dict]:
         if n <= 0:
             return {"ok": False, "error": "qty must be > 0"}
 
-        # Sleeve guard: refuse to flatten any symbol we don't have an open
-        # trades row for. The IBKR paper account is shared with the workshop
-        # and options-recorder — we must not close their positions.
+        # NT route (execution.route=ninjatrader): SimJudasCrew is this crew's
+        # DEDICATED sim account — no other tenant exists there, so the shared-
+        # account sleeve guard below does not apply. Instead, verify against the
+        # BROKER'S OWN truth (get_nt_positions): the position must exist, side
+        # must match, qty must not exceed it. That guard is stronger than the DB
+        # check — the DB is blind to orphan-leg positions (2026-07 emergency),
+        # which are exactly the ones that need flattening.
+        try:
+            from src.config import load_config as _lc
+            _route = str(getattr(_lc(), "route", "") or "")
+        except Exception:  # noqa: BLE001
+            _route = ""
+        if _route == "ninjatrader":
+            truth = get_nt_positions()
+            if not truth.get("ok"):
+                return {"ok": False, "error": f"NT truth unavailable: {truth.get('error')}"}
+            pos = next((p for p in truth["open_positions"] if p["instrument"] == sym), None)
+            if pos is None:
+                return {"ok": False, "error": f"NT truth shows no open {sym} position (may be ≤5 min stale)"}
+            want_dir = "LONG" if action == "SELL" else "SHORT"
+            if pos["side"] != want_dir:
+                return {"ok": False, "error": f"side mismatch vs NT truth: position is {pos['side']} x{pos['qty']}, requested close of {want_dir}"}
+            if n > pos["qty"]:
+                return {"ok": False, "error": f"qty {n} exceeds NT position qty {pos['qty']}"}
+            try:
+                cfg = _lc()
+                from src.broker.ninjatrader import NTBroker
+                nt = cfg.ninjatrader
+                broker = NTBroker(account=nt.account, instrument_map=nt.instrument_map,
+                                  host=nt.host, user=nt.user, python_exe=nt.python_exe,
+                                  outgoing_dir=nt.outgoing_dir)
+                fill = broker.flatten(sym, direction="long" if want_dir == "LONG" else "short",
+                                      quantity=n)
+                ok = fill is not None
+                return {"ok": ok, "action": action, "qty": n, "symbol": sym,
+                        "fill_price": fill, "route": "ninjatrader",
+                        "error": None if ok else "NT flatten did not confirm a fill"}
+            except Exception as exc:  # noqa: BLE001
+                return {"ok": False, "error": f"NT flatten failed: {exc}"}
+
+        # Sleeve guard (IBKR route only): refuse to flatten any symbol we don't
+        # have an open trades row for. The IBKR paper account is shared with the
+        # workshop and options-recorder — we must not close their positions.
         try:
             conn = _connect(db_path)
             try:

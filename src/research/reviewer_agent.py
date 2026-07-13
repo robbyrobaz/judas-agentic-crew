@@ -132,6 +132,7 @@ INCLUDE_TOOLS = {
     "get_active_strategies", "get_strategy_detail", "get_strategy_dossier",
     "get_candidates_queue", "get_recent_pnl", "get_recent_trades",
     "get_regime_tag",
+    "get_nt_positions",
     # Mutate registry
     "retire_strategy", "promote_candidate", "modify_strategy_params",
     "reject_candidate",

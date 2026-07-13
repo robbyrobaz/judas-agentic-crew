@@ -33,10 +33,19 @@ You can claim_task → place_bracket_order → complete_task for the
 queue. You can also flatten_position to close cleanly, cancel_order
 to back out an unfilled bracket, get_open_positions / get_fills /
 get_recent_pnl to see live state.
+
+POSITION GROUND TRUTH: get_nt_positions() returns the broker's OWN position
+record (local sync of NT's execution DB, ~5 min lag) — every non-flat
+instrument with signed qty and side. get_open_positions only shows positions
+the scan opened; orphan legs open positions the DB never sees (the 2026-07
+emergency). Before ANY flatten or reconcile decision: call get_nt_positions
+first and act on ITS side/qty. A position in NT truth with no matching open
+DB trade is unmanaged — flatten it with the exact side/qty shown.
 """
 
 INCLUDE_TOOLS = {
     "place_bracket_order", "cancel_order", "flatten_position",
+    "get_nt_positions",
     "get_open_positions", "get_fills", "get_recent_pnl",
     "claim_task", "complete_task", "get_open_tasks",
     # shared findings memory

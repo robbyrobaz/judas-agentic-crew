@@ -1228,6 +1228,66 @@ def run_shell(*, command: str, timeout_s: int = 120) -> dict:
         return {"ok": False, "error": f"run_shell failed: {exc}"}
 
 
+# Local ground-truth copy of NinjaTrader's own executions (synced every 5 min
+# by nq-sync-nt-executions.service into the NQ pipeline repo). position_after
+# on the latest execution per instrument IS the current NT position — no WinRM
+# round-trip needed. READ-ONLY (single-writer rule: that DB has one writer).
+_NT_TRUTH_DB = os.environ.get(
+    "JUDAS_NT_TRUTH_DB",
+    "/home/rob/.openclaw/workspace/NQ-Trading-PIPELINE/data/nq_pipeline.db",
+)
+
+
+def get_nt_positions(*, account: str = "SimJudasCrew") -> dict:
+    """GROUND-TRUTH NinjaTrader positions from the local 5-min sync copy.
+
+    Returns every instrument with a non-flat position: name, signed qty
+    (+long/-short), last execution price/time, and staleness of the sync.
+    This is the broker's own record — trust it over the trades table, which
+    only knows positions the scan itself opened (2026-07-09/10 emergency:
+    orphan OCO legs opened positions the DB never saw)."""
+    try:
+        conn = sqlite3.connect(f"file:{_NT_TRUTH_DB}?mode=ro", uri=True, timeout=10)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT COALESCE(instrument_name, instrument) AS instrument,
+                   position_after AS position, price AS last_exec_price,
+                   time_utc AS last_exec_utc
+            FROM nt_executions_truth t
+            WHERE account = ?
+              AND nt_execution_id = (
+                  SELECT MAX(nt_execution_id) FROM nt_executions_truth
+                  WHERE account = ? AND instrument = t.instrument)
+            ORDER BY instrument
+            """, (account, account),
+        ).fetchall()
+        sync_row = conn.execute(
+            "SELECT MAX(time_utc) FROM nt_executions_truth WHERE account = ?",
+            (account,),
+        ).fetchone()
+        conn.close()
+        positions = []
+        for r in rows:
+            pos = int(r["position"] or 0)
+            if pos == 0:
+                continue
+            positions.append({
+                "instrument": str(r["instrument"]),
+                "position": pos,  # +N long, -N short
+                "side": "LONG" if pos > 0 else "SHORT",
+                "qty": abs(pos),
+                "last_exec_price": float(r["last_exec_price"] or 0),
+                "last_exec_utc": str(r["last_exec_utc"] or ""),
+            })
+        return {"ok": True, "account": account, "open_positions": positions,
+                "flat": not positions, "last_sync_utc": str(sync_row[0] or ""),
+                "note": "synced from NT every ~5 min — up to 5 min stale"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"nt truth db read failed: {exc}",
+                "db": _NT_TRUTH_DB}
+
+
 def reap_stale_claims(*, db_path: str, max_age_hours: float = 24.0) -> int:
     """Abandon tasks stuck in 'claimed' longer than max_age_hours.
 
@@ -1305,6 +1365,8 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
     extras["write_file"] = _safe_tool(write_file)
     extras["edit_file"] = _safe_tool(edit_file)
     extras["run_shell"] = _safe_tool(run_shell)
+    # Ground-truth NT positions from the local sync copy (2026-07-12).
+    extras["get_nt_positions"] = _safe_tool(get_nt_positions)
     if operator_mode:
         enq = make_enqueue_task(db_path=db_path, requester="operator")
 
@@ -1424,6 +1486,25 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
     all_tools.update(extras)
 
     extra_schemas = _new_schemas()
+    extra_schemas.append({
+        "type": "function",
+        "function": {
+            "name": "get_nt_positions",
+            "description": (
+                "GROUND-TRUTH NinjaTrader positions from the broker's own execution "
+                "record (local copy, synced every ~5 min). Returns every non-flat "
+                "instrument with signed position (+long/-short), qty, last exec "
+                "price/time. TRUST THIS over get_open_positions (the DB view), which "
+                "only knows positions the scan opened — orphan legs open positions "
+                "the DB never sees. Use before any flatten decision."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"account": {"type": "string", "default": "SimJudasCrew"}},
+                "required": [],
+            },
+        },
+    })
     # Schemas for the repo-confined write/edit/shell tools.
     extra_schemas.append({
         "type": "function",

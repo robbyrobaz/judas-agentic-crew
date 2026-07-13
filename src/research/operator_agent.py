@@ -97,6 +97,7 @@ INCLUDE_TOOLS = {    # delegations
     "get_candidates_queue", "get_workshop_leaderboard", "query_db",
     "get_strategy_detail", "get_recent_experiments", "get_open_positions",
     "get_regime_tag",
+    "get_nt_positions",
     # shared findings memory
     "record_finding", "read_findings", "retract_finding",
     "get_strategy_dossier",

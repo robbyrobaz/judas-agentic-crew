@@ -433,8 +433,14 @@ def make_flatten_position(*, db_path: str) -> Callable[..., dict]:
             try:
                 cfg = _lc()
                 from src.broker.ninjatrader import NTBroker
+                # Resolve to the ACTIVE contract months (the raw config map goes
+                # stale at every roll — a flatten sent to "MGC 06-26" after the
+                # June expiry sits Submitted forever and closes nothing, which is
+                # exactly what happened on this tool's first live run 2026-07-13).
+                from src.portfolio_runtime import _resolve_nt_instrument_map
                 nt = cfg.ninjatrader
-                broker = NTBroker(account=nt.account, instrument_map=nt.instrument_map,
+                broker = NTBroker(account=nt.account,
+                                  instrument_map=_resolve_nt_instrument_map(dict(nt.instrument_map)),
                                   host=nt.host, user=nt.user, python_exe=nt.python_exe,
                                   outgoing_dir=nt.outgoing_dir)
                 fill = broker.flatten(sym, direction="long" if want_dir == "LONG" else "short",

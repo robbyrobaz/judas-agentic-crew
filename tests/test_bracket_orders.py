@@ -152,3 +152,55 @@ def test_parent_id_wiring_pattern():
     sl.parentId = parent.orderId
     assert tp.parentId == 4242
     assert sl.parentId == 4242
+# --- 2026-07-15: OCO fresh-id leg-2 retry regression ----------------------
+# NT rejects reused oco ids once a group completes; mint fresh on every attempt.
+def _build_nt_broker(monkeypatch, *, place_sequence, confirm_protected=True):
+    """Build an NTBroker with mocked WinRM seams."""
+    from src.broker.ninjatrader import NTBroker
+    broker = NTBroker(account="SimJudasCrew", instrument_map={"MGC": "MGC 09-26"},
+                      password="x", fill_timeout_s=0.1, fill_poll_s=0.01)
+    seq = list(place_sequence)
+    place_calls = []
+    def fake_place(**kwargs):
+        place_calls.append(kwargs)
+        if not seq:
+            return ""
+        return seq.pop(0)
+    def fake_poll_fill(order_id):
+        return True, 100.0, "FILLED;1;100.0"
+    def fake_confirm_protected(stop_oid, target_oid):
+        return bool(confirm_protected and stop_oid and target_oid)
+    monkeypatch.setattr(broker, "_place", fake_place)
+    monkeypatch.setattr(broker, "_poll_fill", fake_poll_fill)
+    monkeypatch.setattr(broker, "_confirm_protected", fake_confirm_protected)
+    return broker, place_calls
+def test_place_bracket_retries_leg2_with_fresh_oco_on_rejection(monkeypatch):
+    """leg-2 retry uses a fresh oco_id (NT rejects reused ids)."""
+    broker, place_calls = _build_nt_broker(
+        monkeypatch, place_sequence=["ENTRY-1", "STOP-1", "", "TARGET-2"],
+    )
+    res = broker.place_bracket(symbol="MGC", side="BUY", quantity=1, stop_price=99.0, target_price=101.0)
+    assert res is not None
+    assert res.stop_oid == "STOP-1"
+    assert res.target_oid == "TARGET-2"
+    assert res.entry_oid == "ENTRY-1"
+    initial_oco = place_calls[1]["oco_id"]
+    retry_oco = place_calls[3]["oco_id"]
+    assert initial_oco != retry_oco
+def test_place_bracket_flattens_when_leg2_retry_also_fails(monkeypatch):
+    """leg-2 retry fails too -> flatten path triggers (no orphan entry)."""
+    flatten_calls = []
+    def fake_flatten(symbol, *, direction, quantity):
+        flatten_calls.append({"symbol": symbol, "direction": direction, "quantity": quantity})
+        return 100.0
+    broker, _ = _build_nt_broker(
+        monkeypatch, place_sequence=["ENTRY-1", "STOP-1", "", "", "FLAT-1"],
+    )
+    monkeypatch.setattr(broker, "flatten", fake_flatten)
+    res = broker.place_bracket(symbol="MGC", side="BUY", quantity=1, stop_price=99.0, target_price=101.0)
+    assert res is None
+    assert len(flatten_calls) == 1
+    call = flatten_calls[0]
+    assert call["symbol"] == "MGC"
+    assert call["direction"] == "long"
+    assert call["quantity"] == 1

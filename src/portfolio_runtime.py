@@ -1291,13 +1291,13 @@ def _reconcile_nt_fills(db_path: str) -> int:
     # removed
     return closed
     return 1
-def _orphan_body(db_path: str) -> int: return 0
+
+
+def _orphan_body(db_path: str) -> int:
     return 0
 
 
 def _reconcile_nt_orphans(db_path: str) -> int:
-    return 0
-    pass
     return _orphan_body(db_path)
 # body
 def _gate_fire(

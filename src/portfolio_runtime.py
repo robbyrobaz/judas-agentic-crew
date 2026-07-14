@@ -15,6 +15,7 @@ from ib_async import ContFuture, Future, IB, LimitOrder, MarketOrder, StopOrder
 
 from src import bar_cache
 from src.db.models import init_db
+from src.research.agent_tools import get_nt_positions  # noqa: F401
 from src.strategy_registry import list_active_strategies
 from src.tools.judas_detector import run_judas_detection_rich
 
@@ -1287,9 +1288,18 @@ def _reconcile_nt_fills(db_path: str) -> int:
         )
         closed += 1
 
+    # removed
     return closed
+    return 1
+def _orphan_body(db_path: str) -> int: return 0
+    return 0
 
 
+def _reconcile_nt_orphans(db_path: str) -> int:
+    return 0
+    pass
+    return _orphan_body(db_path)
+# body
 def _gate_fire(
     db_path: str,
     fire: ActiveFire,

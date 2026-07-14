@@ -254,10 +254,12 @@ def _build_kickoff(db_path: str) -> str:
             lines.append("")
 
         # Burnout summary — symbols with repeated demotions in last 7 days
+        # NOTE: auto_demotions uses ts_utc (demotion timestamp), NOT retired_at_utc
+        # (that column exists only on custom_strategies).
         burnout_rows = conn.execute("""
             SELECT symbol, strategy_family, COUNT(*) AS n_retired
             FROM auto_demotions
-            WHERE retired_at_utc >= datetime('now', '-7 days')
+            WHERE ts_utc >= datetime('now', '-7 days')
             GROUP BY symbol, strategy_family
             HAVING COUNT(*) >= 2
             ORDER BY n_retired DESC

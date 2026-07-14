@@ -431,6 +431,21 @@ class NTBroker:
             limit_price=target_price, stop_price=0.0, oco_id=oco_id,
             instrument=instrument,
         )
+        # Fresh-OCO leg-2 retry (2026-07-15): NT rejects reused oco ids once
+        # a group completes, so a same-oco retry would just re-reject and
+        # we'd be stuck with a naked entry. If leg-1 (stop) landed but leg-2
+        # (target) failed, mint a fresh oco pair and re-place leg-2 ONCE
+        # before falling through to the flatten path. Root cause of the
+        # orphan-entry cluster 2026-06/07.
+        if stop_oid and not target_oid:
+            fresh_oco = f"JC_{symbol}_{stamp}_{uuid.uuid4().hex[:6]}"
+            log.warning("nt_broker.leg2_retry_fresh_oco symbol=%s oco=%s fresh_oco=%s",
+                        symbol, oco_id, fresh_oco)
+            target_oid = self._place(
+                action=opp_action, qty=quantity, order_type="LIMIT",
+                limit_price=target_price, stop_price=0.0, oco_id=fresh_oco,
+                instrument=instrument,
+            )
 
         # NAKED-POSITION GUARD: rc==0 on _place does NOT mean NT accepted the
         # order — it rejects asynchronously. Confirm BOTH protective legs are

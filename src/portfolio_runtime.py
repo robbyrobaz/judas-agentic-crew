@@ -1330,6 +1330,27 @@ def _orphan_body(db_path: str) -> int:
         log.warning("orphan_reconcile.broker_failed: %s", exc)
         return 0
 
+    # Cooldown: get_nt_positions is up to ~5 min stale, and the scan runs every
+    # 5 min. Without a cooldown a just-flattened position still shows in the
+    # stale view next scan → we'd flatten again and FLIP it (long→short). After
+    # flattening a symbol, don't touch it again for 20 min (4 sync cycles) — long
+    # enough for the sync to reflect flat, short enough to re-catch a genuinely
+    # new orphan.
+    try:
+        with get_conn(db_path) as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS orphan_flatten_log "
+                "(symbol TEXT, ts_utc TEXT)")
+            recent = {
+                str(r[0]).upper()
+                for r in conn.execute(
+                    "SELECT symbol FROM orphan_flatten_log "
+                    "WHERE ts_utc >= strftime('%Y-%m-%dT%H:%M:%SZ','now','-20 minutes')"
+                ).fetchall()
+            }
+    except Exception:  # noqa: BLE001
+        recent = set()
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=14)
     flattened = 0
     seen: set[str] = set()
@@ -1340,12 +1361,17 @@ def _orphan_body(db_path: str) -> int:
         last_raw = str(p.get("last_exec_utc") or "")
         try:
             last = datetime.fromisoformat(last_raw.replace("Z", "+00:00"))
+            # Sync timestamps are UTC but often lack a tz suffix → naive. Make
+            # aware so the cutoff compare doesn't blow up (live data has no Z;
+            # a naive value silently broke this on the first real run).
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
         except ValueError:
             last = None
         if last is not None and last < cutoff:
             continue
-        if sym not in active or sym in seen:
-            continue
+        if sym not in active or sym in seen or sym in recent:
+            continue  # already flattened this symbol within the cooldown window
         direction = "long" if p.get("side") == "LONG" else "short"
         if (sym, direction) in managed:
             continue  # crew IS managing this position — leave it alone
@@ -1362,6 +1388,13 @@ def _orphan_body(db_path: str) -> int:
             if fill is not None:
                 flattened += 1
                 log.warning("orphan_reconcile.flattened sym=%s qty=%d fill=%s", sym, qty, fill)
+                try:
+                    with get_conn(db_path) as conn:
+                        conn.execute(
+                            "INSERT INTO orphan_flatten_log (symbol, ts_utc) VALUES "
+                            "(?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))", (sym,))
+                except Exception:  # noqa: BLE001
+                    pass
         except Exception as exc:  # noqa: BLE001
             log.error("orphan_reconcile.flatten_failed sym=%s: %s", sym, exc)
     return flattened

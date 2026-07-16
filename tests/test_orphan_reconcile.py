@@ -45,8 +45,8 @@ def _setup(monkeypatch, nt_positions, managed_trades):
 def test_flattens_unmanaged_leaves_managed(monkeypatch):
     pr, db, calls = _setup(monkeypatch,
         nt_positions=[
-            {"instrument": "MGC", "side": "LONG", "qty": 1, "last_exec_utc": "2026-07-16T13:00:00Z"},
-            {"instrument": "MBT", "side": "SHORT", "qty": 3, "last_exec_utc": "2026-07-16T11:00:00Z"},
+            {"instrument": "MGC", "side": "LONG", "qty": 1, "last_exec_utc": "2026-07-16T13:00:00.123456"},
+            {"instrument": "MBT", "side": "SHORT", "qty": 3, "last_exec_utc": "2026-07-16T11:00:00.5"},
         ],
         managed_trades=[("MGC", "long")])
     assert pr._reconcile_nt_orphans(db) == 1
@@ -55,7 +55,7 @@ def test_flattens_unmanaged_leaves_managed(monkeypatch):
 
 def test_skips_expired_phantom(monkeypatch):
     pr, db, calls = _setup(monkeypatch,
-        nt_positions=[{"instrument": "MET", "side": "LONG", "qty": 1, "last_exec_utc": "2026-06-19T17:06:00Z"}],
+        nt_positions=[{"instrument": "MET", "side": "LONG", "qty": 1, "last_exec_utc": "2026-06-19T17:06:00"}],
         managed_trades=[])
     assert pr._reconcile_nt_orphans(db) == 0  # 4 weeks old = expired, skipped
     assert calls == []
@@ -66,3 +66,14 @@ def test_flat_is_noop(monkeypatch):
     import src.research.agent_tools as at
     monkeypatch.setattr(at, "get_nt_positions", lambda **k: {"ok": True, "flat": True, "open_positions": []})
     assert pr._reconcile_nt_orphans(db) == 0
+
+
+def test_cooldown_prevents_double_flatten(monkeypatch):
+    """A symbol flattened <20 min ago must NOT be flattened again — the stale
+    sync would otherwise show it still open and we'd flip it."""
+    pr, db, calls = _setup(monkeypatch,
+        nt_positions=[{"instrument": "MBT", "side": "SHORT", "qty": 3, "last_exec_utc": "2026-07-16T11:00:00.5"}],
+        managed_trades=[])
+    assert pr._reconcile_nt_orphans(db) == 1   # first pass flattens
+    assert pr._reconcile_nt_orphans(db) == 0   # second pass: cooldown blocks it
+    assert calls == [("MBT", "short", 3)]      # only ONCE

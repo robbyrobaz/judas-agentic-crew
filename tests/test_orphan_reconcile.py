@@ -77,3 +77,20 @@ def test_cooldown_prevents_double_flatten(monkeypatch):
     assert pr._reconcile_nt_orphans(db) == 1   # first pass flattens
     assert pr._reconcile_nt_orphans(db) == 0   # second pass: cooldown blocks it
     assert calls == [("MBT", "short", 3)]      # only ONCE
+
+
+def test_flattens_excess_over_managed_qty(monkeypatch):
+    """NT short 2, DB manages short 1 → flatten only the 1 EXCESS contract."""
+    pr, db, calls = _setup(monkeypatch,
+        nt_positions=[{"instrument": "MET", "side": "SHORT", "qty": 2, "last_exec_utc": "2026-07-16T14:00:00.1"}],
+        managed_trades=[("MET", "short")])   # 1 managed
+    assert pr._reconcile_nt_orphans(db) == 1
+    assert calls == [("MET", "short", 1)]    # excess 2-1=1
+
+
+def test_fully_managed_qty_left_alone(monkeypatch):
+    pr, db, calls = _setup(monkeypatch,
+        nt_positions=[{"instrument": "MCL", "side": "LONG", "qty": 1, "last_exec_utc": "2026-07-16T14:00:00.1"}],
+        managed_trades=[("MCL", "long")])
+    assert pr._reconcile_nt_orphans(db) == 0
+    assert calls == []

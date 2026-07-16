@@ -1314,12 +1314,16 @@ def _orphan_body(db_path: str) -> int:
         return 0
     try:
         with get_conn(db_path) as conn:
-            managed = {
-                (str(r["symbol"]).upper(), str(r["direction"]).lower())
-                for r in conn.execute(
-                    "SELECT symbol, direction FROM trades WHERE status='open'"
-                ).fetchall()
-            }
+            # Managed QUANTITY per (symbol, direction) — not just presence. An
+            # orphan in the SAME direction as a managed trade (NT short 2, DB
+            # short 1) must still surface its 1 excess contract; a set membership
+            # test would hide it under the managed trade.
+            managed: dict[tuple[str, str], int] = {}
+            for r in conn.execute(
+                "SELECT symbol, direction, qty FROM trades WHERE status='open'"
+            ).fetchall():
+                k = (str(r["symbol"]).upper(), str(r["direction"]).lower())
+                managed[k] = managed.get(k, 0) + int(r["qty"] or 1)
     except Exception as exc:  # noqa: BLE001
         log.warning("orphan_reconcile.db_read_failed: %s", exc)
         return 0
@@ -1373,12 +1377,13 @@ def _orphan_body(db_path: str) -> int:
         if sym not in active or sym in seen or sym in recent:
             continue  # already flattened this symbol within the cooldown window
         direction = "long" if p.get("side") == "LONG" else "short"
-        if (sym, direction) in managed:
-            continue  # crew IS managing this position — leave it alone
-        seen.add(sym)
-        qty = int(p.get("qty", 0) or 0)
+        # Flatten only the EXCESS over what the crew is managing in this
+        # direction (so a same-direction orphan under a managed trade is caught).
+        nt_qty = int(p.get("qty", 0) or 0)
+        qty = nt_qty - managed.get((sym, direction), 0)
         if qty <= 0:
-            continue
+            continue  # fully managed (or less) — leave it alone
+        seen.add(sym)
         log.critical(
             "ORPHAN_RECONCILE_FLATTEN sym=%s side=%s qty=%d (no open DB trade — auto-flattening)",
             sym, p.get("side"), qty,

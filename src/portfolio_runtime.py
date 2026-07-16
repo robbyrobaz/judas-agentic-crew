@@ -1294,7 +1294,77 @@ def _reconcile_nt_fills(db_path: str) -> int:
 
 
 def _orphan_body(db_path: str) -> int:
-    return 0
+    """Flatten NT positions the crew is NOT managing (orphans with no open DB
+    trade). Orphaned OCO legs open positions with no DB row, and nothing else
+    in the scan catches those — this is what caused the recurring 2026-07
+    position emergencies (4->17 untracked contracts). Runs every scan on the NT
+    route so orphans self-clear within one 5-min cycle. Never raises.
+
+    NOTE: the prior autofix shipped this as `return 0` (a no-op stub) and marked
+    the task done; the fake slipped past the reviewer. This is the real body.
+    """
+    from datetime import datetime, timezone, timedelta
+    from src.db.models import get_conn
+    try:
+        from src.research.agent_tools import get_nt_positions
+    except Exception:  # noqa: BLE001
+        return 0
+    truth = get_nt_positions()
+    if not truth.get("ok") or truth.get("flat"):
+        return 0
+    try:
+        with get_conn(db_path) as conn:
+            managed = {
+                (str(r["symbol"]).upper(), str(r["direction"]).lower())
+                for r in conn.execute(
+                    "SELECT symbol, direction FROM trades WHERE status='open'"
+                ).fetchall()
+            }
+    except Exception as exc:  # noqa: BLE001
+        log.warning("orphan_reconcile.db_read_failed: %s", exc)
+        return 0
+    try:
+        broker = _nt_broker()
+        active = set(broker.instrument_map.keys())
+    except Exception as exc:  # noqa: BLE001
+        log.warning("orphan_reconcile.broker_failed: %s", exc)
+        return 0
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=14)
+    flattened = 0
+    seen: set[str] = set()
+    for p in truth.get("open_positions", []):
+        sym = str(p.get("instrument", "")).upper()
+        # Skip expired-contract phantoms (weeks-old fills we can't close on the
+        # active contract), symbols we don't trade, and dupes.
+        last_raw = str(p.get("last_exec_utc") or "")
+        try:
+            last = datetime.fromisoformat(last_raw.replace("Z", "+00:00"))
+        except ValueError:
+            last = None
+        if last is not None and last < cutoff:
+            continue
+        if sym not in active or sym in seen:
+            continue
+        direction = "long" if p.get("side") == "LONG" else "short"
+        if (sym, direction) in managed:
+            continue  # crew IS managing this position — leave it alone
+        seen.add(sym)
+        qty = int(p.get("qty", 0) or 0)
+        if qty <= 0:
+            continue
+        log.critical(
+            "ORPHAN_RECONCILE_FLATTEN sym=%s side=%s qty=%d (no open DB trade — auto-flattening)",
+            sym, p.get("side"), qty,
+        )
+        try:
+            fill = broker.flatten(sym, direction=direction, quantity=qty)
+            if fill is not None:
+                flattened += 1
+                log.warning("orphan_reconcile.flattened sym=%s qty=%d fill=%s", sym, qty, fill)
+        except Exception as exc:  # noqa: BLE001
+            log.error("orphan_reconcile.flatten_failed sym=%s: %s", sym, exc)
+    return flattened
 
 
 def _reconcile_nt_orphans(db_path: str) -> int:
@@ -1549,6 +1619,15 @@ def run_portfolio_scan(
             _check_position_protection(db_path)
         except Exception as exc:  # noqa: BLE001
             log.error("position-protection check failed: %s", exc, exc_info=True)
+        # Flatten orphans — NT positions with no open DB trade (from orphaned OCO
+        # legs). The ONLY thing that catches positions the DB never recorded;
+        # runs every scan so they self-clear within one cycle.
+        try:
+            n_orphan = _reconcile_nt_orphans(db_path)
+            if n_orphan:
+                log.warning("orphan_reconcile: auto-flattened %d unmanaged NT position(s)", n_orphan)
+        except Exception as exc:  # noqa: BLE001
+            log.error("orphan reconcile failed: %s", exc, exc_info=True)
     else:
         _reconcile_open_trades(db_path, bars_by_sym)
 

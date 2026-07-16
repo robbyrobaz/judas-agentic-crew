@@ -1,112 +1,68 @@
-"""Regression: orphan NT positions (no matching DB trade) get auto-flattened.
+"""Standing NT-truth orphan reconcile (2026-07-16).
 
-Before this fix, NT positions opened by orphan OCO legs accumulated past
-NT's max-position cap because nothing in the scan caught the case where NT
-shows a position but the DB has no open trade row for it. Three live
-emergencies (2026-07-09/10/13) all stem from this gap.
-
-The fix: a STANDING NT-TRUTH RECONCILE in run_portfolio_scan that runs
-after _reconcile_nt_fills() (only on route='ninjatrader'). It calls
-src.research.agent_tools.get_nt_positions() (the broker's own truth),
-loads DB open trades, and flattens any NT position whose
-(symbol, direction) has no matching DB row AND whose symbol resolves
-to a live NT contract (skipping expired contracts).
-
-This test stubs the truth source and the broker so the flatten path is
-exercised end-to-end with no IBKR/NT network dependency.
+The recurring 2026-07 emergency: orphaned OCO legs open NT positions with no DB
+row, and nothing in the scan caught them (a prior autofix shipped this as a
+`return 0` stub). This verifies the real body flattens unmanaged positions,
+leaves managed ones alone, and skips expired-contract phantoms.
 """
 from __future__ import annotations
 
-import pytest
+import sys
+import tempfile
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 
-@pytest.fixture
-def temp_db(tmp_path):
-    from src.db.models import init_db
-    db = tmp_path / "judas_orphan.db"
-    init_db(str(db))
-    return str(db)
+def _setup(monkeypatch, nt_positions, managed_trades):
+    import src.portfolio_runtime as pr
+    import src.research.agent_tools as at
+    from src.db.models import init_db, get_conn
+
+    db = tempfile.mktemp(suffix=".db")
+    init_db(db)
+    with get_conn(db) as c:
+        for sym, direction in managed_trades:
+            c.execute(
+                "INSERT INTO trades (symbol,direction,qty,entry_fill,status,opened_at) "
+                "VALUES (?,?,1,1,'open','2026-07-16T00:00:00Z')", (sym, direction))
+
+    monkeypatch.setattr(at, "get_nt_positions",
+                        lambda **k: {"ok": True, "flat": False, "open_positions": nt_positions})
+    calls = []
+
+    class FakeBroker:
+        instrument_map = {"MGC": "MGC 08-26", "MBT": "MBT 07-26", "MET": "MET 07-26"}
+        def flatten(self, sym, *, direction, quantity):
+            calls.append((sym, direction, quantity)); return 1.0
+
+    monkeypatch.setattr(pr, "_nt_broker", lambda: FakeBroker())
+    return pr, db, calls
 
 
-def _insert_open_trade(db_path: str) -> int:
-    import sqlite3
-    with sqlite3.connect(db_path) as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO trades
-              (signal_id, strategy_id, strategy_family, strategy_version,
-               ibkr_order_id, tp_order_id, sl_order_id,
-               symbol, direction, qty, entry_fill, stop_price, target_price,
-               status, opened_at)
-            VALUES (NULL, 1, 'judas', 1, '1000', '9001', '9002',
-                    'MGC', 'long', 1, 2000.0, 1990.0, 2020.0,
-                    'open', '2026-05-01T10:00:00Z')
-            """,
-        )
-        return int(cur.lastrowid)
+def test_flattens_unmanaged_leaves_managed(monkeypatch):
+    pr, db, calls = _setup(monkeypatch,
+        nt_positions=[
+            {"instrument": "MGC", "side": "LONG", "qty": 1, "last_exec_utc": "2026-07-16T13:00:00Z"},
+            {"instrument": "MBT", "side": "SHORT", "qty": 3, "last_exec_utc": "2026-07-16T11:00:00Z"},
+        ],
+        managed_trades=[("MGC", "long")])
+    assert pr._reconcile_nt_orphans(db) == 1
+    assert calls == [("MBT", "short", 3)]  # only the orphan
 
 
-def _fake_nt_truth(positions):
-    return {"ok": True, "account": "SimJudasCrew",
-            "open_positions": list(positions), "flat": not positions}
+def test_skips_expired_phantom(monkeypatch):
+    pr, db, calls = _setup(monkeypatch,
+        nt_positions=[{"instrument": "MET", "side": "LONG", "qty": 1, "last_exec_utc": "2026-06-19T17:06:00Z"}],
+        managed_trades=[])
+    assert pr._reconcile_nt_orphans(db) == 0  # 4 weeks old = expired, skipped
+    assert calls == []
 
 
-class _FakeBroker:
-    def __init__(self, *a, **kw):
-        pass
-
-    def flatten(self, symbol, *, direction, quantity):
-        return 2000.0
-
-
-def test_orphan_nt_position_gets_flattened(temp_db, monkeypatch):
-    from src import portfolio_runtime as pr
-
-    nt_truth = _fake_nt_truth([{
-        "instrument": "MGC", "position": 1, "side": "LONG", "qty": 1,
-        "last_exec_price": 2000.0, "last_exec_utc": "2026-07-12T00:00:00Z",
-    }])
-
-    state = {"calls": []}
-
-    class _B:
-        def __init__(self, *a, **kw):
-            pass
-        def flatten(self, symbol, *, direction, quantity):
-            state["calls"].append({
-                "symbol": symbol, "direction": direction, "quantity": quantity,
-            })
-            return 2000.0
-
-    monkeypatch.setattr(pr, "_nt_broker", lambda: _B())
-    monkeypatch.setattr(pr, "get_nt_positions",
-                        lambda *, account="SimJudasCrew": nt_truth)
-    monkeypatch.setattr(pr, "_resolve_nt_instrument_map",
-                        lambda cfg_map: {"MGC": "MGC 09-26"})
-
-    closed = pr._reconcile_nt_orphans(temp_db)
-    assert closed == 1
-    assert len(state["calls"]) == 1
-    call = state["calls"][0]
-    assert call["symbol"] == "MGC"
-    assert call["direction"] == "long"
-    assert call["quantity"] == 1
-
-
-def test_matched_nt_position_is_left_alone(temp_db, monkeypatch):
-    from src import portfolio_runtime as pr
-
-    _insert_open_trade(temp_db)
-
-    nt_truth = _fake_nt_truth([{
-        "instrument": "MGC", "position": 1, "side": "LONG", "qty": 1,
-        "last_exec_price": 2000.0, "last_exec_utc": "2026-07-12T00:00:00Z",
-    }])
-
-    state = {"calls": []}
-
-    class _B:
-        def __init__(self, *a, **kw):
-            pass
-        def flatten(self, symbol, *, direction, quantity):
-            state["calls"].append({"symbol": symbol})  # shorter x
+def test_flat_is_noop(monkeypatch):
+    pr, db, calls = _setup(monkeypatch, nt_positions=[], managed_trades=[])
+    import src.research.agent_tools as at
+    monkeypatch.setattr(at, "get_nt_positions", lambda **k: {"ok": True, "flat": True, "open_positions": []})
+    assert pr._reconcile_nt_orphans(db) == 0

@@ -2007,6 +2007,27 @@ def run_pm_decision(
             error=None,
         )
 
+    # Daily token budget — the PM/operator path burned INVISIBLY before
+    # 2026-07-17 (usage recorded only in agent_runner), so the meter read ~19M
+    # while MiniMax was at 100%. Same gate as run_agent_loop.
+    from src.research.agent_runner import (
+        _DEFAULT_DAILY_TOKEN_BUDGET, _record_llm_usage, daily_tokens_used,
+        response_tokens, run_token_cap,
+    )
+    _daily_budget = int(os.environ.get("JUDAS_DAILY_TOKEN_BUDGET",
+                                       _DEFAULT_DAILY_TOKEN_BUDGET))
+    if _daily_budget > 0:
+        _used = daily_tokens_used(db_path=db_path)
+        if _used >= _daily_budget:
+            log.warning("pm_agent.daily_budget_reached used=%d budget=%d — skipping cycle",
+                        _used, _daily_budget)
+            return PMDecisionResult(
+                success=True, actions_taken=[],
+                narrative=f"daily token budget reached ({_used:,}/{_daily_budget:,}) — cycle skipped",
+                turns_used=0, elapsed_s=time.time() - started,
+                fallback_used=True, raw_messages=[], error=None,
+            )
+
     tools = _make_tools(db_path=db_path)
     schemas = _tool_schemas()
 
@@ -2024,6 +2045,7 @@ def run_pm_decision(
 
     actions: list[PMAction] = []
     turn = 0
+    run_tokens = 0
     error: str | None = None
     final_text = ""
 
@@ -2052,16 +2074,40 @@ def run_pm_decision(
                 error = None
                 break
             except Exception as exc:  # noqa: BLE001 — defensive
+                # 429 quota exhaustion: retrying just burns time; skip cleanly
+                # like agent_runner does (2026-07-17 — the operator retried
+                # into the wall every cycle).
+                s = str(exc)
+                if "rate_limit" in s or "usage limit" in s or '"429"' in s:
+                    log.warning("pm_agent.quota_exhausted — ending cycle cleanly")
+                    error = None
+                    final_text = "MiniMax quota exhausted — cycle ended, timer retries after reset."
+                    break
                 error = f"llm call failed: {exc}"
                 time.sleep(2)
         if response is None:
             break
+
+        # Token accounting + per-run cap (2026-07-17: this loop made 1,056
+        # calls in 47 min with NOTHING recorded — the only stop was the 429).
+        tok = response_tokens(response)
+        if tok:
+            _record_llm_usage(db_path=db_path, tokens=tok)
+            run_tokens += tok
+        _cap = run_token_cap()
 
         # Sanitize tool-call JSON before it enters history — M3 can emit
         # malformed arguments that 400 the next request and abort the cycle.
         msg = _sanitize_tool_call_json(_extract_message(response))
         messages.append(msg)
         turn += 1
+
+        if _cap > 0 and run_tokens >= _cap:
+            log.warning("pm_agent.run_token_cap_reached run_tokens=%d cap=%d — ending cycle",
+                        run_tokens, _cap)
+            final_text = str(msg.get("content") or "").strip() or (
+                f"run token cap reached ({run_tokens:,}/{_cap:,}) — cycle ended")
+            break
 
         tool_calls = _tool_calls_from(msg)
         if not tool_calls:

@@ -85,7 +85,37 @@ def daily_tokens_used(*, db_path: str) -> int:
 
 # Teams that keep running even over budget — position protection beats pacing.
 _BUDGET_EXEMPT_TEAMS = {"trader"}
-_DEFAULT_DAILY_TOKEN_BUDGET = 300_000_000  # ~2.1B/wk quota ≈ 2.8B; leave headroom
+# 150M/day ≈ 1.05B/wk — ~40% of the ~2.8B weekly quota, leaving headroom for
+# the OTHER systems sharing this MiniMax account (kalshi-edge, hl-momentum,
+# church-poll) and for burst days. Was 300M, but that was set when only
+# agent_runner recorded usage — now that ALL paths meter (pm/operator, coder,
+# reviewer), 300M/day would genuinely spend 2.1B/wk and peg the quota again.
+_DEFAULT_DAILY_TOKEN_BUDGET = 150_000_000
+
+# Per-RUN token ceiling. 2026-07-17 lesson: with unlimited turns the ONLY stop
+# condition was MiniMax's 429 — the operator ran 47 min / 1,056 calls and ate
+# the entire 5h window in one cycle, then the coder did it again. A single
+# decision cycle never legitimately needs more than a few million tokens; when
+# the cap trips the agent wraps up cleanly and the next timer cycle continues.
+# Applies to EVERY LLM loop (agent_runner, pm_agent, autofix). Env-overridable.
+_DEFAULT_RUN_TOKEN_CAP = 3_000_000
+
+
+def run_token_cap() -> int:
+    try:
+        return int(os.environ.get("JUDAS_RUN_TOKEN_CAP", _DEFAULT_RUN_TOKEN_CAP))
+    except (TypeError, ValueError):
+        return _DEFAULT_RUN_TOKEN_CAP
+
+
+def response_tokens(response) -> int:
+    """total_tokens from a litellm response (dict or object). 0 if absent."""
+    try:
+        u = response.get("usage") if isinstance(response, dict) else getattr(response, "usage", None)
+        return int((u or {}).get("total_tokens", 0) if isinstance(u, dict)
+                   else getattr(u, "total_tokens", 0) or 0)
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 def _sanitize_tool_call_json(msg: dict) -> dict:
@@ -174,6 +204,7 @@ def run_agent_loop(
     ]
     actions: list[AgentAction] = []
     turn = 0
+    run_tokens = 0
     error: str | None = None
     final_text = ""
 
@@ -228,13 +259,21 @@ def run_agent_loop(
         # Token accounting → llm_usage(day, tokens). The daily budget guard in
         # the runners reads this; without metering nothing stops a runaway from
         # hitting the MiniMax wall mid-week (2.33B burned in 7 days, 2026-07-09).
-        try:
-            u = response.get("usage") if isinstance(response, dict) else getattr(response, "usage", None)
-            tok = int((u or {}).get("total_tokens", 0) if isinstance(u, dict) else getattr(u, "total_tokens", 0) or 0)
-            if tok:
-                _record_llm_usage(db_path=db_path, tokens=tok)
-        except Exception:  # noqa: BLE001
-            pass
+        tok = response_tokens(response)
+        if tok:
+            _record_llm_usage(db_path=db_path, tokens=tok)
+            run_tokens += tok
+        cap = run_token_cap()
+        if cap > 0 and run_tokens >= cap:
+            log.warning("agent_runner.run_token_cap_reached team=%s run_tokens=%d cap=%d "
+                        "— ending cycle cleanly", team, run_tokens, cap)
+            msg = _sanitize_tool_call_json(_extract_message(response))
+            messages.append(msg)
+            final_text = str(msg.get("content") or "").strip() or (
+                f"run token cap reached ({run_tokens:,}/{cap:,}) — cycle ended; "
+                "timer continues next cycle")
+            turn += 1
+            break
 
         # Sanitize tool-call JSON BEFORE it enters history (M3 can emit malformed
         # arguments that 400 the next request and abort the cycle).

@@ -157,6 +157,16 @@ def _review_patch_is_real(
             api_base=os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
             temperature=0.0, max_tokens=512, timeout=120,
         )
+        try:
+            from pathlib import Path as _P
+            from src.research.agent_runner import _record_llm_usage, response_tokens
+            _tok = response_tokens(resp)
+            if _tok:
+                _record_llm_usage(
+                    db_path=str(_P(__file__).resolve().parents[2] / "judas_crew.db"),
+                    tokens=_tok)
+        except Exception:  # noqa: BLE001
+            pass
         txt = str(resp["choices"][0]["message"].get("content") or "")
         reason = txt.strip().replace("\n", " ")[:300]
         if "VERDICT: FAKE" in txt.upper() or "VERDICT:FAKE" in txt.upper():
@@ -184,6 +194,25 @@ def run_one_autofix(
         log.info("autofix_dispatch.inhibited_by_env")
         return {"ok": False, "status": "inhibited",
                 "reason": "JUDAS_AUTOFIX_INHIBIT=1"}
+
+    # Daily token budget — same gate as the agent loops (2026-07-17: the coder
+    # burned invisibly until MiniMax 429'd; bug-fixing can wait for tomorrow's
+    # budget, positions can't — only the trader is exempt).
+    try:
+        from src.research.agent_runner import (
+            _DEFAULT_DAILY_TOKEN_BUDGET, daily_tokens_used,
+        )
+        _budget = int(os.environ.get("JUDAS_DAILY_TOKEN_BUDGET",
+                                     _DEFAULT_DAILY_TOKEN_BUDGET))
+        if _budget > 0:
+            _used = daily_tokens_used(db_path=db_path)
+            if _used >= _budget:
+                log.warning("autofix_dispatch.daily_budget_reached used=%d budget=%d",
+                            _used, _budget)
+                return {"ok": False, "status": "budget",
+                        "reason": f"daily token budget reached ({_used:,}/{_budget:,})"}
+    except Exception:  # noqa: BLE001
+        pass
 
     from src.research.autofix_executor import (
         ALLOWLIST_PATTERNS, DENYLIST_PATTERNS, can_autofix,

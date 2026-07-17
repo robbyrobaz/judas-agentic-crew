@@ -690,6 +690,13 @@ def run_harness(
     ]
 
     turn = 0
+    run_tokens = 0
+    # Usage metering: the coder burned invisibly before 2026-07-17 — record into
+    # the main repo DB (not the worktree copy) so the daily budget meter sees it.
+    from src.research.agent_runner import (
+        _record_llm_usage, response_tokens, run_token_cap,
+    )
+    _usage_db = str(Path(__file__).resolve().parents[2] / "judas_crew.db")
     error: str | None = None
     unlimited_turns = turn_budget is None or turn_budget <= 0
     unlimited_time = time_budget_s is None or time_budget_s <= 0
@@ -712,6 +719,17 @@ def run_harness(
             )
         except Exception as exc:  # noqa: BLE001 — defensive on the LLM seam
             error = f"llm call failed: {exc}"
+            break
+
+        tok = response_tokens(response)
+        if tok:
+            _record_llm_usage(db_path=_usage_db, tokens=tok)
+            run_tokens += tok
+        _cap = run_token_cap()
+        if _cap > 0 and run_tokens >= _cap:
+            error = f"run token cap reached ({run_tokens:,}/{_cap:,}) — coder cycle ended"
+            log.warning("autofix_harness.run_token_cap_reached run_tokens=%d cap=%d",
+                        run_tokens, _cap)
             break
 
         msg = _extract_message(response)

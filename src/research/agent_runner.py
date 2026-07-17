@@ -85,11 +85,13 @@ def daily_tokens_used(*, db_path: str) -> int:
 
 # Teams that keep running even over budget — position protection beats pacing.
 _BUDGET_EXEMPT_TEAMS = {"trader"}
-# 150M/day ≈ 1.05B/wk — ~40% of the ~2.8B weekly quota, leaving headroom for
-# the OTHER systems sharing this MiniMax account (kalshi-edge, hl-momentum,
-# church-poll) and for burst days. Was 300M, but that was set when only
-# agent_runner recorded usage — now that ALL paths meter (pm/operator, coder,
-# reviewer), 300M/day would genuinely spend 2.1B/wk and peg the quota again.
+# 150M/day ≈ 1.05B/wk — ~40% of the ~2.8B weekly quota. This crew is the ONLY
+# MiniMax consumer (Rob, 2026-07-17), so the whole quota is ours; the headroom
+# is for burst days and the budget-exempt trader. Was 300M, but that was set
+# when only agent_runner recorded usage — now that ALL paths meter (pm/operator,
+# coder, reviewer), 300M/day would genuinely spend 2.1B/wk and peg the quota
+# again. The 2026-07-17 blowout reconciles exactly: unmetered operator runs
+# (~74M each × 4/day) + coder ≈ 2B/wk invisible burn.
 _DEFAULT_DAILY_TOKEN_BUDGET = 150_000_000
 
 # Per-RUN token ceiling. 2026-07-17 lesson: with unlimited turns the ONLY stop

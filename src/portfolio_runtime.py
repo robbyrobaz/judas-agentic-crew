@@ -1294,16 +1294,22 @@ def _reconcile_nt_fills(db_path: str) -> int:
 
 
 def _orphan_body(db_path: str) -> int:
-    """Flatten NT positions the crew is NOT managing (orphans with no open DB
-    trade). Orphaned OCO legs open positions with no DB row, and nothing else
-    in the scan catches those — this is what caused the recurring 2026-07
-    position emergencies (4->17 untracked contracts). Runs every scan on the NT
-    route so orphans self-clear within one 5-min cycle. Never raises.
+    """DETECT NT positions the crew is NOT managing (orphans with no open DB
+    trade) and hand them to the crew via a high-urgency task — the crew DECIDES
+    whether to hold, manage, or flatten. Returns the count of unmanaged
+    contracts detected.
 
-    NOTE: the prior autofix shipped this as `return 0` (a no-op stub) and marked
-    the task done; the fake slipped past the reviewer. This is the real body.
+    Orphaned OCO legs open positions with no DB row, and nothing else in the
+    scan catches those — this is what caused the recurring 2026-07 position
+    emergencies. Runs every scan on the NT route. Never raises.
+
+    2026-07-17: this used to AUTO-FLATTEN excess qty every cycle. That was wrong
+    twice over — (1) it would dump genuinely profitable unmanaged positions the
+    moment the feed could see them (SimJudasCrew was +$5k on 9 unmanaged
+    contracts), and (2) Rob's mandate is that the LLM crew, not a blind
+    deterministic guardrail, manages positions. So this now DETECTS and QUEUES
+    for the crew's judgment instead of closing anything itself.
     """
-    from datetime import datetime, timezone, timedelta
     from src.db.models import get_conn
     try:
         from src.research.agent_tools import get_nt_positions
@@ -1315,9 +1321,9 @@ def _orphan_body(db_path: str) -> int:
     try:
         with get_conn(db_path) as conn:
             # Managed QUANTITY per (symbol, direction) — not just presence. An
-            # orphan in the SAME direction as a managed trade (NT short 2, DB
-            # short 1) must still surface its 1 excess contract; a set membership
-            # test would hide it under the managed trade.
+            # orphan in the SAME direction as a managed trade (NT long 4, DB
+            # long 1) must still surface its 3 excess contracts; a set membership
+            # test would hide them under the managed trade.
             managed: dict[tuple[str, str], int] = {}
             for r in conn.execute(
                 "SELECT symbol, direction, qty FROM trades WHERE status='open'"
@@ -1327,82 +1333,68 @@ def _orphan_body(db_path: str) -> int:
     except Exception as exc:  # noqa: BLE001
         log.warning("orphan_reconcile.db_read_failed: %s", exc)
         return 0
-    try:
-        broker = _nt_broker()
-        active = set(broker.instrument_map.keys())
-    except Exception as exc:  # noqa: BLE001
-        log.warning("orphan_reconcile.broker_failed: %s", exc)
-        return 0
 
-    # Cooldown: get_nt_positions is up to ~5 min stale, and the scan runs every
-    # 5 min. Without a cooldown a just-flattened position still shows in the
-    # stale view next scan → we'd flatten again and FLIP it (long→short). After
-    # flattening a symbol, don't touch it again for 20 min (4 sync cycles) — long
-    # enough for the sync to reflect flat, short enough to re-catch a genuinely
-    # new orphan.
-    try:
-        with get_conn(db_path) as conn:
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS orphan_flatten_log "
-                "(symbol TEXT, ts_utc TEXT)")
-            recent = {
-                str(r[0]).upper()
-                for r in conn.execute(
-                    "SELECT symbol FROM orphan_flatten_log "
-                    "WHERE ts_utc >= strftime('%Y-%m-%dT%H:%M:%SZ','now','-20 minutes')"
-                ).fetchall()
-            }
-    except Exception:  # noqa: BLE001
-        recent = set()
-
-    cutoff = datetime.now(timezone.utc) - timedelta(days=14)
-    flattened = 0
-    seen: set[str] = set()
+    unmanaged: list[dict] = []
     for p in truth.get("open_positions", []):
         sym = str(p.get("instrument", "")).upper()
-        # Skip expired-contract phantoms (weeks-old fills we can't close on the
-        # active contract), symbols we don't trade, and dupes.
-        last_raw = str(p.get("last_exec_utc") or "")
-        try:
-            last = datetime.fromisoformat(last_raw.replace("Z", "+00:00"))
-            # Sync timestamps are UTC but often lack a tz suffix → naive. Make
-            # aware so the cutoff compare doesn't blow up (live data has no Z;
-            # a naive value silently broke this on the first real run).
-            if last.tzinfo is None:
-                last = last.replace(tzinfo=timezone.utc)
-        except ValueError:
-            last = None
-        if last is not None and last < cutoff:
-            continue
-        if sym not in active or sym in seen or sym in recent:
-            continue  # already flattened this symbol within the cooldown window
         direction = "long" if p.get("side") == "LONG" else "short"
-        # Flatten only the EXCESS over what the crew is managing in this
-        # direction (so a same-direction orphan under a managed trade is caught).
         nt_qty = int(p.get("qty", 0) or 0)
-        qty = nt_qty - managed.get((sym, direction), 0)
-        if qty <= 0:
+        excess = nt_qty - managed.get((sym, direction), 0)
+        if excess <= 0:
             continue  # fully managed (or less) — leave it alone
-        seen.add(sym)
-        log.critical(
-            "ORPHAN_RECONCILE_FLATTEN sym=%s side=%s qty=%d (no open DB trade — auto-flattening)",
-            sym, p.get("side"), qty,
+        unmanaged.append({
+            "symbol": sym,
+            "contract": p.get("contract", sym),
+            "side": p.get("side"),
+            "unmanaged_qty": excess,
+            "nt_qty": nt_qty,
+            "avg_price": p.get("avg_price"),
+        })
+    if not unmanaged:
+        return 0
+
+    total = sum(u["unmanaged_qty"] for u in unmanaged)
+    log.critical(
+        "ORPHAN_DETECTED %d unmanaged contract(s) across %d position(s): %s "
+        "— queuing for the crew (NOT auto-flattening)",
+        total, len(unmanaged),
+        ", ".join(f"{u['symbol']} {u['side']} x{u['unmanaged_qty']}" for u in unmanaged),
+    )
+    # Hand off to the crew. Dedup: don't pile a fresh task every 5-min scan while
+    # one is still open/claimed — refresh the existing one's payload instead so
+    # the crew always sees the current book without a queue flood.
+    try:
+        from src.research.agent_tools import make_enqueue_task
+        enqueue = make_enqueue_task(db_path=db_path, requester="scan_orphan_detector")
+        import json as _json
+        payload = {"unmanaged_positions": unmanaged, "total_unmanaged_contracts": total,
+                   "detected_by": "portfolio_scan._orphan_body"}
+        rationale = (
+            f"{total} unmanaged NT contract(s) with no open DB trade: "
+            + "; ".join(f"{u['symbol']} {u['side']} x{u['unmanaged_qty']} @ {u['avg_price']}"
+                        for u in unmanaged)
+            + ". Reconcile: adopt into managed trades to hold, or flatten via "
+              "flatten_position. Check get_recent_pnl — these may be winners."
         )
-        try:
-            fill = broker.flatten(sym, direction=direction, quantity=qty)
-            if fill is not None:
-                flattened += 1
-                log.warning("orphan_reconcile.flattened sym=%s qty=%d fill=%s", sym, qty, fill)
-                try:
-                    with get_conn(db_path) as conn:
-                        conn.execute(
-                            "INSERT INTO orphan_flatten_log (symbol, ts_utc) VALUES "
-                            "(?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))", (sym,))
-                except Exception:  # noqa: BLE001
-                    pass
-        except Exception as exc:  # noqa: BLE001
-            log.error("orphan_reconcile.flatten_failed sym=%s: %s", sym, exc)
-    return flattened
+        with get_conn(db_path) as conn:
+            existing = conn.execute(
+                "SELECT id FROM agent_tasks WHERE action='reconcile_unmanaged_positions' "
+                "AND status IN ('open','claimed') ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE agent_tasks SET payload_json=?, rationale=?, urgency='high' "
+                    "WHERE id=?",
+                    (_json.dumps(payload, default=str), rationale, int(existing["id"])),
+                )
+                log.warning("orphan_reconcile.task_refreshed id=%s", existing["id"])
+            else:
+                res = enqueue(team="trader", action="reconcile_unmanaged_positions",
+                              payload=payload, rationale=rationale, urgency="high")
+                log.warning("orphan_reconcile.task_queued %s", res)
+    except Exception as exc:  # noqa: BLE001
+        log.error("orphan_reconcile.enqueue_failed: %s", exc)
+    return total
 
 
 def _reconcile_nt_orphans(db_path: str) -> int:

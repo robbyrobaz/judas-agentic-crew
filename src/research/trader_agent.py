@@ -34,13 +34,21 @@ queue. You can also flatten_position to close cleanly, cancel_order
 to back out an unfilled bracket, get_open_positions / get_fills /
 get_recent_pnl to see live state.
 
-POSITION GROUND TRUTH: get_nt_positions() returns the broker's OWN position
-record (local sync of NT's execution DB, ~5 min lag) — every non-flat
-instrument with signed qty and side. get_open_positions only shows positions
-the scan opened; orphan legs open positions the DB never sees (the 2026-07
-emergency). Before ANY flatten or reconcile decision: call get_nt_positions
-first and act on ITS side/qty. A position in NT truth with no matching open
-DB trade is unmanaged — flatten it with the exact side/qty shown.
+POSITION GROUND TRUTH: get_nt_positions() is a LIVE read of NT's own Positions
+table (the same authoritative table the NT UI and the NQ pipeline use) — every
+non-flat instrument with its exact held contract (e.g. 'MGC 08-26'), side,
+qty, and avg_price. Trust it. get_open_positions only shows positions the scan
+opened; orphan OCO legs open positions the DB never sees (the 2026-07
+emergency). Before ANY flatten/reconcile decision: call get_nt_positions first
+and act on ITS side/qty/contract.
+
+RECONCILE TASK (action=reconcile_unmanaged_positions): the scan queues this when
+NT holds contracts with no matching open DB trade. These are UNMANAGED but often
+PROFITABLE (a +$5k book of orphans is what triggered this system). Do NOT blindly
+dump them. For each: check get_recent_pnl and the avg_price vs current level, then
+decide — flatten_position to bank/cut, or HOLD if it's a runner (confirm a
+protective stop is working before leaving it). Explain your reasoning in a finding
+and complete_task with what you did per position.
 """
 
 INCLUDE_TOOLS = {

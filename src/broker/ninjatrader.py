@@ -17,6 +17,8 @@ Lucid-funded accounts (LFE/LFF) are out of scope here.
 """
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import os
 import re
@@ -94,6 +96,71 @@ class NTBroker:
         except Exception:
             log.exception("nt_broker.winrm_exception")
             return 1, ""
+
+    # NT's own sqlite DB — the SAME file the NQ pipeline + 2 other systems read
+    # to see live positions. This is the authoritative Positions table (matches
+    # the NT UI), NOT the fills-derived execution copy.
+    _NT_SQLITE = r"C:/Users/hartw/Documents/NinjaTrader 8/db/NinjaTrader.sqlite"
+
+    def positions(self) -> list[dict] | None:
+        """LIVE read of NT's own Positions table for self.account.
+
+        Returns every non-flat position as
+        {symbol, contract, side ('LONG'|'SHORT'), qty, avg_price} — the contract
+        string carries the actual held month (e.g. 'MGC 08-26') so a caller can
+        flatten the exact contract, not a resolved active month that may differ.
+
+        This is the ground truth the fills-derived sync was BLIND to: orphan OCO
+        legs and any position whose opening fill our Executions sync missed still
+        show here. Returns None (not []) on WinRM failure so callers can fall back
+        rather than mistake a read error for 'flat'.
+        """
+        if self.dry_run:
+            return []
+        body = (
+            "import sqlite3, json\n"
+            "from datetime import datetime, timedelta\n"
+            f"con=sqlite3.connect(r'{self._NT_SQLITE}')\n"
+            "con.row_factory=sqlite3.Row\n"
+            "rows=con.execute('''SELECT m.Name master, i.Expiry expiry, "
+            "p.MarketPosition mp, p.Quantity qty, p.AvgPrice avg "
+            "FROM Positions p JOIN Accounts a ON a.Id=p.Account "
+            "LEFT JOIN Instruments i ON i.Id=p.Instrument "
+            "LEFT JOIN MasterInstruments m ON m.Id=i.MasterInstrument "
+            f"WHERE a.Name='{self.account}' AND p.Quantity!=0 AND p.MarketPosition!=0''').fetchall()\n"
+            "out=[]\n"
+            "for r in rows:\n"
+            "    master=r['master'] or '?'\n"
+            "    try:\n"
+            "        d=datetime(1,1,1)+timedelta(microseconds=(r['expiry'] or 0)//10)\n"
+            "        contract=f\"{master} {d.month:02d}-{d.year%100:02d}\"\n"
+            "    except Exception:\n"
+            "        contract=master\n"
+            "    out.append({'symbol':master,'contract':contract,"
+            "'side':'LONG' if r['mp']==1 else 'SHORT','qty':int(r['qty'] or 0),"
+            "'avg_price':float(r['avg'] or 0)})\n"
+            "print('POSJSON'+json.dumps(out)+'ENDPOS')\n"
+        )
+        b64 = base64.b64encode(body.encode()).decode()
+        ps = (
+            '$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString() + ".py"); '
+            f'[System.IO.File]::WriteAllBytes($tmp, [System.Convert]::FromBase64String("{b64}")); '
+            f'& "{self.python_exe}" $tmp; Remove-Item $tmp'
+        )
+        try:
+            sess = winrm.Session(self.host, auth=(self.user, self.password),
+                                 operation_timeout_sec=60, read_timeout_sec=90)
+            r = sess.run_ps(ps)
+            out = r.std_out.decode()
+            a, b = out.find("POSJSON"), out.find("ENDPOS")
+            if a < 0 or b < 0:
+                log.error("nt_broker.positions_parse_fail stdout=%s stderr=%s",
+                          out[:300], (r.std_err.decode()[:300] if r.std_err else ""))
+                return None
+            return json.loads(out[a + 7:b])
+        except Exception:
+            log.exception("nt_broker.positions_winrm_exception")
+            return None
 
     # Execution runs on C:\PyBridge\python.exe — a standalone machine-wide
     # Python 3.10 + pythonnet living OUTSIDE any user profile. This is the

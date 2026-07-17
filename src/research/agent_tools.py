@@ -1285,13 +1285,53 @@ _NT_TRUTH_DB = os.environ.get(
 
 
 def get_nt_positions(*, account: str = "SimJudasCrew") -> dict:
-    """GROUND-TRUTH NinjaTrader positions from the local 5-min sync copy.
+    """GROUND-TRUTH NinjaTrader positions — LIVE read of NT's own Positions table.
 
-    Returns every instrument with a non-flat position: name, signed qty
-    (+long/-short), last execution price/time, and staleness of the sync.
-    This is the broker's own record — trust it over the trades table, which
-    only knows positions the scan itself opened (2026-07-09/10 emergency:
-    orphan OCO legs opened positions the DB never saw)."""
+    Reads the SAME authoritative Positions table the NQ pipeline and two other
+    systems use (matches the NT UI), via NTBroker.positions(). This is the fix
+    for the 2026-07-17 blind spot: the previous implementation reconstructed
+    positions by summing the fills-derived sync copy, which MISSED positions
+    whose opening fills the Executions sync never captured (e.g. a real MNQ
+    long-4 that netted to 'flat' in the derived view) — leaving the crew unaware
+    of live, unmanaged positions.
+
+    Returns every non-flat position: instrument (master symbol), contract (the
+    exact held month, e.g. 'MGC 08-26'), side, signed qty (+long/-short),
+    avg_price. Falls back to the 5-min sync copy only if the live read fails."""
+    try:
+        from src.config import load_config as _lc
+        cfg = _lc()
+        if str(getattr(cfg, "route", "") or "") == "ninjatrader":
+            from src.broker.ninjatrader import NTBroker
+            nt = cfg.ninjatrader
+            broker = NTBroker(account=account or nt.account,
+                              instrument_map=dict(nt.instrument_map),
+                              host=nt.host, user=nt.user, python_exe=nt.python_exe,
+                              outgoing_dir=nt.outgoing_dir)
+            live = broker.positions()
+            if live is not None:  # None = WinRM failure → fall through to sync copy
+                positions = [{
+                    "instrument": str(p["symbol"]),
+                    "contract": str(p.get("contract", p["symbol"])),
+                    "position": p["qty"] if p["side"] == "LONG" else -p["qty"],
+                    "side": p["side"],
+                    "qty": int(p["qty"]),
+                    "avg_price": float(p.get("avg_price", 0) or 0),
+                } for p in live]
+                return {"ok": True, "account": account, "open_positions": positions,
+                        "flat": not positions, "source": "nt_live_positions_table",
+                        "note": "live read of NT's authoritative Positions table"}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("get_nt_positions.live_read_failed, falling back to sync copy: %s", exc)
+    return _nt_positions_from_sync(account)
+
+
+def _nt_positions_from_sync(account: str = "SimJudasCrew") -> dict:
+    """FALLBACK: positions reconstructed from the 5-min fills-derived sync copy.
+
+    Only used when the live NT Positions read fails. Blind to positions whose
+    opening fills the Executions sync missed — kept as a degraded last resort so
+    a WinRM hiccup doesn't leave callers with nothing."""
     try:
         conn = sqlite3.connect(f"file:{_NT_TRUTH_DB}?mode=ro", uri=True, timeout=10)
         conn.row_factory = sqlite3.Row

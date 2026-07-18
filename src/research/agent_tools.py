@@ -1326,6 +1326,69 @@ def get_nt_positions(*, account: str = "SimJudasCrew") -> dict:
     return _nt_positions_from_sync(account)
 
 
+def _nt_live_broker(account: str = "SimJudasCrew"):
+    """Build an NTBroker for live NT reads/cancels on the crew account."""
+    from src.config import load_config as _lc
+    cfg = _lc()
+    from src.broker.ninjatrader import NTBroker
+    nt = cfg.ninjatrader
+    return NTBroker(account=account or nt.account,
+                    instrument_map=dict(nt.instrument_map),
+                    host=nt.host, user=nt.user, python_exe=nt.python_exe,
+                    outgoing_dir=nt.outgoing_dir)
+
+
+def get_nt_working_orders(*, account: str = "SimJudasCrew") -> dict:
+    """LIVE list of WORKING orders on the NT account, with cancellable GUIDs.
+
+    2026-07-18: 444 stale orphaned OCO legs had piled up. NT counts working
+    orders toward worst-case exposure vs the account's MaxPositionSize (=4 on
+    SimJudasCrew), so it rejected EVERY new order — even position-REDUCING
+    flattens ('Exceeds account's maximum position quantity'). Use this to see
+    the full working book; cancel stale legs with cancel_nt_order(order_id=
+    <guid>, symbol=<sym>). KEEP the newest protective stop for each open
+    position — cancel-everything would leave positions naked."""
+    try:
+        broker = _nt_live_broker(account)
+        orders = broker.working_orders()
+        if orders is None:
+            return {"ok": False, "error": "WinRM read of NT Orders failed"}
+        by_sym: dict[str, int] = {}
+        for o in orders:
+            by_sym[o["symbol"]] = by_sym.get(o["symbol"], 0) + 1
+        return {"ok": True, "account": account, "n_working": len(orders),
+                "count_by_symbol": by_sym, "working_orders": orders,
+                "note": ("NT rejects ALL new orders (even flattens) while working-"
+                         "order exposure exceeds MaxPositionSize=4 — clean stale "
+                         "legs first, keep one protective stop per open position")}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"working orders read failed: {exc}"}
+
+
+def cancel_nt_order(*, order_id: str, symbol: str) -> dict:
+    """Cancel ONE working NT order by its NT GUID (from get_nt_working_orders).
+
+    Safe by construction: NT's CANCEL only acts on the given order id; a wrong/
+    dead id is a no-op error, never a position change."""
+    sym = str(symbol or "").upper().strip()
+    oid = str(order_id or "").strip()
+    if not oid:
+        return {"ok": False, "error": "order_id required"}
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    try:
+        broker = _nt_live_broker()
+        from src.portfolio_runtime import _resolve_nt_instrument_map
+        broker.instrument_map = _resolve_nt_instrument_map(dict(broker.instrument_map))
+        if sym not in broker.instrument_map:
+            return {"ok": False, "error": f"unknown symbol {sym!r} (not in instrument_map)"}
+        ok = broker.cancel(oid, sym)
+        return {"ok": bool(ok), "order_id": oid, "symbol": sym,
+                "error": None if ok else "NT CANCEL rejected (order may be dead/filled — verify via get_nt_working_orders)"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"cancel failed: {exc}"}
+
+
 def _nt_positions_from_sync(account: str = "SimJudasCrew") -> dict:
     """FALLBACK: positions reconstructed from the 5-min fills-derived sync copy.
 
@@ -1453,6 +1516,8 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
     extras["run_shell"] = _safe_tool(run_shell)
     # Ground-truth NT positions from the local sync copy (2026-07-12).
     extras["get_nt_positions"] = _safe_tool(get_nt_positions)
+    extras["get_nt_working_orders"] = _safe_tool(get_nt_working_orders)
+    extras["cancel_nt_order"] = _safe_tool(cancel_nt_order)
     if operator_mode:
         enq = make_enqueue_task(db_path=db_path, requester="operator")
 
@@ -1588,6 +1653,45 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
                 "type": "object",
                 "properties": {"account": {"type": "string", "default": "SimJudasCrew"}},
                 "required": [],
+            },
+        },
+    })
+    extra_schemas.append({
+        "type": "function",
+        "function": {
+            "name": "get_nt_working_orders",
+            "description": (
+                "LIVE list of WORKING orders on the NT account with cancellable "
+                "GUIDs, grouped counts per symbol. NT counts working orders toward "
+                "worst-case exposure vs the account MaxPositionSize (=4): when "
+                "stale orphaned OCO legs pile up, NT rejects ALL new orders — even "
+                "position-REDUCING flattens ('Exceeds account's maximum position "
+                "quantity'). Use this to find stale legs, then cancel_nt_order "
+                "each. KEEP one protective stop per open position."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"account": {"type": "string", "default": "SimJudasCrew"}},
+                "required": [],
+            },
+        },
+    })
+    extra_schemas.append({
+        "type": "function",
+        "function": {
+            "name": "cancel_nt_order",
+            "description": (
+                "Cancel ONE working NT order by its NT GUID (from "
+                "get_nt_working_orders). Safe: acts only on that order id; wrong/"
+                "dead ids are no-op errors, never position changes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "string", "description": "NT order GUID"},
+                    "symbol": {"type": "string", "description": "e.g. MNQ, MGC, ZF"},
+                },
+                "required": ["order_id", "symbol"],
             },
         },
     })

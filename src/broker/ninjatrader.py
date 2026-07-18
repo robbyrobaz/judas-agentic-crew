@@ -162,6 +162,72 @@ class NTBroker:
             log.exception("nt_broker.positions_winrm_exception")
             return None
 
+    def working_orders(self) -> list[dict] | None:
+        """LIVE list of WORKING orders (OrderState=1) on self.account from NT's
+        own Orders table, each with the cancellable NT GUID.
+
+        Added 2026-07-18: 444 stale orphaned OCO legs had accumulated; NT counts
+        working orders toward worst-case exposure vs the account's
+        MaxPositionSize (=4), so it rejected EVERY new order — including
+        position-REDUCING flattens ('Exceeds account's maximum position
+        quantity'). The crew needs to see these to clean them up.
+
+        Returns [{order_id, symbol, contract, action ('BUY'|'SELL'), order_type,
+        qty, limit_price, stop_price, oco, time_utc}]. None on WinRM failure.
+        """
+        if self.dry_run:
+            return []
+        body = (
+            "import sqlite3, json\n"
+            "from datetime import datetime, timedelta\n"
+            f"con=sqlite3.connect(r'{self._NT_SQLITE}')\n"
+            "con.row_factory=sqlite3.Row\n"
+            "rows=con.execute('''SELECT o.OrderId oid, m.Name master, i.Expiry expiry, "
+            "o.OrderAction act, o.OrderType typ, o.Quantity qty, o.LimitPrice lp, "
+            "o.StopPrice sp, o.Oco oco, o.Time t "
+            "FROM Orders o JOIN Accounts a ON a.Id=o.Account "
+            "LEFT JOIN Instruments i ON i.Id=o.Instrument "
+            "LEFT JOIN MasterInstruments m ON m.Id=i.MasterInstrument "
+            f"WHERE a.Name='{self.account}' AND o.OrderState=1''').fetchall()\n"
+            "out=[]\n"
+            "for r in rows:\n"
+            "    master=r['master'] or '?'\n"
+            "    try:\n"
+            "        d=datetime(1,1,1)+timedelta(microseconds=(r['expiry'] or 0)//10)\n"
+            "        contract=f\"{master} {d.month:02d}-{d.year%100:02d}\"\n"
+            "    except Exception:\n"
+            "        contract=master\n"
+            "    try:\n"
+            "        ts=(datetime(1,1,1)+timedelta(microseconds=(r['t'] or 0)//10)).isoformat()\n"
+            "    except Exception:\n"
+            "        ts=''\n"
+            "    out.append({'order_id':r['oid'],'symbol':master,'contract':contract,"
+            "'action':'BUY' if r['act']==0 else 'SELL','order_type':int(r['typ'] or 0),"
+            "'qty':int(r['qty'] or 0),'limit_price':float(r['lp'] or 0),"
+            "'stop_price':float(r['sp'] or 0),'oco':r['oco'] or '','time_utc':ts})\n"
+            "print('WOJSON'+json.dumps(out)+'ENDWO')\n"
+        )
+        b64 = base64.b64encode(body.encode()).decode()
+        ps = (
+            '$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString() + ".py"); '
+            f'[System.IO.File]::WriteAllBytes($tmp, [System.Convert]::FromBase64String("{b64}")); '
+            f'& "{self.python_exe}" $tmp; Remove-Item $tmp'
+        )
+        try:
+            sess = winrm.Session(self.host, auth=(self.user, self.password),
+                                 operation_timeout_sec=60, read_timeout_sec=90)
+            r = sess.run_ps(ps)
+            out = r.std_out.decode()
+            a, b = out.find("WOJSON"), out.find("ENDWO")
+            if a < 0 or b < 0:
+                log.error("nt_broker.working_orders_parse_fail stdout=%s stderr=%s",
+                          out[:300], (r.std_err.decode()[:300] if r.std_err else ""))
+                return None
+            return json.loads(out[a + 6:b])
+        except Exception:
+            log.exception("nt_broker.working_orders_winrm_exception")
+            return None
+
     # Execution runs on C:\PyBridge\python.exe — a standalone machine-wide
     # Python 3.10 + pythonnet living OUTSIDE any user profile. This is the
     # permanent fix for the silent outage where the exec account's WinRM logon

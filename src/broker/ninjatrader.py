@@ -228,6 +228,26 @@ class NTBroker:
             log.exception("nt_broker.working_orders_winrm_exception")
             return None
 
+    def close_position_cmd(self, instrument: str) -> bool:
+        """NT ATI CLOSEPOSITION: flatten account+instrument AND cancel ALL its
+        working orders in one engine-side command.
+
+        Scoped to (self.account, instrument) — cannot touch other accounts.
+        Added 2026-07-19: hundreds of zombie order rows (state=Working in NT's
+        DB but unknown to live ATI) made per-order CANCEL useless (rc!=0 on
+        390/414); CLOSEPOSITION is the engine-side reset that clears both the
+        live and zombie book for the instrument."""
+        script = self._HEADER + (
+            f'r = nt.Command("CLOSEPOSITION", "{self.account}", "{instrument}", '
+            f'"", 0, "", 0.0, 0.0, "", "", "", "", "")\n'
+            'print(f"CLOSE_RC:{r}")\n'
+        )
+        status, out = self._nt_run(script)
+        ok = status == 0 and "CLOSE_RC:0" in out
+        log.warning("nt_broker.close_position_cmd instrument=%s ok=%s out=%s",
+                    instrument, ok, out.strip()[:120])
+        return ok
+
     def cancel_many(self, orders: list[tuple[str, str]]) -> dict | None:
         """Cancel MANY working orders in ONE WinRM round-trip.
 

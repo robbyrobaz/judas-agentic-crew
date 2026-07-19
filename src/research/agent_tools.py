@@ -1453,6 +1453,43 @@ def cancel_stale_nt_orders(*, dry_run: bool = True, account: str = "SimJudasCrew
         return {"ok": False, "error": f"cancel_stale failed: {exc}"}
 
 
+def close_nt_position(*, symbol: str, account: str = "SimJudasCrew") -> dict:
+    """ENGINE-SIDE RESET for one symbol: NT's CLOSEPOSITION flattens the
+    position AND cancels ALL working orders for that instrument+account in one
+    command — including zombie orders that per-order CANCEL cannot touch
+    (2026-07-19: 390/414 stale legs were unknown to live ATI, rc!=0).
+
+    Use when a symbol's order book is unmanageable: it banks the position at
+    market and leaves the symbol totally clean (flat, zero working orders).
+    Scoped to this account only. Uses the symbol's CURRENT position contract."""
+    sym = str(symbol or "").upper().strip()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    try:
+        broker = _nt_live_broker(account)
+        positions = broker.positions() or []
+        pos = next((p for p in positions if p["symbol"] == sym), None)
+        contracts: list[str] = []
+        if pos:
+            contracts.append(pos["contract"])
+        # Also clear zombie orders on OTHER contract months of this symbol.
+        orders = broker.working_orders() or []
+        for o in orders:
+            if o["symbol"] == sym and o["contract"] not in contracts:
+                contracts.append(o["contract"])
+        if not contracts:
+            return {"ok": True, "symbol": sym, "note": "no position and no working orders"}
+        results = {c: broker.close_position_cmd(c) for c in contracts}
+        after_pos = broker.positions() or []
+        still = next((p for p in after_pos if p["symbol"] == sym), None)
+        return {"ok": all(results.values()), "symbol": sym,
+                "closed_contracts": results,
+                "position_before": (f"{pos['side']} x{pos['qty']}" if pos else "flat"),
+                "position_after": (f"{still['side']} x{still['qty']}" if still else "flat")}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"close failed: {exc}"}
+
+
 def _nt_positions_from_sync(account: str = "SimJudasCrew") -> dict:
     """FALLBACK: positions reconstructed from the 5-min fills-derived sync copy.
 
@@ -1583,6 +1620,7 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
     extras["get_nt_working_orders"] = _safe_tool(get_nt_working_orders)
     extras["cancel_nt_order"] = _safe_tool(cancel_nt_order)
     extras["cancel_stale_nt_orders"] = _safe_tool(cancel_stale_nt_orders)
+    extras["close_nt_position"] = _safe_tool(close_nt_position)
     if operator_mode:
         enq = make_enqueue_task(db_path=db_path, requester="operator")
 
@@ -1738,6 +1776,26 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
                 "type": "object",
                 "properties": {"account": {"type": "string", "default": "SimJudasCrew"}},
                 "required": [],
+            },
+        },
+    })
+    extra_schemas.append({
+        "type": "function",
+        "function": {
+            "name": "close_nt_position",
+            "description": (
+                "ENGINE-SIDE RESET for one symbol: NT CLOSEPOSITION flattens the "
+                "position at market AND cancels ALL its working orders — incl. "
+                "zombie orders that cancel_nt_order/cancel_stale_nt_orders cannot "
+                "touch (they're unknown to live ATI). Symbol ends totally clean: "
+                "flat + zero working orders. Use for unmanageable order books; "
+                "this CLOSES the position, so decide hold-vs-bank first."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"symbol": {"type": "string", "description": "e.g. MNQ"},
+                               "account": {"type": "string", "default": "SimJudasCrew"}},
+                "required": ["symbol"],
             },
         },
     })

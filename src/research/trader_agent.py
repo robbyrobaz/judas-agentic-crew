@@ -66,7 +66,7 @@ and complete_task with what you did per position.
 INCLUDE_TOOLS = {
     "place_bracket_order", "cancel_order", "flatten_position",
     "get_nt_positions", "get_nt_working_orders", "cancel_nt_order",
-    "cancel_stale_nt_orders",
+    "cancel_stale_nt_orders", "close_nt_position",
     "get_open_positions", "get_fills", "get_recent_pnl",
     "claim_task", "complete_task", "get_open_tasks",
     # shared findings memory

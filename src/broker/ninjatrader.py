@@ -228,6 +228,64 @@ class NTBroker:
             log.exception("nt_broker.working_orders_winrm_exception")
             return None
 
+    def cancel_many(self, orders: list[tuple[str, str]]) -> dict | None:
+        """Cancel MANY working orders in ONE WinRM round-trip.
+
+        ``orders`` = [(order_guid, nt_instrument_string), ...] — instrument must
+        be the exact contract (e.g. 'MGC 08-26'), which working_orders() returns.
+
+        Added 2026-07-18: one-at-a-time cancels (~5-10s each over WinRM) made
+        clearing a 444-order stale book impossible inside any agent turn/token
+        budget — the stuck cleanup let weekend-gap fills DOUBLE the position.
+        Returns {'cancelled': n_ok, 'failed': n_fail, 'failures': [guid,...]}
+        or None on WinRM failure.
+        """
+        if not orders:
+            return {"cancelled": 0, "failed": 0, "failures": []}
+        if self.dry_run:
+            return {"cancelled": len(orders), "failed": 0, "failures": []}
+        pairs = json.dumps([[str(g), str(inst)] for g, inst in orders])
+        body = self._HEADER + (
+            "import json\n"
+            f"pairs = json.loads('''{pairs}''')\n"
+            "ok = 0; fails = []\n"
+            "for oid, inst in pairs:\n"
+            "    try:\n"
+            f"        r = nt.Command(\"CANCEL\", \"{self.account}\", inst, \"\", 0, "
+            "\"\", 0.0, 0.0, \"\", \"\", oid, \"\", \"\")\n"
+            "        if r == 0:\n"
+            "            ok += 1\n"
+            "        else:\n"
+            "            fails.append(oid)\n"
+            "    except Exception:\n"
+            "        fails.append(oid)\n"
+            "print('CMJSON' + json.dumps({'cancelled': ok, 'failed': len(fails), "
+            "'failures': fails[:20]}) + 'ENDCM')\n"
+        )
+        b64 = base64.b64encode(body.encode()).decode()
+        ps = (
+            '$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString() + ".py"); '
+            f'[System.IO.File]::WriteAllBytes($tmp, [System.Convert]::FromBase64String("{b64}")); '
+            f'& "{self.python_exe}" $tmp; Remove-Item $tmp'
+        )
+        try:
+            sess = winrm.Session(self.host, auth=(self.user, self.password),
+                                 operation_timeout_sec=300, read_timeout_sec=320)
+            r = sess.run_ps(ps)
+            out = r.std_out.decode()
+            a, b = out.find("CMJSON"), out.find("ENDCM")
+            if a < 0 or b < 0:
+                log.error("nt_broker.cancel_many_parse_fail stdout=%s stderr=%s",
+                          out[:300], (r.std_err.decode()[:300] if r.std_err else ""))
+                return None
+            res = json.loads(out[a + 6:b])
+            log.warning("nt_broker.cancel_many cancelled=%d failed=%d",
+                        res.get("cancelled", 0), res.get("failed", 0))
+            return res
+        except Exception:
+            log.exception("nt_broker.cancel_many_winrm_exception")
+            return None
+
     # Execution runs on C:\PyBridge\python.exe — a standalone machine-wide
     # Python 3.10 + pythonnet living OUTSIDE any user profile. This is the
     # permanent fix for the silent outage where the exec account's WinRM logon

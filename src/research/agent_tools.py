@@ -1389,6 +1389,70 @@ def cancel_nt_order(*, order_id: str, symbol: str) -> dict:
         return {"ok": False, "error": f"cancel failed: {exc}"}
 
 
+def cancel_stale_nt_orders(*, dry_run: bool = True, account: str = "SimJudasCrew") -> dict:
+    """Bulk-clean the stale working-order book in ONE call.
+
+    Keeps, per open position: the NEWEST <qty> close-side protective stops and
+    the NEWEST <qty> close-side targets (so nothing rides naked). Cancels
+    EVERYTHING else — entry-side orders on held symbols (these are what FILL on
+    gaps and ADD contracts: +7 at the 2026-07-19 Sunday reopen), all orders on
+    flat symbols, and older duplicate protection.
+
+    dry_run=True (default) returns the exact plan without cancelling — review
+    counts, then call again with dry_run=False to execute (single WinRM
+    round-trip via NTBroker.cancel_many; 444 one-at-a-time cancels was hours of
+    tool calls and is why the first cleanup task wedged)."""
+    try:
+        broker = _nt_live_broker(account)
+        positions = broker.positions()
+        orders = broker.working_orders()
+        if positions is None or orders is None:
+            return {"ok": False, "error": "WinRM read failed (positions or orders)"}
+
+        held: dict[str, dict] = {p["symbol"]: p for p in positions}
+        keep: set[str] = set()
+        keep_detail: dict[str, dict] = {}
+        for sym, p in held.items():
+            close_side = "SELL" if p["side"] == "LONG" else "BUY"
+            sym_orders = [o for o in orders if o["symbol"] == sym
+                          and o["action"] == close_side
+                          and o["contract"] == p.get("contract", o["contract"])]
+            stops = sorted((o for o in sym_orders if o["stop_price"] > 0),
+                           key=lambda o: o["time_utc"], reverse=True)[: p["qty"]]
+            targets = sorted((o for o in sym_orders
+                              if o["limit_price"] > 0 and o["stop_price"] == 0),
+                             key=lambda o: o["time_utc"], reverse=True)[: p["qty"]]
+            for o in stops + targets:
+                keep.add(o["order_id"])
+            keep_detail[sym] = {"position": f"{p['side']} x{p['qty']}",
+                                "stops_kept": len(stops), "targets_kept": len(targets)}
+
+        to_cancel = [o for o in orders if o["order_id"] not in keep]
+        plan = {
+            "n_working": len(orders),
+            "n_keep": len(keep),
+            "n_cancel": len(to_cancel),
+            "keep_per_position": keep_detail,
+            "cancel_by_symbol": {},
+        }
+        for o in to_cancel:
+            plan["cancel_by_symbol"][o["symbol"]] = plan["cancel_by_symbol"].get(o["symbol"], 0) + 1
+        if dry_run:
+            return {"ok": True, "dry_run": True, "plan": plan,
+                    "note": "no orders cancelled — call with dry_run=false to execute"}
+
+        res = broker.cancel_many([(o["order_id"], o["contract"]) for o in to_cancel])
+        if res is None:
+            return {"ok": False, "error": "bulk cancel WinRM failed", "plan": plan}
+        after = broker.working_orders()
+        return {"ok": True, "dry_run": False, "plan": plan,
+                "cancelled": res.get("cancelled"), "failed": res.get("failed"),
+                "failures_sample": res.get("failures", []),
+                "n_working_after": len(after) if after is not None else None}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"cancel_stale failed: {exc}"}
+
+
 def _nt_positions_from_sync(account: str = "SimJudasCrew") -> dict:
     """FALLBACK: positions reconstructed from the 5-min fills-derived sync copy.
 
@@ -1518,6 +1582,7 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
     extras["get_nt_positions"] = _safe_tool(get_nt_positions)
     extras["get_nt_working_orders"] = _safe_tool(get_nt_working_orders)
     extras["cancel_nt_order"] = _safe_tool(cancel_nt_order)
+    extras["cancel_stale_nt_orders"] = _safe_tool(cancel_stale_nt_orders)
     if operator_mode:
         enq = make_enqueue_task(db_path=db_path, requester="operator")
 
@@ -1672,6 +1737,30 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
             "parameters": {
                 "type": "object",
                 "properties": {"account": {"type": "string", "default": "SimJudasCrew"}},
+                "required": [],
+            },
+        },
+    })
+    extra_schemas.append({
+        "type": "function",
+        "function": {
+            "name": "cancel_stale_nt_orders",
+            "description": (
+                "BULK-clean the stale NT working-order book in ONE call. Keeps the "
+                "newest <qty> protective stops + targets per open position; cancels "
+                "everything else (entry-side stragglers that FILL on gaps and ADD "
+                "contracts, orders on flat symbols, older duplicate protection). "
+                "dry_run=true (default) returns the exact keep/cancel plan without "
+                "acting — review it, then call with dry_run=false to execute in a "
+                "single WinRM round-trip. Use THIS for large cleanups, not "
+                "one-at-a-time cancel_nt_order."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dry_run": {"type": "boolean", "default": True},
+                    "account": {"type": "string", "default": "SimJudasCrew"},
+                },
                 "required": [],
             },
         },

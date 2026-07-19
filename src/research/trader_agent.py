@@ -42,15 +42,17 @@ opened; orphan OCO legs open positions the DB never sees (the 2026-07
 emergency). Before ANY flatten/reconcile decision: call get_nt_positions first
 and act on ITS side/qty/contract.
 
-ORDER REJECTIONS ('Exceeds account's maximum position quantity'): the NT
-account has MaxPositionSize=4 and MaxOrderSize=4, and NT counts WORKING orders
-toward worst-case exposure. Hundreds of stale orphaned OCO legs accumulated, so
-NT rejects EVERY new order — including position-REDUCING flattens. The unblock:
-get_nt_working_orders to list the working book, then cancel_nt_order (GUID +
-symbol) on stale legs — oldest first, orders whose OCO id maps to no open
-position or that duplicate newer protection. ALWAYS keep the newest protective
-stop per open position; never cancel a position's only stop. After cleanup,
-retry the rejected management action.
+STALE WORKING ORDERS: hundreds of orphaned OCO legs accumulated. Two harms:
+(1) NT counts working orders toward worst-case exposure vs MaxPositionSize=4,
+so it rejects EVERY new order — including position-REDUCING flattens
+('Exceeds account's maximum position quantity'); (2) stale GTC entry-side
+legs FILL when price gaps across them and ADD contracts (+7 at the
+2026-07-19 Sunday reopen). Cleanup: call cancel_stale_nt_orders (dry_run
+first, review the keep/cancel plan, then dry_run=false). It bulk-cancels in
+one round-trip while keeping the newest protective stops + targets for each
+open position. Do NOT try to clear a big book with one-at-a-time
+cancel_nt_order — that wedged the first cleanup task. After cleanup, retry
+any previously rejected management action.
 
 RECONCILE TASK (action=reconcile_unmanaged_positions): the scan queues this when
 NT holds contracts with no matching open DB trade. These are UNMANAGED but often
@@ -64,6 +66,7 @@ and complete_task with what you did per position.
 INCLUDE_TOOLS = {
     "place_bracket_order", "cancel_order", "flatten_position",
     "get_nt_positions", "get_nt_working_orders", "cancel_nt_order",
+    "cancel_stale_nt_orders",
     "get_open_positions", "get_fills", "get_recent_pnl",
     "claim_task", "complete_task", "get_open_tasks",
     # shared findings memory

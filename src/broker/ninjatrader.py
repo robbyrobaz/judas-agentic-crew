@@ -244,47 +244,66 @@ class NTBroker:
             return {"cancelled": 0, "failed": 0, "failures": []}
         if self.dry_run:
             return {"cancelled": len(orders), "failed": 0, "failures": []}
-        pairs = json.dumps([[str(g), str(inst)] for g, inst in orders])
-        body = self._HEADER + (
-            "import json\n"
-            f"pairs = json.loads('''{pairs}''')\n"
-            "ok = 0; fails = []\n"
-            "for oid, inst in pairs:\n"
-            "    try:\n"
-            f"        r = nt.Command(\"CANCEL\", \"{self.account}\", inst, \"\", 0, "
-            "\"\", 0.0, 0.0, \"\", \"\", oid, \"\", \"\")\n"
-            "        if r == 0:\n"
-            "            ok += 1\n"
-            "        else:\n"
-            "            fails.append(oid)\n"
-            "    except Exception:\n"
-            "        fails.append(oid)\n"
-            "print('CMJSON' + json.dumps({'cancelled': ok, 'failed': len(fails), "
-            "'failures': fails[:20]}) + 'ENDCM')\n"
-        )
-        b64 = base64.b64encode(body.encode()).decode()
-        ps = (
-            '$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString() + ".py"); '
-            f'[System.IO.File]::WriteAllBytes($tmp, [System.Convert]::FromBase64String("{b64}")); '
-            f'& "{self.python_exe}" $tmp; Remove-Item $tmp'
-        )
-        try:
-            sess = winrm.Session(self.host, auth=(self.user, self.password),
-                                 operation_timeout_sec=300, read_timeout_sec=320)
-            r = sess.run_ps(ps)
-            out = r.std_out.decode()
-            a, b = out.find("CMJSON"), out.find("ENDCM")
-            if a < 0 or b < 0:
-                log.error("nt_broker.cancel_many_parse_fail stdout=%s stderr=%s",
-                          out[:300], (r.std_err.decode()[:300] if r.std_err else ""))
-                return None
-            res = json.loads(out[a + 6:b])
-            log.warning("nt_broker.cancel_many cancelled=%d failed=%d",
-                        res.get("cancelled", 0), res.get("failed", 0))
-            return res
-        except Exception:
-            log.exception("nt_broker.cancel_many_winrm_exception")
-            return None
+        # CHUNK the batch: the whole script travels base64-encoded on the
+        # PowerShell command line, which Windows caps at ~8K chars. 414 pairs
+        # in one script blew that limit and the transport 500'd (2026-07-19,
+        # three failed attempts). ~30 pairs ≈ 3.5KB encoded — safely under.
+        total_ok = 0
+        all_fails: list[str] = []
+        chunk_size = 30
+        for i in range(0, len(orders), chunk_size):
+            chunk = orders[i:i + chunk_size]
+            pairs = json.dumps([[str(g), str(inst)] for g, inst in chunk])
+            body = self._HEADER + (
+                "import json\n"
+                f"pairs = json.loads('''{pairs}''')\n"
+                "ok = 0; fails = []\n"
+                "for oid, inst in pairs:\n"
+                "    try:\n"
+                f"        r = nt.Command(\"CANCEL\", \"{self.account}\", inst, \"\", 0, "
+                "\"\", 0.0, 0.0, \"\", \"\", oid, \"\", \"\")\n"
+                "        if r == 0:\n"
+                "            ok += 1\n"
+                "        else:\n"
+                "            fails.append(oid)\n"
+                "    except Exception:\n"
+                "        fails.append(oid)\n"
+                "print('CMJSON' + json.dumps({'cancelled': ok, 'failed': len(fails), "
+                "'failures': fails[:20]}) + 'ENDCM')\n"
+            )
+            b64 = base64.b64encode(body.encode()).decode()
+            ps = (
+                '$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString() + ".py"); '
+                f'[System.IO.File]::WriteAllBytes($tmp, [System.Convert]::FromBase64String("{b64}")); '
+                f'& "{self.python_exe}" $tmp; Remove-Item $tmp'
+            )
+            try:
+                sess = winrm.Session(self.host, auth=(self.user, self.password),
+                                     operation_timeout_sec=120, read_timeout_sec=150)
+                r = sess.run_ps(ps)
+                out = r.std_out.decode()
+                a, b = out.find("CMJSON"), out.find("ENDCM")
+                if a < 0 or b < 0:
+                    log.error("nt_broker.cancel_many_chunk_parse_fail chunk=%d stdout=%s stderr=%s",
+                              i // chunk_size, out[:300],
+                              (r.std_err.decode()[:300] if r.std_err else ""))
+                    all_fails.extend(g for g, _ in chunk)
+                    continue
+                res = json.loads(out[a + 6:b])
+                total_ok += int(res.get("cancelled", 0))
+                all_fails.extend(res.get("failures", []))
+                log.info("nt_broker.cancel_many_chunk %d/%d cancelled=%d failed=%d",
+                         i // chunk_size + 1,
+                         (len(orders) + chunk_size - 1) // chunk_size,
+                         res.get("cancelled", 0), res.get("failed", 0))
+            except Exception:
+                log.exception("nt_broker.cancel_many_chunk_winrm_exception chunk=%d",
+                              i // chunk_size)
+                all_fails.extend(g for g, _ in chunk)
+        log.warning("nt_broker.cancel_many cancelled=%d failed=%d",
+                    total_ok, len(all_fails))
+        return {"cancelled": total_ok, "failed": len(all_fails),
+                "failures": all_fails[:20]}
 
     # Execution runs on C:\PyBridge\python.exe — a standalone machine-wide
     # Python 3.10 + pythonnet living OUTSIDE any user profile. This is the

@@ -597,14 +597,25 @@ class NTBroker:
 
     def place_bracket(self, *, symbol: str, side: str, quantity: int,
                       stop_price: float, target_price: float,
-                      tick: float = 0.0) -> Optional[NTBracketResult]:
+                      tick: float = 0.0,
+                      entry_ref: float = 0.0) -> Optional[NTBracketResult]:
         """Place a synthetic bracket on the NT sim account.
 
         Flow:
           1. PLACE entry MARKET
           2. Block up to fill_timeout_s polling outgoing for FILLED
-          3. PLACE STOPMARKET protective stop (oco_id)
-          4. PLACE LIMIT take-profit (same oco_id)
+          3. re-anchor stop/target to the ACTUAL fill (see below)
+          4. PLACE STOPMARKET protective stop (oco_id)
+          5. PLACE LIMIT take-profit (same oco_id)
+
+        ``entry_ref``: the price the caller computed stop/target FROM (the
+        strategy signal price). When given, the stop/target DISTANCES are
+        preserved but re-anchored to the actual entry fill. Without it, a
+        slippage move past the intended stop puts the protective stop on the
+        wrong side of market → NT rejects it → the OCO group dies → the
+        target's id 'cannot be reused' → NAKED_RISK flatten. Happened live
+        2026-07-20 02:21Z: MET signal ~1877, stop 1875, fill 1873 → stop
+        ABOVE a long fill, whole bracket dead, emergency flatten −2pts.
 
         Returns None on dry_run, entry fill timeout, or entry placement
         failure (caller MUST treat None as "no trade" — never record a fill).
@@ -648,6 +659,46 @@ class NTBroker:
                 "symbol": symbol, "instrument": instrument,
             })
             return None
+
+        # FILL-ANCHOR the protective legs. Preserve the caller's intended
+        # stop/target distances but measure them from the ACTUAL fill, not the
+        # signal price — slippage past the signal-anchored stop otherwise puts
+        # the stop on the wrong side of market and kills the whole bracket.
+        if entry_ref and entry_ref > 0 and entry_fill_price > 0:
+            stop_dist = abs(entry_ref - stop_price)
+            target_dist = abs(target_price - entry_ref)
+            if side == "BUY":
+                stop_price = entry_fill_price - stop_dist
+                target_price = entry_fill_price + target_dist
+            else:
+                stop_price = entry_fill_price + stop_dist
+                target_price = entry_fill_price - target_dist
+            if tick and tick > 0:
+                stop_price = self._round_to_tick(stop_price, tick)
+                target_price = self._round_to_tick(target_price, tick)
+            log.info("nt_broker.fill_anchored symbol=%s ref=%s fill=%s stop=%s target=%s",
+                     symbol, entry_ref, entry_fill_price, stop_price, target_price)
+        # Side-order sanity regardless of anchoring: a long needs
+        # stop < fill < target (mirror for short). A violation here means the
+        # legs are DOA — NT will reject them and the naked-guard will flatten.
+        # Nudge the offending leg to the right side (1 tick past fill beats a
+        # guaranteed rejection cascade + emergency market flatten).
+        t = tick if (tick and tick > 0) else 0.25
+        if entry_fill_price > 0:
+            if side == "BUY":
+                if stop_price >= entry_fill_price:
+                    log.warning("nt_broker.stop_wrong_side_clamped symbol=%s stop=%s fill=%s",
+                                symbol, stop_price, entry_fill_price)
+                    stop_price = self._round_to_tick(entry_fill_price - t, t)
+                if target_price <= entry_fill_price:
+                    target_price = self._round_to_tick(entry_fill_price + t, t)
+            else:
+                if stop_price <= entry_fill_price:
+                    log.warning("nt_broker.stop_wrong_side_clamped symbol=%s stop=%s fill=%s",
+                                symbol, stop_price, entry_fill_price)
+                    stop_price = self._round_to_tick(entry_fill_price + t, t)
+                if target_price >= entry_fill_price:
+                    target_price = self._round_to_tick(entry_fill_price - t, t)
 
         # 2) Protective STOPMARKET (opposite side)
         stop_oid = self._place(

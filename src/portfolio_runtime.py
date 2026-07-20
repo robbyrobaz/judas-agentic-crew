@@ -721,10 +721,14 @@ def _nt_broker():
 
 
 def place_bracket_nt(*, symbol: str, side: str, quantity: int,
-                     stop_price: float, target_price: float) -> dict[str, Any] | None:
+                     stop_price: float, target_price: float,
+                     entry_ref: float = 0.0) -> dict[str, Any] | None:
     """Place a bracket on the NT sim account. Returns a dict shaped like the
     IBKR ``place_bracket`` result (plus ``entry_fill``), or ``None`` when no
     entry fill was obtained — callers MUST treat None as "no trade placed".
+
+    ``entry_ref`` = the signal price stop/target were computed from; the broker
+    re-anchors the bracket distances to the actual fill (2026-07-20 fix).
     """
     broker = _nt_broker()
     spec = _CONTRACT_SPECS.get(symbol, {})
@@ -735,6 +739,7 @@ def place_bracket_nt(*, symbol: str, side: str, quantity: int,
         stop_price=stop_price,
         target_price=target_price,
         tick=float(spec.get("tick", 0.0)),
+        entry_ref=entry_ref,
     )
     if res is None:
         return None
@@ -1515,6 +1520,7 @@ def _place_fire_with_record(
                     quantity=fire.qty,
                     stop_price=fire.stop,
                     target_price=fire.target,
+                    entry_ref=fire.entry,
                 )
             else:
                 order = place_bracket(

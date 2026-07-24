@@ -45,6 +45,13 @@ firing 200 times a year at the same per-trade risk.
 Concretely:
   - Need PF > 1 with a real sample (>= 15 closed trades preferred).
   - Optimize for absolute dollar earnings, not for chasing the highest PF.
+  - RANK EDGES, NOT SYMBOLS. The context gives you TWO leaderboards: real P&L
+    "by symbol" AND "TOP STRATEGIES" (each strategy's OWN P&L). Judge each
+    strategy by its own row. A symbol with the highest TOTAL may just have the
+    most variants — the single best strategy often lives on a DIFFERENT symbol
+    whose total looks smaller. Don't pour effort into a symbol because its total
+    leads; find the individual ★active winners and protect them, and promote
+    ✝retired strategies that were strong earners.
   - Don't reflexively consolidate to "best PF per symbol per family."
     Multiple strategies per symbol are fine if each one is producing
     independent positive P&L on a real sample. Diversity reduces
@@ -174,6 +181,25 @@ def _build_operator_kickoff(db_path: str) -> str:
                     lines.append(
                         f"  {tag} {w['symbol']:<4} net ${w['net_pnl']:+9.2f} | "
                         f"{w['wins']}W/{w['losses']}L"
+                    )
+                lines.append("")
+
+            # PER-STRATEGY leaderboard — rank by the edge EACH strategy earned,
+            # not by which symbol has the most variants. The by-symbol view above
+            # hides that one strategy on a symbol may be the real top earner
+            # (a single MNQ strategy beating MGC's 12 variants combined). Don't
+            # judge a symbol by its total; judge each strategy by its own P&L.
+            # ★=still active, ✝=retired (a retired top earner is a promotion
+            # candidate; an active loser is a retirement candidate).
+            top_strats = _ls.winners_by_strategy(conn, limit=15)
+            if top_strats:
+                lines.append("TOP STRATEGIES (by their OWN proven P&L — rank edges, not symbols):")
+                for s in top_strats:
+                    tag = "🟢" if s["net_pnl"] > 0 else ("🔴" if s["net_pnl"] < 0 else "  ")
+                    state = "★active" if s["active"] else "✝retired"
+                    lines.append(
+                        f"  {tag} #{s['strategy_id']} {s['symbol']:<4} {s['strategy_name'][:24]:<24} "
+                        f"net ${s['net_pnl']:+9.2f} | {s['wins']}W/{s['losses']}L | {state}"
                     )
                 lines.append("")
         except Exception:

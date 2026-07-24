@@ -517,6 +517,62 @@ def winners_by_symbol(conn: sqlite3.Connection) -> list[dict]:
     return out
 
 
+def winners_by_strategy(conn: sqlite3.Connection, *, limit: int = 15) -> list[dict]:
+    """Closed-trade P&L aggregated per STRATEGY (stable strategy_id), joined to
+    the roster so each row shows the strategy's symbol, name, and active/retired
+    state. Sorted by net P&L descending.
+
+    Complements winners_by_symbol: the by-symbol view makes a symbol with many
+    variants look dominant (12 MGC variants summed vs 6 MNQ) and hides that a
+    single strategy on another symbol is the real top earner (MNQ buffet_zoo
+    #4308 = +$2,569, the best in the book, invisible in the by-symbol total
+    where MGC edges MNQ). Give the operator BOTH so it ranks strategies by the
+    edge each one actually earned, not by which symbol has the most variants.
+    """
+    rows = conn.execute(
+        """
+        SELECT t.strategy_id AS sid,
+               COUNT(*) AS n,
+               SUM(CASE WHEN t.pnl_dollars > 0 THEN 1 ELSE 0 END) AS wins,
+               COALESCE(SUM(t.pnl_dollars), 0) AS net_pnl,
+               MAX(t.symbol) AS symbol,
+               MAX(t.strategy_family) AS strategy_family,
+               a.id AS active_id, a.state AS state,
+               a.params_json AS params_json
+        FROM trades t
+        LEFT JOIN active_strategies a ON a.id = t.strategy_id
+        WHERE t.status='closed' AND t.pnl_dollars IS NOT NULL
+              AND t.strategy_id IS NOT NULL
+        GROUP BY t.strategy_id
+        ORDER BY net_pnl DESC
+        LIMIT ?
+        """,
+        (int(limit),),
+    ).fetchall()
+    out: list[dict] = []
+    for r in rows:
+        n = _safe_int(r["n"])
+        wins = _safe_int(r["wins"])
+        name = None
+        try:
+            p = json.loads(r["params_json"] or "{}")
+            name = p.get("strategy_name") or p.get("strategy_type")
+        except (TypeError, json.JSONDecodeError):
+            pass
+        out.append({
+            "strategy_id": _safe_int(r["sid"]),
+            "symbol": str(r["symbol"]),
+            "strategy_family": str(r["strategy_family"] or "?"),
+            "strategy_name": name or str(r["strategy_family"] or "?"),
+            "active": r["active_id"] is not None and str(r["state"]) == "active",
+            "n": n,
+            "wins": wins,
+            "losses": n - wins,
+            "net_pnl": round(_safe_float(r["net_pnl"]), 2),
+        })
+    return out
+
+
 def recent_walk_forward_candidates(conn: sqlite3.Connection, *, limit: int = 12) -> list[dict]:
     """Recent walk_forward experiments not yet active — potential promotions."""
     rows = conn.execute(

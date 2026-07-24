@@ -250,6 +250,24 @@ def _register_judas_candidate(
     summary: dict[str, Any],
     experiment_id: int | None,
 ) -> dict[str, Any]:
+    # ZOMBIE guard: if the caller passed a custom_strategy_id, this is NOT a
+    # Judas walk-forward — refuse to register as Judas (would create a ZOMBIE
+    # candidate: execution_engine=judas_native + custom_strategy_id set, which
+    # the custom runtime bails on and the judas runtime can't load). Caller
+    # must use propose_custom_strategy() / propose_candidate() for custom code
+    # instead. Per findings 712520f8 + e18c0432 (2026-07-24T00Z).
+    if params.get("custom_strategy_id"):
+        return {
+            "candidate_id": None,
+            "decision": "rejected",
+            "rationale": (
+                "ZOMBIE guard: _register_judas_candidate refused because params "
+                f"carry custom_strategy_id={params.get('custom_strategy_id')}. "
+                "Judas walk_forward cannot register custom-code candidates; use "
+                "propose_custom_strategy() or propose_candidate() instead."
+            ),
+            "promoted": None,
+        }
     decision, rationale = _candidate_decision_from_walk_forward(summary)
     candidate_id = create_candidate(
         symbol=symbol,

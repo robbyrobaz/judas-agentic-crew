@@ -1671,6 +1671,20 @@ def run_portfolio_scan(
     placed = 0
     for row in active:
         engine = str(row["params"].get("execution_engine", ""))
+        # ZOMBIE guard: judas_native engine + custom_strategy_id set is a
+        # ZOMBIE combination (custom branch bails on no-code; judas branch
+        # can't load custom code). Per findings 712520f8 + e18c0432
+        # (2026-07-24T00Z) this combo has been auto-retired within minutes
+        # historically — the runtime-side guard catches any that slipped
+        # through review and skips them silently instead of letting them
+        # fire nothing in perpetuity. See also _validate_custom_link for the
+        # symmetric guard on the other direction.
+        if engine == "judas_native" and row["params"].get("custom_strategy_id"):
+            log.warning(
+                "zombie_skip symbol=%s id=%s engine=judas_native + custom_strategy_id=%s",
+                row.get("symbol"), row.get("id"), row["params"].get("custom_strategy_id"),
+            )
+            continue
         tf = _strategy_timeframe(row)
         # Feed the strategy bars at ITS timeframe (only those symbols/tf).
         tf_bars = {s: df for (s, t), df in bars_by_pair.items() if t == tf}

@@ -411,13 +411,14 @@ def _fetch_trading_stats() -> dict[str, Any]:
         by_strategy_rows = conn.execute(
             """
             SELECT
+                COALESCE(symbol, '?') AS symbol,
                 COALESCE(strategy_family, 'unknown') AS strategy_family,
                 COALESCE(strategy_version, 0) AS strategy_version,
                 COUNT(*) AS trade_count,
                 COALESCE(SUM(CASE WHEN status = 'closed' THEN pnl_dollars ELSE 0 END), 0.0) AS realized_pnl,
                 COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_trades
             FROM trades
-            GROUP BY strategy_family, strategy_version
+            GROUP BY symbol, strategy_family, strategy_version
             ORDER BY realized_pnl DESC, trade_count DESC
             """
         ).fetchall()
@@ -495,6 +496,44 @@ def _live_metrics_by_symbol(db_path: str) -> dict[str, dict]:
     return result
 
 
+def _live_metrics_by_strategy_id(db_path: str) -> dict[int, dict]:
+    """Live trade metrics keyed by the STABLE strategy_id (trades.strategy_id).
+
+    Per-symbol totals (``_live_metrics_by_symbol``) make every variant of a
+    symbol inherit that symbol's whole P&L, which floods the "best active" list
+    with whichever symbol has the most variants and buries the actual top
+    strategy (2026-07: 12 MGC variants each claimed MGC's total and outranked
+    MNQ's single best strategy #4308 at +$2,569). strategy_id is stable across
+    retunes, so this attributes P&L to the ONE strategy that earned it. A newly
+    retuned strategy (fresh id) simply has no rows here yet — callers fall back
+    to the symbol total for context."""
+    result: dict[int, dict] = {}
+    try:
+        with get_conn(db_path) as conn:
+            rows = conn.execute(
+                "SELECT strategy_id, pnl_dollars FROM trades "
+                "WHERE status='closed' AND pnl_dollars IS NOT NULL "
+                "AND strategy_id IS NOT NULL"
+            ).fetchall()
+        by_sid: dict[int, list[float]] = {}
+        for row in rows:
+            by_sid.setdefault(int(row["strategy_id"]), []).append(float(row["pnl_dollars"]))
+        for sid, pnls in by_sid.items():
+            wins = [p for p in pnls if p > 0]
+            gross_loss = abs(sum(p for p in pnls if p <= 0))
+            pf = (sum(wins) / gross_loss) if gross_loss > 0 else None
+            result[sid] = {
+                "profit_factor": round(pf, 2) if pf is not None else None,
+                "trades": len(pnls),
+                "wins": len(wins),
+                "winrate": round(len(wins) / len(pnls) * 100, 1) if pnls else None,
+                "total_pnl_dollars": round(sum(pnls), 2),
+            }
+    except Exception:
+        pass
+    return result
+
+
 def _bt_metrics(metrics: dict) -> dict:
     """Extract walk-forward backtest metrics from a strategy's metrics_json.
 
@@ -531,31 +570,26 @@ def _fetch_research_stats() -> dict[str, Any]:
 
     db_path = str(REPO_ROOT / "judas_crew.db")
     live_metrics = _live_metrics_by_symbol(db_path)
+    live_by_sid = _live_metrics_by_strategy_id(db_path)
 
-    def _sort_key(row: dict) -> tuple:
-        sym = str(row.get("symbol", ""))
-        lm = live_metrics.get(sym, {})
-        pnl = lm.get("total_pnl_dollars")
-        bt_pf = _bt_metrics(row.get("metrics") or {}).get("bt_pf")
-        # Primary: live realized P&L (has skin in the game). Secondary: BT PF.
-        return (
-            pnl if pnl is not None else float("-inf"),
-            bt_pf if bt_pf is not None else float("-inf"),
-        )
-
-    active_sorted = sorted(active, key=_sort_key, reverse=True)
+    # Rank by each strategy's OWN live P&L (stable strategy_id). Traded
+    # strategies rank first (descending P&L); strategies that haven't traded
+    # under their current id have no live edge yet, so they follow, ordered by
+    # backtest PF. NEVER fall back to the symbol total — that was the bug that
+    # let every MGC variant inherit MGC's total and flood the list.
+    traded = [r for r in active if live_by_sid.get(int(r.get("id", -1)))]
+    untraded = [r for r in active if not live_by_sid.get(int(r.get("id", -1)))]
+    traded.sort(key=lambda r: live_by_sid[int(r["id"])]["total_pnl_dollars"], reverse=True)
+    untraded.sort(key=lambda r: _bt_metrics(r.get("metrics") or {}).get("bt_pf") or float("-inf"),
+                  reverse=True)
+    active_sorted = traded + untraded
     best_active = []
-    seen_symbols: set[str] = set()
     for row in active_sorted[:14]:
-        sym = str(row.get("symbol", ""))
-        lm = live_metrics.get(sym, {})
+        sid_lm = live_by_sid.get(int(row.get("id", -1)), {})
+        has_own = bool(sid_lm)
         params = row.get("params") or {}
         bt = _bt_metrics(row.get("metrics") or {})
         name = params.get("strategy_name") or params.get("strategy_type") or params.get("strategy_family")
-        # Live (forward-test) metrics are per-symbol — show only on the first row
-        # per symbol so we don't duplicate the symbol's total across its variants.
-        show_ft = sym not in seen_symbols
-        seen_symbols.add(sym)
         best_active.append(
             {
                 "symbol": row.get("symbol"),
@@ -565,11 +599,13 @@ def _fetch_research_stats() -> dict[str, Any]:
                 "bt_pf": bt["bt_pf"],
                 "bt_trades": bt["bt_trades"],
                 "bt_winrate": bt["bt_winrate"],
-                # Forward-test (live paper) — per symbol, first row only
-                "profit_factor": lm.get("profit_factor") if show_ft else None,
-                "trades": lm.get("trades") if show_ft else None,
-                "winrate": lm.get("winrate") if show_ft else None,
-                "total_pnl_dollars": lm.get("total_pnl_dollars") if show_ft else None,
+                # Forward-test (live paper) — per STRATEGY (stable id). Untraded
+                # strategies show null (—): no live edge yet, not a symbol total.
+                "profit_factor": sid_lm.get("profit_factor"),
+                "trades": sid_lm.get("trades"),
+                "winrate": sid_lm.get("winrate"),
+                "total_pnl_dollars": sid_lm.get("total_pnl_dollars"),
+                "pnl_scope": "strategy" if has_own else None,
                 "max_drawdown_dollars": None,
             }
         )

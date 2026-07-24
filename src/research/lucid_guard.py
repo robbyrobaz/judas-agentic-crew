@@ -38,6 +38,7 @@ _ET = ZoneInfo("America/New_York")
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DATA_DIR = _REPO_ROOT / "data"
 _LEDGER_PATH = _DATA_DIR / "lucid_guard_ledger.json"
+_STATE_PATH = _DATA_DIR / "lucid_guard_state.json"
 
 # Single active venue. If more are added later, key this off config.
 RULES = {
@@ -197,3 +198,39 @@ def assess(*, cur_equity: float, day_start: float, peak_close: float,
         d.reasons.append(why)
 
     return d
+
+
+def write_state(decision: GuardDecision, nt_contracts: int,
+                now_utc: datetime | None = None) -> None:
+    """Persist the latest guard snapshot so the operator (and dashboard) can
+    show live eval status without their own WinRM read. Best-effort."""
+    try:
+        _DATA_DIR.mkdir(parents=True, exist_ok=True)
+        state = {
+            "updated_utc": (now_utc or datetime.now(timezone.utc)).isoformat(),
+            "day_pnl": decision.day_pnl,
+            "cushion": decision.cushion,
+            "mll_floor": decision.mll_floor,
+            "nt_contracts": int(nt_contracts),
+            "halt_entries": decision.halt_entries,
+            "force_flat": decision.force_flat,
+            "reason": decision.reason,
+            "daily_profit_soft": RULES["daily_profit_soft"],
+            "daily_profit_hard": RULES["daily_profit_hard"],
+            "max_contracts": RULES["max_contracts_aggregate"],
+            "mll_trail": RULES["mll_trail"],
+            "base_target": RULES["base_target"],
+        }
+        tmp = _STATE_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(state, indent=1))
+        tmp.replace(_STATE_PATH)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def read_state() -> dict | None:
+    """Latest guard snapshot written by the scan, or None."""
+    try:
+        return json.loads(_STATE_PATH.read_text()) if _STATE_PATH.exists() else None
+    except (json.JSONDecodeError, OSError):
+        return None

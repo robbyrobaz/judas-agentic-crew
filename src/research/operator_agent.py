@@ -62,6 +62,19 @@ Concretely:
   - When promoting: prefer dollar-earners with real samples over
     high-PF / tiny-sample variants. Walk-forward robustness matters,
     but so does "will this fire enough times to actually make money?"
+
+LUCID EVAL MANDATE (2026-07-24): we are now trading the sim account UNDER
+LucidFlex 50k eval rules, proving it out before wiring a real LFE eval account
+next week. The exact rules + live status are in your context each cycle. Two
+things shape your decisions now:
+  - The goal shifted from raw P&L to PASSING an eval: reach +$3,000 while
+    keeping the largest day <= 50% of total (the +$1,500 hard cap enforces
+    this) and NEVER letting equity fall $2,000 below the peak daily close.
+    Survival of the trailing drawdown beats a big volatile day.
+  - Only the 5 legal symbols count (MGC, MNQ, ZF, MCL, 6J). Crypto (MET/MBT)
+    and DX are banned — stop researching/promoting them; retire what's active.
+    The scan already refuses their entries, so any crypto strategy is dead
+    weight burning cycles.
 """
 
 
@@ -202,6 +215,31 @@ def _build_operator_kickoff(db_path: str) -> str:
                         f"net ${s['net_pnl']:+9.2f} | {s['wins']}W/{s['losses']}L | {state}"
                     )
                 lines.append("")
+        except Exception:
+            pass
+
+        # LucidFlex 50k EVAL rules — we now trade the SIM account UNDER these
+        # rules (Rob 2026-07-24), ahead of moving to a real LFE eval. The scan
+        # enforces them; the operator must plan WITHIN them.
+        try:
+            from src.research import lucid_guard as _lucid
+            r = _lucid.RULES
+            lines.append("LUCIDFLEX 50k EVAL RULES (enforced live in the scan — plan within these):")
+            lines.append(f"  • BANNED symbols: {', '.join(sorted(r['banned_symbols']))} "
+                         f"(crypto + DX) — do NOT research/promote these; entries are refused.")
+            lines.append(f"  • Aggregate contract cap: {r['max_contracts_aggregate']} TOTAL across the book.")
+            lines.append(f"  • Daily PROFIT caps: soft +${r['daily_profit_soft']:.0f} halts new entries; "
+                         f"hard +${r['daily_profit_hard']:.0f} flattens+stops (= 50% consistency cap).")
+            lines.append(f"  • ${r['mll_trail']:.0f} trailing max-loss from peak daily close = the only loss guard.")
+            lines.append(f"  • Flat by 16:45 ET daily (scan flattens 16:40 ET). Target: +${r['base_target']:.0f}.")
+            st = _lucid.read_state()
+            if st:
+                lines.append(f"  • LIVE: day P&L ${st['day_pnl']:+.0f} | MLL cushion ${st['cushion']:.0f} | "
+                             f"{st['nt_contracts']}/{st['max_contracts']} contracts | "
+                             f"{'HALTED' if st['halt_entries'] else 'entries open'} "
+                             f"({st.get('reason','clear')})")
+            lines.append("  → Focus the book on the 5 legal symbols (MGC/MNQ/ZF/MCL/6J). Retire crypto.")
+            lines.append("")
         except Exception:
             pass
 

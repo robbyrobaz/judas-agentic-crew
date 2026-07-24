@@ -1775,6 +1775,7 @@ def run_portfolio_scan(
             _decision, lucid_nt_contracts = _lucid_guard_assess(_nt_broker(), bars_by_sym)
             if _decision is not None:
                 lucid_block_entries = _decision.halt_entries
+                _lg.write_state(_decision, lucid_nt_contracts or 0)
                 if _decision.reasons:
                     log.warning("lucid_guard: %s (day_pnl=$%.0f, cushion=$%.0f, contracts=%d)",
                                 _decision.reason, _decision.day_pnl, _decision.cushion,

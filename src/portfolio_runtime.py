@@ -1404,6 +1404,82 @@ def _orphan_body(db_path: str) -> int:
 
 def _reconcile_nt_orphans(db_path: str) -> int:
     return _orphan_body(db_path)
+
+
+def _point_value(symbol: str) -> float:
+    spec = _CONTRACT_SPECS.get(str(symbol).upper(), {})
+    tick = float(spec.get("tick", 0) or 0)
+    tv = float(spec.get("tick_value", 0) or 0)
+    return (tv / tick) if tick > 0 else 0.0
+
+
+def _lucid_guard_assess(broker, bars_by_sym: dict):
+    """LucidFlex 50k eval guard for the NT account. Returns
+    (decision, nt_open_contracts) or (None, 0) if live data is unavailable
+    (fail-open — the deterministic banned-symbol/EOD gates still apply).
+
+    Equity = NT cash + unrealized (open positions marked to the latest cached
+    bar close), so the profit/MLL guards don't fire late on a running position.
+    """
+    from src.research import lucid_guard as _lg
+    try:
+        summ = broker.account_summary()
+        positions = broker.positions()
+        if summ is None or "cash" not in summ or positions is None:
+            log.warning("lucid_guard: NT data unavailable (summ=%s pos=%s) — P&L guards skipped this scan",
+                        summ is not None, positions is not None)
+            return None, 0
+        cash = float(summ["cash"])
+        unrealized = 0.0
+        nt_contracts = 0
+        for p in positions:
+            sym = str(p.get("symbol", "")).upper()
+            qty = int(p.get("qty", 0) or 0)
+            nt_contracts += qty
+            avg = float(p.get("avg_price", 0) or 0)
+            df = bars_by_sym.get(sym)
+            if df is None or not len(df) or avg <= 0:
+                continue
+            cur = float(df["close"].iloc[-1])
+            sign = 1.0 if p.get("side") == "LONG" else -1.0
+            unrealized += (cur - avg) * sign * qty * _point_value(sym)
+        cur_equity = cash + unrealized
+        day_start = _lg.day_start_equity()
+        if day_start is None:
+            # First run — seed the ledger with today's opening equity.
+            _lg.record_daily_close(cur_equity)
+            day_start = cur_equity
+        peak_close = _lg.peak_close_equity(default=cur_equity)
+        decision = _lg.assess(cur_equity=cur_equity, day_start=day_start,
+                              peak_close=peak_close, nt_contracts=nt_contracts)
+        return decision, nt_contracts
+    except Exception as exc:  # noqa: BLE001
+        log.error("lucid_guard assess failed: %s", exc, exc_info=True)
+        return None, 0
+
+
+def _lucid_flatten_all(db_path: str, broker) -> int:
+    """Flatten EVERY open NT position on the crew account (profit-hard / MLL /
+    EOD). Uses the engine-side CLOSEPOSITION per symbol so stale/zombie orders
+    are cleared too. Returns positions flattened."""
+    try:
+        positions = broker.positions() or []
+    except Exception as exc:  # noqa: BLE001
+        log.error("lucid_flatten_all: positions read failed: %s", exc)
+        return 0
+    n = 0
+    for p in positions:
+        sym = str(p.get("contract") or p.get("symbol") or "")
+        if not sym:
+            continue
+        try:
+            if broker.close_position_cmd(sym):
+                n += 1
+        except Exception as exc:  # noqa: BLE001
+            log.error("lucid_flatten_all: close %s failed: %s", sym, exc)
+    if n:
+        log.critical("LUCID_FLATTEN_ALL flattened %d position(s)", n)
+    return n
 # body
 def _gate_fire(
     db_path: str,
@@ -1412,8 +1488,23 @@ def _gate_fire(
     max_open_positions: int,
     max_trades_per_day: int,
     skip_strategy_open_check: bool = False,
+    lucid_block_entries: bool = False,
+    nt_open_contracts: int | None = None,
 ) -> str | None:
     from src.db.models import get_conn
+    from src.research import lucid_guard as _lg
+
+    # LucidFlex 50k eval gates (2026-07-24). Deterministic ones (banned symbol)
+    # always apply; P&L-driven halt + aggregate cap apply when live NT data was
+    # available this scan.
+    if _lg.is_banned(fire.symbol):
+        return "lucid_banned_symbol"
+    if lucid_block_entries:
+        return "lucid_daily_guard_halt"
+    if nt_open_contracts is not None:
+        cap = _lg.contract_cap()
+        if nt_open_contracts + int(fire.qty or 1) > cap:
+            return f"lucid_contract_cap ({nt_open_contracts}+{fire.qty}>{cap})"
 
     with get_conn(db_path) as conn:
         if not skip_strategy_open_check:
@@ -1490,6 +1581,8 @@ def _place_fire_with_record(
     max_new_trades: int,
     route: str = "ibkr",
     skip_strategy_open_check: bool = False,
+    lucid_block_entries: bool = False,
+    nt_open_contracts: int | None = None,
 ) -> dict[str, Any]:
     """Gate, optionally place, and persist a single ActiveFire.
 
@@ -1499,12 +1592,17 @@ def _place_fire_with_record(
     decision = "SKIP"
     order: dict[str, Any] | None = None
     place_error: str | None = None
+    # Effective open count for the aggregate cap = live NT snapshot + what THIS
+    # scan has already placed (so a burst of fires can't collectively breach 4).
+    _eff_contracts = (nt_open_contracts + placed_so_far) if nt_open_contracts is not None else None
     gate_reason = _gate_fire(
         db_path,
         fire,
         max_open_positions=max_open_positions,
         max_trades_per_day=max_trades_per_day,
         skip_strategy_open_check=skip_strategy_open_check,
+        lucid_block_entries=lucid_block_entries,
+        nt_open_contracts=_eff_contracts,
     )
     # Auto-skip instruments NT keeps rejecting (e.g. risk-settings gap on a
     # freshly-rolled contract) until their cooldown lapses. Jun-18 self-mgmt.
@@ -1667,6 +1765,36 @@ def run_portfolio_scan(
     else:
         _reconcile_open_trades(db_path, bars_by_sym)
 
+    # LucidFlex 50k eval guard (NT route). One assessment per scan: profit
+    # soft/hard caps, $2k trailing MLL, aggregate 4-contract cap, EOD flatten.
+    lucid_block_entries = False
+    lucid_nt_contracts: int | None = None
+    if route == "ninjatrader":
+        try:
+            from src.research import lucid_guard as _lg
+            _decision, lucid_nt_contracts = _lucid_guard_assess(_nt_broker(), bars_by_sym)
+            if _decision is not None:
+                lucid_block_entries = _decision.halt_entries
+                if _decision.reasons:
+                    log.warning("lucid_guard: %s (day_pnl=$%.0f, cushion=$%.0f, contracts=%d)",
+                                _decision.reason, _decision.day_pnl, _decision.cushion,
+                                lucid_nt_contracts or 0)
+                if _decision.force_flat:
+                    flat_n = _lucid_flatten_all(db_path, _nt_broker())
+                    # If flat during the EOD window, this is the day's close —
+                    # stamp the ledger so the trailing MLL trails from it.
+                    due, _ = _lg.eod_flatten_due()
+                    if due:
+                        try:
+                            _s = _nt_broker().account_summary()
+                            if _s and "cash" in _s:
+                                _lg.record_daily_close(float(_s["cash"]))
+                        except Exception:  # noqa: BLE001
+                            pass
+                    log.critical("lucid_guard FORCE-FLAT: %s (flattened %d)", _decision.reason, flat_n)
+        except Exception as exc:  # noqa: BLE001
+            log.error("lucid_guard scan hook failed: %s", exc, exc_info=True)
+
     fired: list[dict[str, Any]] = []
     placed = 0
     for row in active:
@@ -1720,6 +1848,8 @@ def run_portfolio_scan(
                     placed_so_far=placed,
                     max_new_trades=max_new_trades,
                     route=route,
+                    lucid_block_entries=lucid_block_entries,
+                    nt_open_contracts=lucid_nt_contracts,
                 )
                 if outcome["decision"] == "TRADE":
                     placed += 1
@@ -1753,6 +1883,8 @@ def run_portfolio_scan(
             placed_so_far=placed,
             max_new_trades=max_new_trades,
             route=route,
+            lucid_block_entries=lucid_block_entries,
+            nt_open_contracts=lucid_nt_contracts,
         )
         leg_a_traded = outcome_a["decision"] == "TRADE"
         if leg_a_traded:
@@ -1770,6 +1902,8 @@ def run_portfolio_scan(
             placed_so_far=placed,
             max_new_trades=max_new_trades,
             route=route,
+            lucid_block_entries=lucid_block_entries,
+            nt_open_contracts=lucid_nt_contracts,
             # Leg A of the same pair row may have just been recorded as
             # an open trade with the same strategy_id; that's expected
             # for pairs. Bypass the per-strategy open check here.

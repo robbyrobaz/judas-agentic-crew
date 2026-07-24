@@ -58,8 +58,21 @@ strategy:
 
 risk:
   max_contracts: 1
-  max_open_positions: 12
+  max_open_positions: 4        # Lucid eval aggregate cap (was 12) — see lucid_guard
   max_trades_per_day: 24
+
+# LucidFlex 50k EVAL rules (enforced in src/research/lucid_guard.py, wired into
+# the scan). Documented here for humans/operator; the guard module is the source
+# of truth. Rob 2026-07-24: profit-only daily caps, aggregate 4-contract cap.
+lucid:
+  venue: lucidflex_50k_eval
+  banned_symbols: [MET, MBT, DX]   # crypto + dollar index — Lucid disallows
+  max_contracts_aggregate: 4        # total across the whole book
+  daily_profit_soft: 1200           # halt NEW entries at day P&L >= +$1,200
+  daily_profit_hard: 1500           # flatten all + halt at day P&L >= +$1,500
+  mll_trail: 2000                   # $2k trailing max-loss from peak daily close
+  base_target: 3000                 # eval profit target
+  eod_flat_et: "16:40"              # flatten all before Lucid's 16:45 ET cutoff
   atr_contraction_min_ratio: 0.60
   min_displacement_strength: 1.50
   min_displacement_body_ratio: 0.50

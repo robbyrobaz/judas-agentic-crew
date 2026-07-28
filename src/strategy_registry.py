@@ -430,9 +430,14 @@ def _supersede_where_clause(
     """
     if slot_key.startswith("csid:"):
         csid = slot_key.split(":", 1)[1]
+        # CAST both sides to INTEGER — params_json may store
+        # custom_strategy_id as a JSON string ("232") in older rows even
+        # though the slot key is the int form. JSON_EXTRACT preserves the
+        # JSON type, so a plain equality compare would silently miss those
+        # rows (5 affected in 2026-07-28 audit: 4385/4434/4435/4472/4484).
         return (
             "symbol = ? AND strategy_family = ? AND state = 'active' "
-            "AND id != ? AND JSON_EXTRACT(params_json, '$.custom_strategy_id') = ?",
+            "AND id != ? AND CAST(JSON_EXTRACT(params_json, '$.custom_strategy_id') AS INTEGER) = ?",
             (symbol, family, new_id, int(csid)),
         )
     # family:* — same as before (param tweaks supersede).

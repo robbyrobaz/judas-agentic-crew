@@ -63,10 +63,15 @@ Concretely:
     high-PF / tiny-sample variants. Walk-forward robustness matters,
     but so does "will this fire enough times to actually make money?"
 
-LUCID EVAL MANDATE (2026-07-24): we are now trading the sim account UNDER
-LucidFlex 50k eval rules, proving it out before wiring a real LFE eval account
-next week. The exact rules + live status are in your context each cycle. Two
-things shape your decisions now:
+LUCID EVAL MANDATE (updated 2026-07-26): THE EVAL IS NOW REAL. As of
+2026-07-26 the book trades LFE05064290360089 — a real LucidFlex 50K eval
+account (Rob's direction; the sim proving period on SimJudasCrew is over,
+its final record: +$2,131 over 487 trades, P(pass)~70% by Monte-Carlo).
+Every dollar is now real: a blown eval costs a real $85 reset and the
+sleeve's credibility; a PASS (+$3,000 under the rules) leads to a funded
+account and real payouts. Guard ledger was reset to the fresh $50,000
+baseline at cutover. The exact rules + live status are in your context
+each cycle. Two things shape your decisions now:
   - The goal shifted from raw P&L to PASSING an eval: reach +$3,000 while
     keeping the largest day <= 50% of total (the +$1,500 hard cap enforces
     this) and NEVER letting equity fall $2,000 below the peak daily close.

@@ -1183,28 +1183,50 @@ def _check_position_protection(db_path: str) -> list[int]:
     flattened: list[int] = []
     for o in opens:
         tid = o["id"]
+        p = pos.get(tid)
+
+        # Position check FIRST. If NT shows the position FLAT, the trade is
+        # dead in NT regardless of whether SL/TP orders still appear "working"
+        # — those orders can outlive the position (external close, session
+        # rollover, forced-liquidation, OCO failure). The old ordering checked
+        # stop_live first and masked the zombie indefinitely (bf6a73e5 + this
+        # cycle's #448/#449 instance, 2026-07-27T03Z).
+        if p == 0:
+            # Best-effort cancel of any orphan SL/TP orders so they can't
+            # phantom-fill against a flat position (a SELL STOP/LIMIT on a flat
+            # account would OPEN a fresh short, which we definitely don't want).
+            for oid_key in ("sl_order_id", "tp_order_id"):
+                oid = o.get(oid_key)
+                if oid:
+                    try:
+                        broker.cancel(oid, o["symbol"])
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("reconcile.orphan_cancel_failed trade=%s oid=%s err=%s",
+                                    tid, oid, exc)
+            _close_zombie_trade(db_path, o, broker=broker)
+            continue
+
+        if p is None:
+            continue  # bad position read, don't reconcile or alarm on it
+
         stop_live = str(stat.get(tid, "absent")).lower() in live
         if stop_live:
-            continue
-        p = pos.get(tid)
-        if p == 0:
-            _close_zombie_trade(db_path, o, broker=broker)  # closed on NT — reconcile, no alarm
-        elif p is not None and p != 0:
-            # Position open but its stop is gone — NT cancels GTC stops at the CME
-            # daily reset. Self-managed (Rob, Jun-18 'let the AI manage this'):
-            #   in-range  -> AUTO-RE-ARM a fresh OCO'd stop+target
-            #   breached  -> AUTO-FLATTEN at market (honor the stop, cap the loss)
-            # Only alerts as NAKED if BOTH the re-arm and the flatten fail.
-            if _try_rearm_stop(db_path, broker, o, instr[tid], p):
-                rearmed.append(tid)
-            elif _auto_flatten_breached(db_path, broker, o):
-                flattened.append(tid)
-            else:
-                naked.append(o)
-                log.critical("nt.POSITION_UNPROTECTED trade=%s symbol=%s pos=%s sl_status=%s — NAKED "
-                             "(re-arm + auto-flatten both failed, manual check)",
-                             tid, o["symbol"], p, stat.get(tid, "absent"))
-        # p is None (position query failed): don't reconcile or alarm on a bad read
+            continue  # protected, fine
+
+        # Position != 0 and stop not live — NT cancels GTC stops at the CME
+        # daily reset. Self-managed (Rob, Jun-18 'let the AI manage this'):
+        #   in-range  -> AUTO-RE-ARM a fresh OCO'd stop+target
+        #   breached  -> AUTO-FLATTEN at market (honor the stop, cap the loss)
+        # Only alerts as NAKED if BOTH the re-arm and the flatten fail.
+        if _try_rearm_stop(db_path, broker, o, instr[tid], p):
+            rearmed.append(tid)
+        elif _auto_flatten_breached(db_path, broker, o):
+            flattened.append(tid)
+        else:
+            naked.append(o)
+            log.critical("nt.POSITION_UNPROTECTED trade=%s symbol=%s pos=%s sl_status=%s — NAKED "
+                         "(re-arm + auto-flatten both failed, manual check)",
+                         tid, o["symbol"], p, stat.get(tid, "absent"))
     if rearmed:
         log.warning("nt.protection_rearmed count=%s trades=%s", len(rearmed), rearmed)
     if flattened:

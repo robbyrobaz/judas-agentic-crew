@@ -253,6 +253,91 @@ def test_insert_active_strategy_custom_different_csids_coexist(db_path):
         conn.close()
 
 
+def test_insert_active_strategy_supersedes_string_typed_csid(db_path):
+    """Regression (2026-07-28): JSON_EXTRACT preserves the JSON type of
+    custom_strategy_id, so a row that stored it as a JSON string ("232")
+    silently escaped the slot-aware supersede path (the compare bound was
+    int). Pre-fix audit: 5 active rows had string CSIDs
+    (4385/4434/4435/4472/4484) and a same-csid re-promotion would have
+    spawned a parallel twin instead of superseding. The fix wraps the
+    JSON_EXTRACT with CAST(... AS INTEGER) so both shapes coerce the same.
+    """
+    from src import strategy_registry as sr
+    import sqlite3
+
+    # Register a stub csid for this test.
+    conn = sqlite3.connect(sr._db_path())
+    cur = conn.execute(
+        "INSERT INTO custom_strategies (name, code, active, created_at_utc, symbol, rationale, backtest_metrics_json) VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), 'MGC', 'test stub', '{}')",
+        ("test_string_csid_stub", "def evaluate(bars, params): return []"),
+    )
+    csid = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    try:
+        # First insert — explicitly use a STRING-typed csid to mimic the
+        # legacy params_json shape ("232") that older promotions emitted.
+        params_str = {
+            "symbol": "MGC", "strategy_family": "custom_5m",
+            "execution_engine": "custom", "timeframe": "5m",
+        }
+        # Force the legacy string shape by round-tripping through json.dumps.
+        import json
+        params_str["custom_strategy_id"] = str(csid)  # e.g. "232"
+        params_str = json.loads(json.dumps(params_str))  # ensure quoted-string shape
+
+        a = sr.insert_active_strategy(
+            symbol="MGC", strategy_family="custom_5m",
+            params=params_str,
+        )
+
+        # Verify the CSID landed as a JSON STRING (the buggy shape).
+        # list_active_strategies returns parsed params; check the raw json
+        # storage directly so we see the actual JSON type.
+        conn = sqlite3.connect(sr._db_path())
+        row = conn.execute(
+            "SELECT params_json FROM active_strategies WHERE id = ?", (a.id,)
+        ).fetchone()
+        conn.close()
+        raw = json.loads(row[0])
+        assert isinstance(raw["custom_strategy_id"], str), (
+            f"pre-condition: csid must be stored as JSON string, got "
+            f"{type(raw['custom_strategy_id']).__name__}"
+        )
+
+        # Re-promote with the SAME csid (int form this time, like all new
+        # promotions). The slot-aware supersede MUST retire a and add the
+        # new version — pre-fix this would have left BOTH active because
+        # JSON_EXTRACT("232") != 232.
+        params_int = dict(params_str)
+        params_int["custom_strategy_id"] = csid  # int form
+        params_int = json.loads(json.dumps(params_int))
+
+        b = sr.insert_active_strategy(
+            symbol="MGC", strategy_family="custom_5m",
+            params=params_int,
+        )
+
+        actives = sr.list_active_strategies()
+        active_csids = sorted(
+            r["params"].get("custom_strategy_id") for r in actives
+            if r["symbol"] == "MGC" and r["strategy_family"] == "custom_5m"
+            and r["state"] == "active"
+        )
+        # After the fix, only b (int form) should be active for this csid.
+        assert b.id != a.id
+        assert active_csids == [csid], (
+            f"string-csid row a={a.id} must be superseded by int-csid row "
+            f"b={b.id}; got active_csids={active_csids}"
+        )
+    finally:
+        conn = sqlite3.connect(sr._db_path())
+        conn.execute("DELETE FROM custom_strategies WHERE id = ?", (csid,))
+        conn.commit()
+        conn.close()
+
+
 def test_insert_active_strategy_respects_passed_params(db_path):
     from src import strategy_registry as sr
 

@@ -596,7 +596,10 @@ def reject_candidate(candidate_id: int, reason: str) -> dict:
 def reactivate_demoted(*, demotion_id: int) -> int:
     """Re-insert active_strategies row from preserved auto_demotions snapshot.
 
-    Returns the new active_strategies.id. Raises ValueError if not found or already reactivated.
+    Returns the new active_strategies.id. Raises ValueError if not found, already reactivated,
+    or if the original demotion was a duplicate-fire structural retirement (these reactivations
+    restore correlated exposure to a kept sibling and should be done via a fresh candidate with
+    differentiated params, not via the preserved snapshot).
     """
     with get_conn(_ensure_db()) as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -610,6 +613,19 @@ def reactivate_demoted(*, demotion_id: int) -> int:
             if row["reactivated_at_utc"]:
                 raise ValueError(
                     f"auto_demotion {demotion_id} already reactivated at {row['reactivated_at_utc']}"
+                )
+            # Guard: refuse to reactivate a duplicate-fire structural retirement.
+            # Auto-demotions whose reason documents "Duplicate" identify an architecture that
+            # was a strict subset of an existing kept sibling. Restoring it via reactivate_demoted
+            # produces the same co-fire pattern within seconds (finding 9bcdd09e). Differentiated
+            # revival must come through propose_candidate() with explicit regime-shifting params.
+            reason_text = str(row["reason"] or "").lower()
+            if "duplicate" in reason_text:
+                raise ValueError(
+                    f"auto_demotion {demotion_id} was a duplicate-fire structural retirement "
+                    f"(reason contains 'duplicate'). Use propose_candidate() with differentiated "
+                    f"params to revive, not reactivate_demoted(). Original reason: "
+                    f"{str(row['reason'])[:200]}"
                 )
             now = _utc_now()
             new_version = int(row["version"]) + 1

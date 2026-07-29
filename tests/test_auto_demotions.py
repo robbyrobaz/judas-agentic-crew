@@ -173,6 +173,76 @@ def test_reactivate_demoted_twice_raises(db_path):
         reactivate_demoted(demotion_id=demotion_id)
 
 
+def test_reactivate_demoted_blocks_duplicate_fire_reason(db_path):
+    """Reactivating an auto-demotion whose reason identifies a duplicate-fire structural
+    retirement must raise — restoring such a row produces the same co-fire pattern that
+    triggered the original retirement (finding 9bcdd09e). Differentiated revival must come
+    through propose_candidate() with explicit regime-shifting params, not via the preserved
+    snapshot.
+    """
+    from src.strategy_registry import reactivate_demoted, retire_strategy
+
+    # The auto-demoter reason prefix is "Duplicate" (capital D); check is case-insensitive.
+    sid = _seed_active(symbol="FF", family="fam6")
+    demotion_id = retire_strategy(
+        strategy_id=sid,
+        reason="Duplicate-fire with #1234 MGC custom_5m v1. htf_ema_period=80 is a strict "
+        "subset of htf60 in v1 — the 80-EMA HTF bias matches the 60-EMA bias on every fired "
+        "signal. Doubles position on same setup without adding edge.",
+        metrics_snapshot={"pf_20": None, "n": 2, "pnl": -17.0},
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        reactivate_demoted(demotion_id=demotion_id)
+    assert "duplicate" in str(excinfo.value).lower()
+
+    # Verify no new active row was inserted (transaction rolled back).
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        # Original seed still exists in 'retired' state
+        original = conn.execute(
+            "SELECT state FROM active_strategies WHERE id = ?", (sid,)
+        ).fetchone()
+        assert original["state"] == "retired"
+        # No new active row created (auto-increment may have reserved an id, but the row was rolled back)
+        count = conn.execute(
+            "SELECT COUNT(*) FROM active_strategies WHERE notes LIKE ? AND state = 'active'",
+            (f"Reactivated from demotion #{demotion_id}",),
+        ).fetchone()[0]
+        assert count == 0
+        # The demotion row is NOT marked reactivated
+        demo = conn.execute(
+            "SELECT reactivated_at_utc, reactivated_strategy_id FROM auto_demotions WHERE id = ?",
+            (demotion_id,),
+        ).fetchone()
+        assert demo["reactivated_at_utc"] is None
+        assert demo["reactivated_strategy_id"] is None
+
+
+def test_reactivate_demoted_allows_non_duplicate_reason(db_path):
+    """Sanity check: legitimate retirements (pf<0.9, age>14d stale, etc.) still reactivate.
+    Only 'duplicate' substring in the reason blocks reactivation."""
+    from src.strategy_registry import reactivate_demoted, retire_strategy
+
+    sid = _seed_active(symbol="GG", family="fam7")
+    demotion_id = retire_strategy(
+        strategy_id=sid,
+        reason="pf_20=0.85 on n=22, below 0.9 threshold",
+        metrics_snapshot={"pf_20": 0.85, "n": 22},
+    )
+
+    new_sid = reactivate_demoted(demotion_id=demotion_id)
+    assert new_sid > 0
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        new_row = conn.execute(
+            "SELECT state, version FROM active_strategies WHERE id = ?", (new_sid,)
+        ).fetchone()
+        assert new_row["state"] == "active"
+        assert new_row["version"] == 2  # seed was version 1
+
+
 def test_dashboard_demotions_endpoints(db_path, monkeypatch, tmp_path):
     pytest.importorskip("flask")
     # Make sure the dashboard's _db_path() points at our isolated DB.

@@ -1,0 +1,49 @@
+**CONTEXT (2026-07-28T12Z, mid-London, day P&L ~-$144, MLL cushion $968, 0/4 contracts, NT FLAT, eval target +$3000):**
+
+Today's MNQ book: 4 trades, ALL losers, -$210.5 net:
+- #4360 MNQ regime_filtered_rsi_1h: 2 longs stopped at 27982 ($-83.50, $-64.50) — historical top earner but today bleeding
+- #4484 MNQ silver_bullet_pdh_pdl_retest_1h (CSID 242, just promoted): 2 shorts $-54.50 + $-8.00 — both small losers, 0/2 WR so far
+
+This is a SAME-BAR correlation issue: both #4360 and #4484 took opposing positions around 27982, both stopped. Something about that price level is hostile for both MNQ edges right now. Need a diagnostic before more amplification.
+
+**WORKSTREAM A — MNQ today losing pattern diagnostic (URGENT, do this FIRST):**
+1. Why did both MNQ trades get stopped at 27982?
+   - Was it a stop hunt? A real level? A news event?
+   - Did both strategies enter LONG into resistance, or was one direction wrong?
+2. Are #4360 and #4484 firing on the SAME bar? If yes, they're redundant — keep one.
+3. Should either be paused for the day?
+
+**WORKSTREAM B — MGC amplification (per task #2165/2168/2169 backlog, still valid):**
+Pipeline IS alive (5+ proposals in 24h, none surviving 'candidate' status). Re-fire MGC amplification around #4385, #4398, #4390, #4480:
+- B1. MGC ifvg_midpoint_reversion htf_ema_period=80 (sister of #4385 htf_ema=60)
+- B2. MGC cisd_3candle_fvg confirmation_bars=2 (faster sister of #4390)
+- B3. MGC silver_bullet_pdh_pdl_retest_1h min_periods=8 (variant of #4480 with looser warmup)
+- B4. MGC atr_disp_continuation_5m atr_period=14 (variant of working #4451 atr_period=10)
+Same strict gates (n>=15, WF 90d AND 180d PF>=1.3, E[R]>0). INSERT via propose_candidate() directly with execution_engine=custom, custom_strategy_id, FULL params_json. Avoid ZOMBIE pattern (findings 712520f8, e18c0432).
+
+**WORKSTREAM C — ZF fillers (last priority):**
+- C1. ZF atr_disp_continuation_15m atr_period=14 (variant of 0-fire #4458)
+- C2. ZF ifvg_midpoint_reversion_htf_bias_1h htf_ema_period=80 (variant of 0-fire #4472)
+
+**STRICT RULES (per task #2169 backlog):**
+- DO NOT propose on banned symbols (DX, MBT, MET)
+- DO NOT propose CSID 229 on non-MGC (finding dbf96e56)
+- DO NOT propose CSID 232 htf_ema_period=40 (finding e28250e1)
+- DO NOT propose CSID 232 cross-symbol on non-MGC (finding d8be4272)
+- DO NOT propose CSID 229 tR>=2.5 (findings fd67c182, c0f6d9c4)
+- DO NOT use run_walk_forward for propose (ZOMBIE pattern)
+- DO NOT propose without custom_strategy_id + FULL params_json
+- DO NOT propose on MCL (all halted)
+- DO NOT propose 6J until diagnostic concludes
+- DO NOT propose silver_bullet_pdh_pdl MNQ (CSID 242 just promoted, n=2 too soon to amplify)
+
+**DELIVERABLES for 2026-07-28T21Z post-NY brief:**
+- WS-A: diagnostic on MNQ 27982 stop-hunt + recommendation on pause
+- WS-B: 2-4 MGC amp candidates in queue (status='candidate')
+- WS-C: 0-2 ZF fillers (only if queue needs top-up)
+- Total expected: 2-4 candidates in queue
+
+**DOLLAR IMPACT:**
+- MNQ is #2 symbol (+$1161 lifetime) but today's bleeding — protecting it is worth $200-500/wk
+- 2-4 MGC amp candidates × 1-3 fires/wk × $20-100 = $40-1200/wk
+- WS-A could prevent another $200-400 loss day

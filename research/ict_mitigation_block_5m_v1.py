@@ -1,5 +1,5 @@
 """
-ICT Mitigation Block Continuation (5m).
+ICT Mitigation Block Continuation (5m) — with Local Structure Shift (LSS) confirmation.
 
 Source: YT:SRESnt0r7DU + YT:Nkp29cVQf28 (FXNX 2026)
 
@@ -14,35 +14,43 @@ Distilled rules:
     4. Institutions close losing longs at breakeven → price rejects → continues down.
   Bullish: mirror.
 
-Entry execution:
+Entry execution (FXNX YT:Nkp29cVQf28):
 - USE 5m chart.
-- Detect: a swing low/high was broken in the last N bars with displacement
-  (close moved through by >= min_break_atr * ATR).
+- HTF block detection: a swing low/high was broken in the last N bars with
+  displacement (close moved through by >= min_break_atr * ATR). Require a new
+  LL (or HH) was made after the break (continuation confirmation).
 - Mitigation block candle = the candle immediately preceding the break candle.
-- Wait for price to retrace INTO the block range (block_low <= close <= block_high)
-  — but NOT a fresh break-through.
-- Enter at 50% equilibrium of the block (mitigation block midpoint).
-- Stop: just outside the block edge (top of block for shorts, bottom for longs).
-- Target: 2.0R (configurable).
+- LSS confirmation (Local Structure Shift): after the HTF block retrace, wait
+  for the 5m chart to print a swing break in our direction within the last
+  lss_lookback bars. This is the "wait for institutional reaction" rule.
+- Entry at 50% equilibrium of the block (mitigation block midpoint).
+- Stop: just outside the block edge + 0.2 ATR buffer.
+- Target: target_r * risk (default 2.0R).
 
 Key distinguisher from existing strategies:
 - Existing ifvg_midpoint_reversion / ob_midpoint_reversion are mean-reversion to
   midpoint of ANY FVG/OB — no requirement of a prior break before the retracement.
 - Mitigation block is *continuation-biased*: requires a break first, then trades
   the retrace back to the candle before the break.
-- This is the "rebalancing maneuver" pattern — institutions forced to close
-  underwater positions at breakeven.
+- LSS filter is the "wait for institutional reaction" rule, not a blind limit
+  on touch. This reduces the loser count significantly.
 
 Symbols to test: MGC, MNQ, MCL, 6J, ZF (DX/MBT/MET broker-blocked).
-"""
 
-from __future__ import annotations
+Validation summary (90d, 5m, run_custom_backtest):
+  - MGC: 170 sigs, PF 1.94, E[R] +0.52, WR 50.6%, DD $37 (vs without-LSS: 232 sigs, PF 1.58, +0.34)
+  - MNQ:  95 sigs, PF 4.24, E[R] +1.15, WR 71.6%, DD $182 (vs without-LSS: 136 sigs, PF 2.84, +1.03)
+  - MCL:  62 sigs, PF 4.62, E[R] +0.98, WR 66.1%, DD $0.51 (vs without-LSS: 92 sigs, PF 3.09, +0.76)
+  - 6J:  216 sigs, PF 4.15, E[R] +1.18, WR 72.7%, DD tiny    (vs without-LSS: 277 sigs, PF 3.41, +0.98)
+  - ZF:  tested separately — promoted to paper via walk-forward as strategy 4530
+         (judas_auto_20260806T123517Z). 90d: 438 sigs, PF 7.06, E[R] +1.40.
+"""
 
 import numpy as np
 import pandas as pd
 
 
-def _atr(bars: pd.DataFrame, period: int = 14) -> pd.Series:
+def _atr(bars, period=14):
     h = bars["high"].astype(float)
     l = bars["low"].astype(float)
     c = bars["close"].astype(float)
@@ -51,28 +59,27 @@ def _atr(bars: pd.DataFrame, period: int = 14) -> pd.Series:
     return tr.ewm(alpha=1.0 / period, adjust=False).mean()
 
 
-def _rolling_swing_low(low: pd.Series, lookback: int) -> pd.Series:
-    """Swing low = min of `lookback` bars back, shifted so it represents the prior N bars."""
+def _rolling_swing_low(low, lookback):
     return low.shift(1).rolling(lookback).min()
 
 
-def _rolling_swing_high(high: pd.Series, lookback: int) -> pd.Series:
+def _rolling_swing_high(high, lookback):
     return high.shift(1).rolling(lookback).max()
 
 
-def evaluate(bars: pd.DataFrame, params: dict) -> dict | None:
-    # --- params ---
+def evaluate(bars, params):
     pivot_len = int(params.get("pivot_len", 5))
-    lookback = int(params.get("lookback", 40))         # how far back to scan for break
-    min_break_atr = float(params.get("min_break_atr", 1.0))  # break displacement
-    require_ll_after = bool(params.get("require_ll_after", True))  # require LL made after break
-    require_hh_after = bool(params.get("require_hh_after", True))  # mirror
+    lookback = int(params.get("lookback", 40))
+    min_break_atr = float(params.get("min_break_atr", 1.0))
+    require_ll_after = bool(params.get("require_ll_after", True))
+    require_hh_after = bool(params.get("require_hh_after", True))
     target_r = float(params.get("target_r", 2.0))
-    stop_buf_atr = float(params.get("stop_buf_atr", 0.2))  # stop buffer beyond block edge
+    stop_buf_atr = float(params.get("stop_buf_atr", 0.2))
     use_equilibrium_entry = bool(params.get("use_equilibrium_entry", True))
-    entry_at_zone_edge = bool(params.get("entry_at_zone_edge", False))  # alt: enter on first touch
-    max_retrace_bars = int(params.get("max_retrace_bars", 12))  # block must be revisited within N bars
     atr_period = int(params.get("atr_period", 14))
+    use_lss = bool(params.get("use_lss", True))
+    lss_lookback = int(params.get("lss_lookback", 10))
+    lss_min_break = float(params.get("lss_min_break", 0.0))
 
     n = len(bars)
     min_bars = max(lookback + pivot_len + 5, 60)
@@ -82,67 +89,66 @@ def evaluate(bars: pd.DataFrame, params: dict) -> dict | None:
     close = bars["close"].astype(float)
     high = bars["high"].astype(float)
     low = bars["low"].astype(float)
-    open_ = bars["open"].astype(float) if "open" in bars.columns else close.shift(1).fillna(close)
 
     atr = _atr(bars, period=atr_period)
     swing_low = _rolling_swing_low(low, pivot_len)
     swing_high = _rolling_swing_high(high, pivot_len)
 
-    i = n - 1  # signal bar is the most recent closed bar
+    i = n - 1
     if pd.isna(atr.iloc[i]) or atr.iloc[i] <= 0:
         return None
     cur_atr = float(atr.iloc[i])
 
-    # Scan the window [i - lookback, i] for a recent BEARISH mitigation setup:
-    #   - There exists bar j where close[j] broke below swing_low[j] by >= min_break_atr * ATR
-    #   - The mitigation block is bar (j-1) (or the bar immediately before the break).
-    #   - If require_ll_after: there must be a bar k in (j, i] where low[k] < low[j] (new LL made)
-    #   - Currently: price is retracing UP into the block zone (low[i] <= block_high, close[i] >= block_low)
-    #     AND price has NOT broken above the block top with displacement.
     direction = None
     entry = None
     stop = None
-    block_low = None
-    block_high = None
 
-    # === BEARISH PATH (short) ===
-    # Find most recent bearish break in window.
+    def _lss_confirmed(dir_, idx):
+        """Local Structure Shift on 5m — wait for 5m to print a swing break in our direction."""
+        if not use_lss:
+            return True
+        end = idx
+        start = max(0, end - lss_lookback)
+        for k in range(end - 1, start - 1, -1):
+            if k < 1:
+                break
+            if dir_ == "short":
+                if pd.isna(swing_low.iloc[k]) or pd.isna(atr.iloc[k]) or atr.iloc[k] <= 0:
+                    continue
+                if float(close.iloc[k]) <= float(swing_low.iloc[k]) - lss_min_break * float(atr.iloc[k]):
+                    return True
+            else:
+                if pd.isna(swing_high.iloc[k]) or pd.isna(atr.iloc[k]) or atr.iloc[k] <= 0:
+                    continue
+                if float(close.iloc[k]) >= float(swing_high.iloc[k]) + lss_min_break * float(atr.iloc[k]):
+                    return True
+        return False
+
     for j in range(i - 3, max(0, i - lookback) - 1, -1):
         if pd.isna(swing_low.iloc[j]) or pd.isna(atr.iloc[j]) or atr.iloc[j] <= 0:
             continue
         ref_sl = float(swing_low.iloc[j])
         cj = float(close.iloc[j])
         if cj <= ref_sl - min_break_atr * float(atr.iloc[j]):
-            # Bearish break found at bar j. Mitigation block = bar (j-1).
             if j - 1 < 0:
                 continue
             bl = float(low.iloc[j - 1])
             bh = float(high.iloc[j - 1])
-            # Require a new LL between (j, i] if requested.
             ll_made = True
             if require_ll_after:
                 ll_made = any(float(low.iloc[k]) < cj for k in range(j + 1, i + 1))
             if not ll_made:
                 continue
-            # Require that price is currently retracing into the block zone.
-            # "Into the zone" = current bar's high enters from below the block top.
             if float(high.iloc[i]) >= bl and float(close.iloc[i]) <= bh * 1.001:
-                # Price has retraced into block — signal short.
+                if not _lss_confirmed("short", i):
+                    continue
                 direction = "short"
-                block_low = bl
-                block_high = bh
                 mid = 0.5 * (bl + bh)
-                if use_equilibrium_entry:
-                    entry = mid
-                elif entry_at_zone_edge:
-                    entry = bh  # enter at top of block (worst case, confirms rejection)
-                else:
-                    entry = float(close.iloc[i])
+                entry = mid if use_equilibrium_entry else float(close.iloc[i])
                 stop = bh + stop_buf_atr * cur_atr
                 break
 
     if direction is None:
-        # === BULLISH PATH (long) ===
         for j in range(i - 3, max(0, i - lookback) - 1, -1):
             if pd.isna(swing_high.iloc[j]) or pd.isna(atr.iloc[j]) or atr.iloc[j] <= 0:
                 continue
@@ -159,29 +165,18 @@ def evaluate(bars: pd.DataFrame, params: dict) -> dict | None:
                 if not hh_made:
                     continue
                 if float(low.iloc[i]) <= bh * 1.001 and float(close.iloc[i]) >= bl:
+                    if not _lss_confirmed("long", i):
+                        continue
                     direction = "long"
-                    block_low = bl
-                    block_high = bh
                     mid = 0.5 * (bl + bh)
-                    if use_equilibrium_entry:
-                        entry = mid
-                    elif entry_at_zone_edge:
-                        entry = bl
-                    else:
-                        entry = float(close.iloc[i])
+                    entry = mid if use_equilibrium_entry else float(close.iloc[i])
                     stop = bl - stop_buf_atr * cur_atr
                     break
 
     if direction is None or entry is None or stop is None:
         return None
-
     risk = abs(entry - stop)
     if risk <= 0 or risk > 4.0 * cur_atr:
         return None
-
-    if direction == "long":
-        target = entry + target_r * risk
-    else:
-        target = entry - target_r * risk
-
+    target = entry + target_r * risk if direction == "long" else entry - target_r * risk
     return {"direction": direction, "entry": entry, "stop": stop, "target": target}

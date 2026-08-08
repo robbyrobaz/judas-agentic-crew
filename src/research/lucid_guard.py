@@ -127,11 +127,37 @@ def _save_ledger(led: dict) -> None:
 def record_daily_close(equity: float, now_utc: datetime | None = None) -> None:
     """Persist the day's CLOSE equity (call at/after EOD flatten, positions flat
     so equity == cash). Overwrites the entry for the trading date (last write of
-    the day is the close). Also seeds start_balance on first ever call."""
+    the day is the close). Also seeds start_balance on first ever call.
+
+    Defensive guard (2026-08-06): if equity == 0 AND a prior daily close is
+    > 0, refuse the write. The MLL floor calculation uses max(closes,
+    start_balance, cur_equity); a bogus $0 close poisons the floor permanently
+    (it becomes max(0, 0, 50000) = 50000 → floor 48000 → perpetual breach).
+    The caller (EOD flatten in portfolio_runtime) takes broker cash; if the
+    broker returns $0 (WinRM / NT sim zero / field-name mismatch) the daily
+    ledger MUST NOT be corrupted. The caller is expected to fail-open its
+    own MLL check in that case (see _lucid_assess hook).
+    """
     led = _load_ledger()
-    led.setdefault("start_balance", round(float(equity), 2))
+    eq = round(float(equity), 2)
     closes = led.setdefault("daily_close", {})
-    closes[trading_date(now_utc)] = round(float(equity), 2)
+    prior_nonzero = [v for v in closes.values() if v > 0]
+    # Refuse any $0 write: a Lucid eval account starts at $50k and the MLL
+    # guard force-flats long before $0, so $0 from the broker is ALWAYS a
+    # broken read (WinRM / NT sim zero / field-name mismatch). Poisoning the
+    # ledger with $0 makes peak_close_equity() pin to start_balance → MLL
+    # floor stays at $48k → perpetual breach (the self-corrupting halt from
+    # finding 2b1e5ae5).
+    if eq == 0.0:
+        import logging
+        logging.getLogger(__name__).warning(
+            "record_daily_close: refusing $0 write \u2014 prior closes were %s "
+            "(broker likely returning bogus cash; will retry next scan)",
+            prior_nonzero[-3:],
+        )
+        return
+    led.setdefault("start_balance", eq)
+    closes[trading_date(now_utc)] = eq
     _save_ledger(led)
 
 

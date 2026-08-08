@@ -94,6 +94,41 @@ def test_ledger_roundtrip(tmp_path, monkeypatch):
     assert lg.peak_close_equity(default=50_500, now_utc=NOON) == 51_000.0
 
 
+def test_record_daily_close_rejects_zero_when_prior_nonzero(tmp_path, monkeypatch):
+    """Defensive guard (2026-08-06): a bogus broker cash=$0 must NOT corrupt the
+    ledger if a prior close > 0 exists. Otherwise peak_close_equity() pins to
+    max(0, 0, start_balance) = start_balance → MLL floor stays at $48k → MLL
+    breach becomes perpetual (the self-corrupting halt pattern from finding 2b1e5ae5)."""
+    monkeypatch.setattr(lg, "_LEDGER_PATH", tmp_path / "ledger.json")
+    monkeypatch.setattr(lg, "_DATA_DIR", tmp_path)
+    # Seed legit closes
+    lg.record_daily_close(49_879.70, now_utc=_utc(2026, 7, 28, 16, 41))  # Tue
+    lg.record_daily_close(47_981.30, now_utc=_utc(2026, 7, 29, 16, 41))  # Wed
+    peak_before = lg.peak_close_equity(default=47_981.30, now_utc=NOON)
+    assert peak_before == 49_879.70
+    # Simulate broker returning bogus cash=0 on next EOD flatten
+    lg.record_daily_close(0.0, now_utc=_utc(2026, 7, 30, 16, 41))
+    # Peak must NOT have dropped — the $0 write was rejected
+    peak_after = lg.peak_close_equity(default=47_981.30, now_utc=NOON)
+    assert peak_after == 49_879.70, f"ledger corrupted by bogus $0: peak={peak_after}"
+    # And the 2026-07-30 entry must not exist
+    led = lg._load_ledger()
+    assert "2026-07-30" not in led["daily_close"]
+
+
+def test_record_daily_close_rejects_zero_on_seed(tmp_path, monkeypatch):
+    """First-ever call with equity=0 must NOT seed start_balance=0 (would make
+    peak_close_equity = max([] + [0] + [default]) = max(default, 0), poisoning
+    MLL from the start)."""
+    monkeypatch.setattr(lg, "_LEDGER_PATH", tmp_path / "ledger.json")
+    monkeypatch.setattr(lg, "_DATA_DIR", tmp_path)
+    lg.record_daily_close(0.0, now_utc=_utc(2026, 7, 20, 16, 41))
+    led = lg._load_ledger()
+    # Should have been refused entirely — no start_balance, no closes
+    assert "start_balance" not in led
+    assert led.get("daily_close", {}) == {}
+
+
 # --- scan-gate integration (banned / aggregate cap / halt) ------------------
 
 def _fire(symbol, qty=1):

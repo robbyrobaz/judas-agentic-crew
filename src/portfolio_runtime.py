@@ -1465,6 +1465,20 @@ def _lucid_guard_assess(broker, bars_by_sym: dict):
             cur = float(df["close"].iloc[-1])
             sign = 1.0 if p.get("side") == "LONG" else -1.0
             unrealized += (cur - avg) * sign * qty * _point_value(sym)
+        # Defensive guard (2026-08-09): mirror the record_daily_close defense. A
+        # broker returning cash=$0 with zero positions is a broken read (WinRM /
+        # NT sim zero / field-name mismatch / ledger seeded from a different
+        # account). Without this check, peak_close_equity() pins to start_balance
+        # and the trailing MLL breach becomes perpetual (finding 2b1e5ae5) — the
+        # guard would refuse every entry indefinitely even though the book is
+        # flat and healthy. Fail-open to let the deterministic banned-symbol /
+        # aggregate-cap gates continue to enforce.
+        if cash == 0 and nt_contracts == 0:
+            log.warning(
+                "lucid_guard: cash=$0 + 0 contracts (likely stale broker read or "
+                "ledger/account mismatch) \u2014 P&L guards skipped this scan"
+            )
+            return None, 0
         cur_equity = cash + unrealized
         day_start = _lg.day_start_equity()
         if day_start is None:

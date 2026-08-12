@@ -18,7 +18,7 @@ execution:
 # WinRM → PowerShell → NT Client API on the Windows host. Password from env
 # WINDOWS_PASSWORD (set in the systemd unit), never committed here.
 ninjatrader:
-  account: LFE05064290360089  # REAL Lucid 50K eval (wired 2026-07-26 by Rob's direction; was SimJudasCrew)
+  account: LFE05064290360100  # REAL Lucid 50K eval (wired 2026-08-12 by Rob's direction; LFE..89 died Jul 30 — Lucid's unannounced $1,200 DLL)
   host: 100.108.151.36        # Tailscale IP of the Windows NT box
   user: nqtrader
   python_exe: "C:\\PyBridge\\python.exe"

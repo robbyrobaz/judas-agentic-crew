@@ -13,8 +13,10 @@ Rules (authoritative memory reference_lucid_50k_rules, + Rob 2026-07-24):
     flattens everything and halts. $1,500 = 50% of the $3k target = the Lucid
     consistency ceiling, so capping the day here keeps the account compliant.
   - $2,000 TRAILING max-loss from peak daily-CLOSE equity — breach => flatten+halt.
-    This is the ONLY loss guard: Lucid Flex has no daily loss limit, and Rob
-    chose profit-only day caps.
+  - Daily LOSS caps: soft -$800 halts NEW entries; hard -$1,000 flattens+halts.
+    Lucid runs an UNANNOUNCED ~$1,200 daily loss limit on evals (it killed
+    LFE..89 on 2026-07-29's -$1,198 day) — the hard cap sits under it with
+    room for flatten slippage.
   - EOD FLAT by 4:45 PM ET (Lucid cutoff; auto-liq 4:59:59 ET). We flatten at
     4:40 ET to leave fill room.
 
@@ -47,6 +49,8 @@ RULES = {
     "max_contracts_aggregate": 4,
     "daily_profit_soft": 1200.0,   # halt NEW entries at day P&L >= this
     "daily_profit_hard": 1500.0,   # flatten all + halt at day P&L >= this
+    "daily_loss_soft": -800.0,     # halt NEW entries at day P&L <= this
+    "daily_loss_hard": -1000.0,    # flatten all + halt (Lucid's unannounced ~$1,200 eval DLL)
     "mll_trail": 2000.0,           # $ trailing from peak daily-CLOSE equity
     "base_target": 3000.0,         # eval profit target (context only)
     "eod_flat_et": (16, 40),       # flatten all at/after this ET time
@@ -205,6 +209,15 @@ def assess(*, cur_equity: float, day_start: float, peak_close: float,
         d.force_flat = True
         d.halt_entries = True
         d.reasons.append(f"TRAILING MLL BREACH: equity ${cur_equity:.0f} <= floor ${d.mll_floor:.0f}")
+
+    # Loss side — daily loss caps sit under Lucid's unannounced ~$1,200 eval DLL.
+    if d.day_pnl <= RULES["daily_loss_hard"]:
+        d.force_flat = True
+        d.halt_entries = True
+        d.reasons.append(f"DAILY_LOSS_HARD ${d.day_pnl:.0f} <= ${RULES['daily_loss_hard']:.0f} (flatten+stop)")
+    elif d.day_pnl <= RULES["daily_loss_soft"]:
+        d.halt_entries = True
+        d.reasons.append(f"DAILY_LOSS_SOFT ${d.day_pnl:.0f} <= ${RULES['daily_loss_soft']:.0f} (halt new entries)")
 
     # Profit hard cap — lock the day in.
     if d.day_pnl >= RULES["daily_profit_hard"]:

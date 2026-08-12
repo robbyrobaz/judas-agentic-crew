@@ -53,6 +53,27 @@ def test_hard_profit_flattens():
     assert "HARD" in d.reason
 
 
+def test_soft_loss_halts_entries_only():
+    d = lg.assess(cur_equity=49_150, day_start=50_000, peak_close=50_000,
+                  nt_contracts=1, now_utc=NOON)  # -$850 day
+    assert d.halt_entries and not d.force_flat
+    assert "DAILY_LOSS_SOFT" in d.reason
+
+
+def test_hard_loss_flattens():
+    # -$1,050 day: under Lucid's unannounced ~$1,200 eval DLL, must flatten+halt
+    d = lg.assess(cur_equity=48_950, day_start=50_000, peak_close=50_000,
+                  nt_contracts=2, now_utc=NOON)
+    assert d.halt_entries and d.force_flat
+    assert "DAILY_LOSS_HARD" in d.reason
+
+
+def test_small_loss_no_halt():
+    d = lg.assess(cur_equity=49_500, day_start=50_000, peak_close=50_000,
+                  nt_contracts=1, now_utc=NOON)  # -$500 day
+    assert not d.halt_entries and not d.force_flat
+
+
 def test_trailing_mll_breach_flattens():
     # peak close 52,000 -> floor 50,000; equity 49,900 breaches
     d = lg.assess(cur_equity=49_900, day_start=50_500, peak_close=52_000,

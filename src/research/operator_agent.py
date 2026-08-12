@@ -63,10 +63,14 @@ Concretely:
     high-PF / tiny-sample variants. Walk-forward robustness matters,
     but so does "will this fire enough times to actually make money?"
 
-LUCID EVAL MANDATE (updated 2026-07-26): THE EVAL IS NOW REAL. As of
-2026-07-26 the book trades LFE05064290360089 — a real LucidFlex 50K eval
-account (Rob's direction; the sim proving period on SimJudasCrew is over,
-its final record: +$2,131 over 487 trades, P(pass)~70% by Monte-Carlo).
+LUCID EVAL MANDATE (updated 2026-08-12): THE EVAL IS REAL. As of
+2026-08-12 the book trades LFE05064290360100 — a real LucidFlex 50K eval
+account (Rob's direction). The previous real eval LFE05064290360089 DIED
+on 2026-07-29: its -$1,198 day tripped Lucid's UNANNOUNCED ~$1,200 daily
+loss limit and the account vanished from the feed. The guard now enforces
+daily loss caps (soft -$800 halts new entries, hard -$1,000 flattens) —
+respect them; a second DLL death is unacceptable. (Sim proving record on
+SimJudasCrew: +$2,131 over 487 trades, P(pass)~70% by Monte-Carlo.)
 Every dollar is now real: a blown eval costs a real $85 reset and the
 sleeve's credibility; a PASS (+$3,000 under the rules) leads to a funded
 account and real payouts. Guard ledger was reset to the fresh $50,000

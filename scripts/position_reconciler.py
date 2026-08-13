@@ -47,16 +47,82 @@ def _kick_trader() -> None:
         log.exception("reconciler.trader_kick_failed (hourly timer will pick the task up)")
 
 
+COOLDOWN_MIN = 60  # don't re-queue/kick for the SAME unmanaged book within this window
+
+
+def _unmanaged_signature(db_path: str) -> str | None:
+    """Sorted 'SYM:SIDE:qty' signature of unmanaged NT contracts, '' if none,
+    None on read failure (treat as unknown — do nothing)."""
+    import sqlite3
+    from src.research.agent_tools import get_nt_positions
+    truth = get_nt_positions()
+    if not truth.get("ok"):
+        return None
+    if truth.get("flat"):
+        return ""
+    managed: dict[tuple[str, str], int] = {}
+    with sqlite3.connect(db_path) as conn:
+        for sym, direction, qty in conn.execute(
+            "SELECT symbol, direction, qty FROM trades WHERE status='open'"
+        ).fetchall():
+            k = (str(sym).upper(), str(direction).lower())
+            managed[k] = managed.get(k, 0) + int(qty or 1)
+    parts = []
+    for p in truth.get("open_positions", []):
+        sym = str(p.get("instrument", "")).upper()
+        direction = "long" if p.get("side") == "LONG" else "short"
+        excess = int(p.get("qty", 0) or 0) - managed.get((sym, direction), 0)
+        if excess > 0:
+            parts.append(f"{sym}:{p.get('side')}:{excess}")
+    return ",".join(sorted(parts))
+
+
+def _recently_tasked(db_path: str, signature: str) -> bool:
+    """True if a scan_orphan_detector task for this same unmanaged book was
+    requested within COOLDOWN_MIN (any status — the crew may have deliberately
+    chosen HOLD; re-kicking every minute would just burn LLM quota)."""
+    import json
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=COOLDOWN_MIN)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT payload_json FROM agent_tasks WHERE requester='scan_orphan_detector' "
+            "AND requested_at_utc >= ? ORDER BY id DESC LIMIT 5", (cutoff,),
+        ).fetchall()
+    for (payload,) in rows:
+        try:
+            ups = json.loads(payload or "{}").get("unmanaged_positions", [])
+            sig = ",".join(sorted(
+                f"{u['symbol']}:{u['side']}:{u['unmanaged_qty']}" for u in ups))
+            if sig == signature:
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
 def main() -> int:
     try:
         from src.portfolio_runtime import _orphan_body
         db_path = str(REPO / "judas_crew.db")
+        sig = _unmanaged_signature(db_path)
+        if sig is None:
+            log.warning("reconciler.truth_unavailable — skipping this tick")
+            return 0
+        if not sig:
+            log.info("reconciler.clean unmanaged=0")
+            return 0
+        if _recently_tasked(db_path, sig):
+            log.info("reconciler.cooldown same book already tasked <%dmin: %s",
+                     COOLDOWN_MIN, sig)
+            return 0
         n = _orphan_body(db_path)
         if n > 0:
-            log.critical("reconciler.unmanaged_contracts count=%d — task queued", n)
+            log.critical("reconciler.unmanaged_contracts count=%d sig=%s — task queued",
+                         n, sig)
             _kick_trader()
-        else:
-            log.info("reconciler.clean unmanaged=0")
     except Exception:  # noqa: BLE001
         log.exception("reconciler.run_failed")
     return 0

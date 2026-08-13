@@ -1284,7 +1284,7 @@ _NT_TRUTH_DB = os.environ.get(
 )
 
 
-def get_nt_positions(*, account: str = "SimJudasCrew") -> dict:
+def get_nt_positions(*, account: str = "") -> dict:
     """GROUND-TRUTH NinjaTrader positions — LIVE read of NT's own Positions table.
 
     Reads the SAME authoritative Positions table the NQ pipeline and two other
@@ -1304,7 +1304,8 @@ def get_nt_positions(*, account: str = "SimJudasCrew") -> dict:
         if str(getattr(cfg, "route", "") or "") == "ninjatrader":
             from src.broker.ninjatrader import NTBroker
             nt = cfg.ninjatrader
-            broker = NTBroker(account=account or nt.account,
+            account = account or nt.account  # config account, not a stale sim default
+            broker = NTBroker(account=account,
                               instrument_map=dict(nt.instrument_map),
                               host=nt.host, user=nt.user, python_exe=nt.python_exe,
                               outgoing_dir=nt.outgoing_dir)
@@ -1326,7 +1327,7 @@ def get_nt_positions(*, account: str = "SimJudasCrew") -> dict:
     return _nt_positions_from_sync(account)
 
 
-def _nt_live_broker(account: str = "SimJudasCrew"):
+def _nt_live_broker(account: str = ""):
     """Build an NTBroker for live NT reads/cancels on the crew account."""
     from src.config import load_config as _lc
     cfg = _lc()
@@ -1338,7 +1339,7 @@ def _nt_live_broker(account: str = "SimJudasCrew"):
                     outgoing_dir=nt.outgoing_dir)
 
 
-def get_nt_working_orders(*, account: str = "SimJudasCrew") -> dict:
+def get_nt_working_orders(*, account: str = "") -> dict:
     """LIVE list of WORKING orders on the NT account, with cancellable GUIDs.
 
     2026-07-18: 444 stale orphaned OCO legs had piled up. NT counts working
@@ -1389,7 +1390,7 @@ def cancel_nt_order(*, order_id: str, symbol: str) -> dict:
         return {"ok": False, "error": f"cancel failed: {exc}"}
 
 
-def cancel_stale_nt_orders(*, dry_run: bool = True, account: str = "SimJudasCrew") -> dict:
+def cancel_stale_nt_orders(*, dry_run: bool = True, account: str = "") -> dict:
     """Bulk-clean the stale working-order book in ONE call.
 
     Keeps, per open position: the NEWEST <qty> close-side protective stops and
@@ -1453,7 +1454,7 @@ def cancel_stale_nt_orders(*, dry_run: bool = True, account: str = "SimJudasCrew
         return {"ok": False, "error": f"cancel_stale failed: {exc}"}
 
 
-def close_nt_position(*, symbol: str, account: str = "SimJudasCrew") -> dict:
+def close_nt_position(*, symbol: str, account: str = "") -> dict:
     """ENGINE-SIDE RESET for one symbol: NT's CLOSEPOSITION flattens the
     position AND cancels ALL working orders for that instrument+account in one
     command — including zombie orders that per-order CANCEL cannot touch
@@ -1490,13 +1491,16 @@ def close_nt_position(*, symbol: str, account: str = "SimJudasCrew") -> dict:
         return {"ok": False, "error": f"close failed: {exc}"}
 
 
-def _nt_positions_from_sync(account: str = "SimJudasCrew") -> dict:
+def _nt_positions_from_sync(account: str = "") -> dict:
     """FALLBACK: positions reconstructed from the 5-min fills-derived sync copy.
 
     Only used when the live NT Positions read fails. Blind to positions whose
     opening fills the Executions sync missed — kept as a degraded last resort so
     a WinRM hiccup doesn't leave callers with nothing."""
     try:
+        if not account:
+            from src.config import load_config as _lc
+            account = _lc().ninjatrader.account
         conn = sqlite3.connect(f"file:{_NT_TRUTH_DB}?mode=ro", uri=True, timeout=10)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -1754,7 +1758,7 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
             ),
             "parameters": {
                 "type": "object",
-                "properties": {"account": {"type": "string", "default": "SimJudasCrew"}},
+                "properties": {"account": {"type": "string", "default": ""}},
                 "required": [],
             },
         },
@@ -1774,7 +1778,7 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
             ),
             "parameters": {
                 "type": "object",
-                "properties": {"account": {"type": "string", "default": "SimJudasCrew"}},
+                "properties": {"account": {"type": "string", "default": ""}},
                 "required": [],
             },
         },
@@ -1794,7 +1798,7 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
             "parameters": {
                 "type": "object",
                 "properties": {"symbol": {"type": "string", "description": "e.g. MNQ"},
-                               "account": {"type": "string", "default": "SimJudasCrew"}},
+                               "account": {"type": "string", "default": ""}},
                 "required": ["symbol"],
             },
         },
@@ -1817,7 +1821,7 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
                 "type": "object",
                 "properties": {
                     "dry_run": {"type": "boolean", "default": True},
-                    "account": {"type": "string", "default": "SimJudasCrew"},
+                    "account": {"type": "string", "default": ""},
                 },
                 "required": [],
             },

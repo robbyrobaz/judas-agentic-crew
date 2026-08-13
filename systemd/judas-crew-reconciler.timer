@@ -1,0 +1,10 @@
+[Unit]
+Description=Judas Crew position reconciler — every 1 minute (Rob 2026-08-13: naked-orphan awareness gap)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

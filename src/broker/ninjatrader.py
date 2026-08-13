@@ -157,10 +157,57 @@ class NTBroker:
                 log.error("nt_broker.positions_parse_fail stdout=%s stderr=%s",
                           out[:300], (r.std_err.decode()[:300] if r.std_err else ""))
                 return None
-            return json.loads(out[a + 7:b])
+            rows = json.loads(out[a + 7:b])
+            # 2026-08-13: NT does NOT persist live Tradovate/Lucid positions to
+            # its sqlite Positions table (it sat EMPTY while the account held
+            # 6J x3 + MNQ x1) — the per-instrument position files NT writes to
+            # outgoing/ on every PositionUpdate are the live truth. sqlite rows
+            # take precedence when present; file rows fill in what sqlite misses.
+            file_rows = self.positions_from_files()
+            if file_rows:
+                seen = {r.get("contract") for r in rows}
+                rows += [f for f in file_rows if f.get("contract") not in seen]
+            return rows
         except Exception:
             log.exception("nt_broker.positions_winrm_exception")
             return None
+
+    def positions_from_files(self) -> list[dict]:
+        """Read live positions from NT's per-instrument position files
+        ('<contract> <exch>_<account>_position.txt' in outgoing/, content
+        'LONG;3;0.006294667' / 'FLAT;0;0'), written on every PositionUpdate.
+        Best-effort: returns [] on any failure."""
+        if self.dry_run:
+            return []
+        ps = (
+            f'Get-ChildItem "{self.outgoing_dir}" -Filter "*_{self.account}_position.txt" '
+            '-ErrorAction SilentlyContinue | ForEach-Object '
+            '{ "POSF|" + $_.Name + "|" + (Get-Content $_.FullName -Raw) }'
+        )
+        try:
+            sess = winrm.Session(self.host, auth=(self.user, self.password),
+                                 operation_timeout_sec=60, read_timeout_sec=90)
+            r = sess.run_ps(ps)
+            out = []
+            for line in r.std_out.decode(errors="replace").splitlines():
+                if not line.startswith("POSF|"):
+                    continue
+                _, name, content = line.split("|", 2)
+                # name: '6J 09-26 Globex_LFE..100_position.txt' → contract '6J 09-26'
+                contract = name.split(f"_{self.account}_")[0].rsplit(" ", 1)[0]
+                parts = content.strip().split(";")
+                if len(parts) < 3 or parts[0] == "FLAT":
+                    continue
+                qty = int(float(parts[1]))
+                if qty == 0:
+                    continue
+                out.append({"symbol": contract.split()[0], "contract": contract,
+                            "side": parts[0], "qty": qty,
+                            "avg_price": float(parts[2])})
+            return out
+        except Exception:
+            log.exception("nt_broker.positions_files_exception")
+            return []
 
     def working_orders(self) -> list[dict] | None:
         """LIVE list of WORKING orders (OrderState=1) on self.account from NT's
@@ -658,6 +705,15 @@ class NTBroker:
                 "nt_order_id": entry_oid, "final_status": status,
                 "symbol": symbol, "instrument": instrument,
             })
+            # CANCEL the abandoned entry — a working order left behind here
+            # fills later with no DB row and no protective legs (2026-08-13:
+            # stale entries filled hours later → naked unmanaged positions).
+            try:
+                self.cancel(entry_oid, symbol)
+                log.warning("nt_broker.entry_no_fill_cancelled", extra={
+                    "nt_order_id": entry_oid, "symbol": symbol})
+            except Exception:  # noqa: BLE001
+                log.exception("nt_broker.entry_no_fill_cancel_failed oid=%s", entry_oid)
             return None
 
         # FILL-ANCHOR the protective legs. Preserve the caller's intended

@@ -1,0 +1,10 @@
+[Unit]
+Description=Judas Crew position reconciler — NT truth vs DB open trades, queues+kicks trader on orphans
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rob/judas-agentic-crew
+ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python scripts/position_reconciler.py
+EnvironmentFile=/home/rob/judas-agentic-crew/.env
+StandardOutput=journal
+StandardError=journal

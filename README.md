@@ -1,166 +1,112 @@
 # judas-agentic-crew
 
-A self-running paper futures lab on IBKR that continuously ingests trading content, backtests ideas, and promotes/retires strategies — all without human intervention. The scanner that places trades is **pure deterministic Python with zero LLM calls**. The LLM budget is spent entirely on research.
+A self-running futures trading system: a **pure-deterministic Python scanner** places
+bracket orders on a **real-money Lucid 50K eval account** via NinjaTrader, while a crew of
+**MiniMax-M3 LLM agents** (researcher, operator, registrar, trader, coder, reviewer)
+continuously researches strategies, reviews the portfolio, and manages anything the
+deterministic layer flags. The scanner that touches money makes **zero LLM calls**; the
+LLM budget is spent entirely on research and judgment.
 
 ---
 
-## Current State (2026-05-27)
+## Current State (2026-08-13)
 
-### Active Strategies (6)
+| | |
+|---|---|
+| **Execution** | REAL LucidFlex 50K eval `LFE05064290360100` via NinjaTrader on REBEL (WinRM bridge, ATI order files) — wired 2026-08-12 |
+| **Scanner** | Every 5 min whenever Globex is open — deterministic, 0 LLM calls |
+| **LLM** | MiniMax-M3 (`https://api.minimax.io/v1` via LiteLLM) for all agents |
+| **Active strategies** | 36 active (4,301 retired, 48 superseded — full audit trail in `active_strategies`) |
+| **Symbols** | MGC, MNQ, ZF, MCL, 6J only (crypto MET/MBT + DX banned under Lucid rules) |
+| **Dashboard** | `http://127.0.0.1:5080/` (tailnet: `omen-claw.tail76e7df.ts.net:5080`) |
+| **Position watchdog** | `judas-crew-reconciler.timer` — every **1 minute**, NT truth vs DB (added 2026-08-13) |
 
-| ID | Symbol | Family | Type | Notes |
-|---|---|---|---|---|
-| 3228 | MNQ | judas_1h | judas_native | Sweep+CHoCH, displacement filtered |
-| 3240 | MGC | judas_1h | judas_native | Sweep+CHoCH |
-| 3250 | DX | judas_1h | judas_native | Sweep+CHoCH |
-| 3271 | MET | buffet_zoo | RSI 30/70 | 98 fires/7d in workshop (5m bars → expect 2-5/week on 1H) |
-| 3272 | MCL | buffet_zoo | Bollinger bb_20 | 18 fires/7d workshop |
-| 3273 | MCL | zoo | MA cross 9/21 | 8 fires/7d workshop |
+### Account timeline
 
-**judas_native** strategies fire on sweep+CHoCH patterns (ICT Judas Swing, inherently low-frequency). **buffet_zoo/zoo** strategies fire on RSI/BB/MA crossovers — fire more often, fully validated in workshop.
-
-### Contract Expiries
-
-| Symbol | Contract | Expiry | Notes |
-|---|---|---|---|
-| MET | METK6 | 2026-05-29 | Auto-rolls when next-month volume flips |
-| DX | DXM6 | 2026-06-15 | |
-| MNQ | MNQM6 | 2026-06-18 | |
-| MCL | MCLN6 | 2026-06-18 | |
-| MGC | MGCM6 | 2026-06-26 | |
-
-**Volume-based roll**: When a contract is ≤14 days from expiry, `bar_cache._pick_contract()` fetches 10-bar volume for both front and next month and rolls to next if next-month volume is higher. Logs `bar_cache.rolling` or `bar_cache.no_roll`.
+| Era | Account | Outcome |
+|---|---|---|
+| → 2026-07-24 | IBKR paper → NT `SimJudasCrew` | Sim proving: +$2,131 / 487 trades, P(pass)~70% Monte-Carlo |
+| 2026-07-26 → 07-30 | **LFE..89** (real 50K eval) | −$849 / 59 trades. **DIED 07-30**: the −$1,198 day on 07-29 tripped Lucid's *unannounced* ~$1,200 daily loss limit; account vanished from the feed |
+| 2026-07-30 → 08-12 | (zombie period) | Every order rejected `account does not exist`; NT-reject auto-block froze the whole book — nobody noticed for 13 days |
+| 2026-08-12 → | **LFE..100** (real 50K eval) | Current. Daily-loss guards added specifically so the DLL death can't repeat |
 
 ---
 
-## The Design Philosophy: Burn the 45,000 Requests Productively
+## Risk Guards (`src/research/lucid_guard.py` — enforced deterministically every scan)
 
-This system runs on MiniMax M2.7 with **45,000 API requests/week**. The goal is NOT to conserve them — it's to spend every request on something that produces alpha: YouTube ingestion, backtesting, strategy proposals.
+| Guard | Value | Action |
+|---|---|---|
+| Daily loss **soft** | −$800 | halt new entries |
+| Daily loss **hard** | −$1,000 | flatten all + halt (sits under Lucid's unannounced ~$1,200 eval DLL) |
+| Daily profit soft | +$1,200 | halt new entries |
+| Daily profit hard | +$1,500 | flatten all + halt (consistency cap = 50% of $3k target) |
+| Trailing MLL | $2,000 from peak daily-close equity | flatten all + halt — terminal |
+| Aggregate contracts | ≤ 4 across the whole book (live NT count, not DB rows) | gate entries |
+| EOD flat | flatten 16:40 ET (Lucid cutoff 16:45) | flatten all + halt |
+| Banned symbols | MET, MBT, DX | entry gate refuses |
 
-**The key principle: large kickoff prompt + action-only tools = every request does real work.**
+Day P&L includes **unrealized** (positions marked to latest bar close). Guards fail-open on
+an NT-data outage; deterministic banned/EOD gates always apply.
 
-Each Researcher session pre-loads the full context (active strategies, open tasks, recent findings, pending candidates, last brief) into the first message before any LLM call. The LLM never needs to ask "what strategies are active?" — it already knows. Every one of its turns goes straight to YouTube search, backtest run, or proposal submission.
+---
 
-**Target: 25,000–35,000 requests/week, all on productive researcher work.**
+## Position Truth & the 1-Minute Reconciler (2026-08-13)
 
-```
-Request allocation target:
-  Researcher (YouTube → backtest → propose)  18,000–22,000 req/week  ← the usage engine
-  Operator (2×/day portfolio review)          3,000– 4,000 req/week
-  On-demand bursts (dashboard triggers)       2,000– 5,000 req/week
-  Infrastructure (registrar, trader, coder)      < 500 req/week
-  Scanner (hourly trading)                            0 req/week  ← zero LLM, always
-```
+Hard-won facts about where live positions actually live:
+
+- **NT's sqlite `Positions` table does NOT persist live Tradovate/Lucid positions** — it
+  sat empty while the account held 4 contracts. The live truth is the per-instrument
+  position files NT writes to `outgoing/<contract> <exch>_<account>_position.txt`
+  (`LONG;3;0.0062947`) on every position update. `NTBroker.positions()` merges both.
+- All agent NT tools resolve the account from `config.yaml` — never a hardcoded default.
+  (A stale `SimJudasCrew` default left the orphan check querying the flat sim account for
+  18 days while real positions sat naked.)
+- Entry orders that don't fill within the timeout are **cancelled**, not abandoned —
+  abandoned entries filled hours later as naked unmanaged positions.
+
+`scripts/position_reconciler.py` (every 1 min via `judas-crew-reconciler.timer`):
+compares NT truth against open DB trades → any unmanaged contracts get a high-urgency
+trader task (deduped) **and an immediate `judas-trader.service` start** — awareness gap is
+~1 minute instead of the hourly tick. A 60-min same-book cooldown means a deliberate HOLD
+by the trader isn't re-litigated every minute; any *change* in the unmanaged book fires
+immediately. Per the 2026-07-17 mandate, the LLM crew decides hold/flatten — the
+reconciler never auto-liquidates.
 
 ---
 
 ## Architecture
 
 ```
-judas-crew.timer (hourly)
-  └─ portfolio_runtime.py — ZERO LLM — pure Python
-       ├─ refresh bar cache from IBKR
-       ├─ reconcile open trades (stop/target hit?)
-       └─ evaluate active_strategies → place_bracket()
-
-judas-researcher.timer (every 90 min market hours + 2× nightly)
-  └─ researcher_agent.py — THE USAGE ENGINE
-       ├─ _build_kickoff(db_path) — pre-load context into first message
-       └─ LLM loop: YouTube search → transcript → backtest → propose/reject
-            target: 7 requests → 40 actions per session
-
-judas-operator.timer (06:00 + 21:00 UTC)
-  └─ operator_agent.py — reads everything, delegates, writes brief
-
-judas-registrar.timer (06:30, 13:30, 21:30 UTC)
-  └─ registrar_agent.py — short queue-flush: promote approved candidates, retire dead strategies
-
-judas-trader.timer (hourly, self-gating)
-  └─ trader_agent.py — skips in <100ms if no pending trader tasks
-
-judas-coder.timer (hourly, self-gating)
-  └─ coder_agent.py — skips in <100ms if no pending coder tasks
-
-judas-dashboard.service (always-on, port 5080)
+                    ┌──────────────────────────────────────────────┐
+                    │ NinjaTrader on REBEL (Windows, WinRM bridge)  │
+                    │ Lucid/Tradovate feed → LFE..100 (real 50K)    │
+                    └────────────▲──────────────────▲──────────────┘
+             OIF order files    │                   │  position files / sqlite / trace
+                                │                   │
+  judas-crew.timer (5 min) ── portfolio_runtime.py ── lucid_guard.py   ← 0 LLM calls
+                                │        │
+                                │        └── _orphan_body() ──┐
+  judas-crew-reconciler (1 min) ────────────────────────────── ┤→ agent_tasks (high urgency)
+                                                               │       │
+                                                               │       ▼
+        MiniMax-M3 agents:  trader ◄── kicked immediately ─────┘   (hold / flatten / adopt)
+        researcher · operator · registrar · reviewer · coder
 ```
 
----
+## Agent Cadences (installed reality)
 
-## How the Researcher Session Works
-
-The Researcher is the heart of the system. It runs ~8 times/day during weekdays.
-
-### Pre-load (before first LLM call)
-
-`_build_kickoff(db_path)` queries the DB and injects into the first user message:
-- All active strategies with their family, version, symbol, and state
-- Open tasks assigned to the researcher team
-- Last 10 findings (video IDs already processed, rejected concepts, accepted ones)
-- Pending strategy candidates awaiting promotion
-- Last daily brief summary
-- Symbols with zero coverage (research priority)
-
-This is why the LLM can hit the ground running on turn 1 instead of spending 3-4 turns on discovery tool calls.
-
-### Session loop (every run)
-
-```
-1. INGEST
-   search_youtube_trading_videos("ICT liquidity sweep 2026")
-   search_youtube_trading_videos("SMC order block judas swing")
-   → Pull top 4-8 video URLs from last 24-48h
-   → Check findings: skip any video_id already processed (YT:{video_id}: prefix)
-   → fetch_youtube_transcript() on unprocessed videos
-   → Extract concrete rules: session windows, sweep criteria, displacement thresholds
-
-2. WEB CONTEXT
-   web_search("gold futures ICT setup today")
-   web_search("dollar index liquidity levels [date]")
-   → Grab macro context: key levels, session biases, news events
-
-3. BACKTEST
-   → run_judas_threshold_sweep() / run_walk_forward() / run_custom_backtest()
-   → Test extracted ideas against cached 1H bars for all relevant symbols
-   → Target: 2-5 backtest runs per session
-
-4. PROPOSE OR DISCARD
-   → PF > 1.5 and ≥ 20 trades: propose_candidate()
-   → Failed: record_finding() with "REJECTED: [reason]" — never re-tested
-   → record_finding() with video_id as dedup key regardless of outcome
-
-5. MULTI-SYMBOL SWEEP
-   → Promising parameter set → sweep all 8 symbols in same session
-   → Symbols: MGC, MNQ, MCL, MBT, MET, DX, ZF, 6J
-   → One backtest per symbol (pure Python loops inside the tool — no extra LLM calls)
-```
-
-### Researcher tool palette (20 action tools)
-
-Discovery data is pre-loaded, not fetched via tools. Every tool call does real work:
-
-| Category | Tools |
-|---|---|
-| Ingestion | `search_youtube_trading_videos`, `fetch_youtube_transcript`, `web_search`, `web_fetch` |
-| File access | `read_file`, `list_files`, `read_research_artifact` |
-| Backtesting | `run_judas_threshold_sweep`, `run_walk_forward`, `run_custom_backtest` |
-| Proposals | `propose_candidate`, `propose_custom_strategy` |
-| Task queue | `claim_task`, `complete_task` |
-| Memory | `record_finding`, `retract_finding` |
-| DB/detail | `get_strategy_detail`, `get_strategy_dossier`, `query_db`, `get_recent_pnl` |
-
----
-
-## Agent Cadences (V2 — see `AGENTIC_PLAN_V2.md`)
-
-| Service | Cadence | LLM Requests/Week | Purpose |
+| Unit | Cadence | LLM | Purpose |
 |---|---|---|---|
-| `judas-crew.timer` | Hourly | **0** | Deterministic scanner — places brackets, reconciles trades |
-| `judas-researcher.timer` | Every 90 min (13:30–21:00 UTC) + 22:00 + 04:00 UTC | **18,000–22,000** | YouTube → backtest → propose |
-| `judas-operator.timer` | 2×/day (06:00 + 21:00 UTC) | **3,000–4,000** | Portfolio review, delegations, daily brief |
-| `judas-registrar.timer` | 3×/day (06:30, 13:30, 21:30 UTC) | **< 200** | Queue flush: promote/retire only |
-| `judas-trader.timer` | Hourly self-gate | **< 100** | Execute trader tasks (skips when idle) |
-| `judas-coder.timer` | Hourly self-gate | **< 100** | Execute coder tasks (skips when idle) |
-| `judas-dashboard.service` | Always-on | 0 | Flask + frontend on `:5080` |
+| `judas-crew.timer` | every 5 min (Globex open) | 0 | Deterministic scan: fire strategies, place brackets, guards, orphan detect |
+| `judas-crew-reconciler.timer` | **every 1 min** | 0 | NT-truth position reconcile → task + immediate trader kick |
+| `judas-crew-watchdog.timer` | every 5 min | 0 | Kills a hung scanner |
+| `judas-trader.timer` | hourly self-gate (+ kicked on orphans) | low | Executes trader tasks (reconcile/close/hold) |
+| `judas-reviewer.timer` | hourly | med | Registry mutations review |
+| `judas-researcher.timer` | every 6 h | high | Research → backtest → propose (trimmed 07-09 after quota blowout) |
+| `judas-operator.timer` | every 6 h | med | Portfolio review, delegations, daily brief |
+| `judas-registrar.timer` | every 8 h (:40 offset) | low | Queue flush: promote/retire only |
+| `judas-coder.timer` | hourly self-gate | low | Autofix tasks |
+| `judas-dashboard.service` | always-on | 0 | Flask + React on `:5080` |
 
 ---
 
@@ -168,208 +114,127 @@ Discovery data is pre-loaded, not fetched via tools. Every tool call does real w
 
 **Researcher proposes → Operator approves → Registrar executes**
 
-1. Researcher runs backtest → PF > 1.5 → calls `propose_candidate()` → row in `strategy_candidates`
-2. Operator (2×/day) reviews candidates queue, delegates approve/reject to Registrar
-3. Registrar calls `promote_candidate(id)` → atomically retires prior version, inserts v+1 active row
+1. Researcher backtests → PF gate → `propose_candidate()` → `strategy_candidates`
+2. Operator reviews the queue, delegates approve/reject to Registrar
+3. Registrar `promote_candidate(id)` → atomically retires prior version, inserts v+1
+4. Demotion mirrors it: Operator flags on live metrics → Registrar `retire_strategy(id, reason)` → `auto_demotions` audit trail (append-only, one-click reactivate)
 
-**Demotion:**
-1. Operator checks live metrics (rolling 20-trade PF, days since last fire, expectancy)
-2. Delegates retire decision to Registrar
-3. Registrar calls `retire_strategy(id, reason)` → full audit trail in `auto_demotions`
+Core rule: **empty slot beats net-loser.**
 
 ---
 
-## Authority Envelope
+## Safety Rails
 
-| Capability | Allowed | Forbidden |
-|---|---|---|
-| Account mode | `paper` only — hard-locked, raises on anything else | live / real money |
-| Instruments | MGC, MNQ, MCL, MBT, MET, DX, ZF, 6J | unrecognized symbols |
-| Sleeve cap | $5,000 paper; kill switch at 25% drawdown | exceeding sleeve |
-| Code-write | Coder agent on isolated branches; never directly to master | direct master push from autofix |
-| Order-path files | Write-protected from autofix: `ibkr_executor.py`, `ibkr_data.py`, `config.py`, `config.yaml`, `src/risk/**` | autofix touching these |
-| Cross-repo | Workshop is read-only baseline | mutating workshop |
+1. `lucid_guard` — the full table above, evaluated deterministically every scan
+2. `kill.flag` in repo root halts trading on next tick; `autofix.disable` halts the coder path
+3. Aggregate 4-contract cap counts LIVE NT contracts + this scan's placements (not DB rows)
+4. Per-strategy `already_open` gate prevents stacking
+5. Entry timeout ⇒ entry order **cancelled** (no abandoned working orders)
+6. Protective-leg death ⇒ `NAKED_RISK` emergency flatten of that fill
+7. NT-reject auto-block: a symbol NT keeps rejecting is skipped on a 6 h cooldown
+8. 1-min reconciler + orphan task path (see above) — unmanaged positions surface in ~1 min
+9. Order-path files write-protected from autofix: broker, config, `src/risk/**`
 
-### Safety rails
-
-1. `mode='paper'` check raises at construction — no live orders possible
-2. `kill.flag` in repo root halts trading on next tick
-3. `autofix.disable` flag halts the autofix path
-4. `max_open_positions` cap enforced deterministically in `_gate_fire()`
-5. Per-strategy `already_open` gate prevents stacking
-6. Hourly reconcile against IBKR positions — halt new entries on mismatch
-7. `auto_demotions` is append-only — full audit trail with one-click reactivate
+Known operational trap: `flatten_position` on an orphan can **trigger stale entry-side
+stops and double the orphan** (2026-07-23 incident). For orphans with no protective stop,
+use `close_nt_position` — NT's CLOSEPOSITION flattens *and* cancels that instrument's
+working orders atomically.
 
 ---
 
-## Accounts and Config
+## Config
 
 | Setting | Value |
 |---|---|
-| IBKR paper account | DUH860616 |
-| IBKR port | 4002 |
-| Data clientId | 150 |
-| Exec clientId | 151 |
-| LLM | MiniMax M2.7 via `minimax/MiniMax-M2.7` in litellm |
-| DB | `judas_crew.db` (SQLite WAL mode) |
-| Dashboard | `http://127.0.0.1:5080/` |
+| Route | `execution.route: ninjatrader` (`config.yaml`) |
+| Account | `ninjatrader.account: LFE05064290360100` |
+| NT host | `100.108.151.36` (Tailscale, REBEL), user `nqtrader`, password via `WINDOWS_PASSWORD` in `.env` |
+| Bridge python | `C:\PyBridge\python.exe` |
+| OIF dir | `C:\Users\hartw\Documents\NinjaTrader 8\outgoing` |
+| LLM | `MiniMax-M3` @ `https://api.minimax.io/v1` (key in `.env`) |
+| DB | `judas_crew.db` (SQLite WAL) |
 
 ---
 
 ## Repo Layout
 
 ```
-main.py                            Entry point (hourly scanner)
-config.yaml                        Mode, IBKR, risk params
+main.py                            Entry point (scanner run)
+config.yaml                        Route, NT account/bridge, risk params
+scripts/
+  position_reconciler.py           1-min NT-truth vs DB reconcile + trader kick
+  run_dashboard.py                 Dashboard entry
 src/
+  portfolio_runtime.py             The 5-min scan (zero LLM): fires, gates, guards, orphan detect
+  broker/ninjatrader.py            WinRM bridge: brackets, positions (sqlite+files), working orders, cancels
   research/
-    researcher_agent.py            Researcher — pre-load + 20-tool action schema
-    operator_agent.py              Operator — delegations + daily brief
-    registrar_agent.py             Registrar — atomic promote/retire/modify
-    trader_agent.py                Trader — order execution from task queue
-    coder_agent.py                 Coder — autofix harness consumer
-    agent_runner.py                Shared ReAct loop for all agents
-  portfolio_runtime.py             Hourly scanner (zero LLM — deterministic)
+    lucid_guard.py                 LucidFlex eval rule guards (pure, tested)
+    agent_tools.py                 LLM tool implementations (NT reads/cancels/close, tasks, backtests)
+    operator_agent.py / researcher_agent.py / registrar_agent.py /
+    trader_agent.py / coder_agent.py / reviewer via agent_runner.py
   strategy_registry.py             Atomic promote/retire/reactivate
-  tools/                           All tool implementations
-  db/models.py                     SQLite schema + init_db
-systemd/
-  judas-crew.{service,timer}       Hourly trading (zero LLM)
-  judas-researcher.{service,timer} 90-min blitz + 2 nightly
-  judas-operator.{service,timer}   2×/day 06:00+21:00 UTC
-  judas-registrar.{service,timer}  3×/day queue-flush
-  judas-trader.{service,timer}     Hourly self-gate
-  judas-coder.{service,timer}      Hourly self-gate
-  judas-dashboard.service          Always-on Flask + frontend on :5080
-  install.sh                       Rootless --user install
-knowledge_base/
-  judas_concepts.md                ICT Judas Swing reference
-  buffet.yaml                      Workshop top-PF strategies
+  db/models.py                     SQLite schema
+systemd/                           All unit files + install.sh (rootless --user)
 dashboard/                         React + TypeScript + Tailwind frontend
-AGENTIC_PLAN_V2.md                 Authoritative design spec — source of truth
-```
-
----
-
-## Setup
-
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Frontend
-cd dashboard && npm ci && npm run build && cd ..
-
-# Env
-cat > .env <<EOF
-MINIMAX_API_KEY=...
-IBKR_HOST=127.0.0.1
-IBKR_PORT=4002
-IBKR_DATA_CLIENT_ID=150
-IBKR_EXEC_CLIENT_ID=151
-EOF
-
-# Install systemd units
-bash systemd/install.sh
+knowledge_base/                    ICT Judas concepts, workshop baselines
+AGENTIC_PLAN_V2.md                 Design spec
 ```
 
 ---
 
 ## Common Operations
 
-### Status check
-
 ```bash
-# All agent timers
+# All crew units
 systemctl --user list-units "judas-*" --all
 
-# Researcher last run
-journalctl --user -u judas-researcher.service -n 50 --no-pager
+# One scan / one trader run now
+systemctl --user start judas-crew.service
+systemctl --user start judas-trader.service
 
-# Turn counts across all agents today
-journalctl --user -u judas-researcher.service -u judas-registrar.service \
-  -u judas-operator.service -u judas-coder.service -u judas-trader.service \
-  --since today --no-pager | grep -E "success=|turns="
-```
+# Live guard snapshot (written every scan)
+cat data/lucid_guard_state.json
 
-### DB quick checks
+# Open DB trades vs NT truth
+sqlite3 judas_crew.db "SELECT symbol,direction,qty,entry_fill,opened_at FROM trades WHERE status='open'"
+.venv/bin/python -c "from src.research.agent_tools import get_nt_positions; print(get_nt_positions())"
 
-```bash
-# Task queue
+# Task queue / recent trades / active strategies
 sqlite3 judas_crew.db "SELECT status, COUNT(*) FROM agent_tasks GROUP BY status"
+sqlite3 judas_crew.db "SELECT id,symbol,direction,pnl_dollars,exit_reason,closed_at FROM trades ORDER BY id DESC LIMIT 10"
+sqlite3 judas_crew.db "SELECT symbol,strategy_family,version FROM active_strategies WHERE state='active'"
 
-# Recent trades
-sqlite3 judas_crew.db "SELECT id, symbol, direction, pnl_dollars, status FROM trades ORDER BY opened_at DESC LIMIT 10"
+# Reconciler health
+journalctl --user -u judas-crew-reconciler.service --since -30min --no-pager | grep reconciler
 
-# Active strategies
-sqlite3 judas_crew.db "SELECT symbol, strategy_family, version, state FROM active_strategies WHERE state='active'"
-
-# Pending candidates
-sqlite3 judas_crew.db "SELECT id, symbol, strategy_family, backtest_pf, status FROM strategy_candidates ORDER BY created_at DESC LIMIT 10"
-
-# Recent findings (YouTube dedup)
-sqlite3 judas_crew.db "SELECT title, substr(body, 1, 100) FROM findings ORDER BY created_at DESC LIMIT 10"
-```
-
-### Manual triggers
-
-```bash
-systemctl --user start judas-researcher.service   # run one researcher session now
-systemctl --user start judas-operator.service     # run operator review now
-systemctl --user start judas-registrar.service    # flush registrar queue now
-systemctl --user start judas-crew.service         # run one trading scan now
-```
-
-### Halt controls
-
-```bash
+# Halt controls
 touch kill.flag          # halt trading on next scanner tick
 touch autofix.disable    # halt coder autofix path only
 ```
 
-### Dashboard
-
-- Local: `http://127.0.0.1:5080/`
-- Tailnet: `http://omen-claw.tail76e7df.ts.net:5080/`
-
 ---
 
-## Agent Gate Alignment (2026-05-27 overhaul)
+## Lessons Encoded (why the code looks like this)
 
-### The core rule: empty slot beats net-loser
-
-A symbol with zero strategies is **better** than a symbol with a strategy that fires losing trades. The agents were previously keeping bad strategies to "maintain coverage." That exception was removed.
-
-### Promotion gates (all three required)
-
-| Gate | Researcher acceptance | Reviewer pass | Registrar promote |
-|---|---|---|---|
-| 1 | PF > 1.5 | PF ≥ 1.3 | PF ≥ 1.3 |
-| 2 | ≥ 20 trades | ≥ 20 trades | ≥ 20 trades |
-| 3 | E[R] > 0 | E[R] > 0 | E[R] > 0 |
-| 4 | Workshop fire check | — | — |
-
-### Burnout rule
-
-If a symbol has had 3+ auto-demotions in 7 days, the researcher skips re-trying the same family. Burnout summary is injected into every agent kickoff.
-
-### Staleness grace period
-
-A strategy active for fewer than 14 days is exempt from staleness-based retirement. The reviewer cannot retire a brand-new strategy just because it hasn't fired yet.
-
-### Duplicate fingerprint
-
-`_param_fingerprint()` hashes: engine + strategy_type + all numeric params. The old version used `displacement_r` (a key that doesn't exist in current params), so the fingerprint was always empty and every proposal looked unique.
+- **2026-07-17** — orphaned OCO legs opened positions with no DB row; fills-derived sync
+  was blind. Orphan detection now reads NT's own position truth and queues the crew.
+- **2026-07-18** — 444 stale working orders made NT reject *everything* (worst-case
+  exposure vs MaxPositionSize) — `working_orders()` + stale-cancel tooling exist for this.
+- **2026-07-23** — `flatten_position` doubled an orphan by triggering its stale entry
+  stops → use `close_nt_position` for unprotected orphans.
+- **2026-07-29/30** — Lucid's **unannounced ~$1,200 eval daily loss limit** killed LFE..89.
+  Verify a firm's rules on every purchase; the daily-loss guards are sized under it.
+- **2026-08-12** — a dead account looks like `OIF[NOFILE]` + `account does not exist` in
+  the NT trace, and reads as equity $0 (⇒ bogus MLL breach). Stale-read detection skips
+  guards rather than acting on $0.
+- **2026-08-13** — NT sqlite doesn't hold live Lucid positions; position files do. Never
+  default an account name in code; resolve from config. Cancel entries that time out.
 
 ---
 
 ## Sister Repo
 
-`../judas-futures-workshop` — the deterministic Python workshop. Read-only baseline. Has its own systemd units (`judasfutures-*`) and DB (`judasfutures.db`). Uses clientIds 137/138; this repo uses 150/151. No imports across repos.
-
----
-
-## Drift Prevention
-
-`AGENTIC_PLAN_V2.md` is the authoritative design spec. Any architectural change that isn't reflected there is incomplete.
+`~/judas-futures-workshop` — pure-Python rule-based lab (separate DB, separate systemd
+prefix `judasfutures-*`). Read-only baseline for this repo; no cross-imports, copy logic
+instead. Its buffet scanner has been halted by its own sim MLL flag since 2026-07-24;
+`judasfutures-buffet-lfe76` was disabled 2026-08-12 (LFE..76 blew 2026-07-17).

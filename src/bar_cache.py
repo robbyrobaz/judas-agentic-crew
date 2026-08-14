@@ -67,8 +67,9 @@ def normalize_tf(tf: str | None) -> str:
 _MONTH_CODES = {"F": 1, "G": 2, "H": 3, "J": 4, "K": 5, "M": 6,
                 "N": 7, "Q": 8, "U": 9, "V": 10, "X": 11, "Z": 12}
 
-# Volume-based roll: only run the front-vs-next volume probe within this many
-# days of the front's expiry (far from expiry the front is clearly active).
+# (2026-08-14: the active contract is now ALWAYS the highest-volume candidate —
+# the old "only probe volume near front expiry" window is gone; it picked thin
+# skip-month contracts on gold. _ROLL_WINDOW_DAYS kept only for reference.)
 _ROLL_WINDOW_DAYS = 45
 # Safety floor: force-roll to the next contract this many days before the
 # front's expiry regardless of volume, so we never trade an about-to-expire
@@ -270,34 +271,29 @@ async def _pick_contract(ib, spec: dict, symbol: str):
     if not live:
         return None, "", "no_live_contract"
 
-    front = live[0]
-    nxt = live[1] if len(live) > 1 else None
-    chosen = front
-    if nxt:
+    # ACTIVE = HIGHEST VOLUME, always (Rob's rule, 2026-08-14). The old logic
+    # took the nearest-listed expiry and only probed volume inside a roll
+    # window near its expiry — which silently picked the THIN skip-month
+    # contract on products like gold (nearest-listed = MGC Oct, volume lives
+    # in Dec; NT doesn't even carry the Oct expiry). Now: drop anything inside
+    # the _ROLL_MIN_DAYS force-roll fence, probe recent volume on the first
+    # few remaining candidates, and trade the one that's actually traded.
+    def _dte(r) -> int:
         try:
-            dte = (datetime.strptime(front[0], "%Y%m%d").date() - date.today()).days
+            return (datetime.strptime(r[0], "%Y%m%d").date() - date.today()).days
         except ValueError:
-            dte = 0
-        # SAFETY FORCE-ROLL: never hold a contract into its last few days, even
-        # if it still has more volume. Pure volume crossover for some products
-        # (e.g. crude) doesn't happen until ~1 day before expiry, which is too
-        # late — roll off it _ROLL_MIN_DAYS out regardless of volume.
-        if dte <= _ROLL_MIN_DAYS:
-            chosen = nxt
-            log.info("bar_cache.expiry_roll symbol=%s %s(dte=%d) -> %s — force-roll near expiry",
-                     symbol, front[2].localSymbol, dte, nxt[2].localSymbol)
-        # Otherwise, within the wider window, roll as soon as the next contract
-        # is more actively traded than the front (the volume crossover).
-        elif dte <= _ROLL_WINDOW_DAYS:
-            front_vol = await _recent_volume(ib, front[2])
-            next_vol = await _recent_volume(ib, nxt[2])
-            if next_vol > front_vol:
-                chosen = nxt
-                log.info("bar_cache.volume_roll symbol=%s %s(vol=%d,dte=%d) -> %s(vol=%d)",
-                         symbol, front[2].localSymbol, front_vol, dte, nxt[2].localSymbol, next_vol)
-            else:
-                log.info("bar_cache.no_roll symbol=%s front=%s(vol=%d,dte=%d) next=%s(vol=%d)",
-                         symbol, front[2].localSymbol, front_vol, dte, nxt[2].localSymbol, next_vol)
+            return 0
+
+    cands = [r for r in live if _dte(r) > _ROLL_MIN_DAYS][:3] or [live[-1]]
+    chosen = cands[0]
+    if len(cands) > 1:
+        vols = [await _recent_volume(ib, r[2]) for r in cands]
+        best = max(range(len(cands)), key=lambda i: vols[i])
+        chosen = cands[best]
+        log.info("bar_cache.volume_pick symbol=%s chose=%s %s",
+                 symbol, chosen[2].localSymbol,
+                 " ".join(f"{r[2].localSymbol}(vol={v},dte={_dte(r)})"
+                          for r, v in zip(cands, vols)))
 
     contract = chosen[2]
     month = chosen[1] or await _resolve_contract_month(ib, contract, spec)

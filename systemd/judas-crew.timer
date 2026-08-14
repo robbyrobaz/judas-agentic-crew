@@ -1,10 +1,11 @@
 [Unit]
-Description=Judas Crew hourly timer — whenever Globex is open
+Description=Judas Crew scan — every 5 min, whenever Globex is open
 
 [Timer]
-# Every hour. The session-status gate inside the runner skips Fri 21:00 UTC
-# through Sun 22:00 UTC (weekend close) and the daily 21:00-22:00 UTC break.
-OnCalendar=*-*-* *:00:00 UTC
+# Every 5 minutes (matches the installed unit — repo copy was stale at hourly).
+# The session-status gate inside the runner skips Fri 21:00 UTC through
+# Sun 22:00 UTC (weekend close) and the daily 21:00-22:00 UTC break.
+OnCalendar=*-*-* *:0/5:00 UTC
 Persistent=false
 Unit=judas-crew.service
 

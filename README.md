@@ -30,6 +30,52 @@ LLM budget is spent entirely on research and judgment.
 | 2026-07-30 → 08-12 | (zombie period) | Every order rejected `account does not exist`; NT-reject auto-block froze the whole book — nobody noticed for 13 days |
 | 2026-08-12 → | **LFE..100** (real 50K eval) | Current. Daily-loss guards added specifically so the DLL death can't repeat |
 
+### Active Strategies (36, as of 2026-08-13)
+
+Mostly ICT-concept variants (IFVG/OB midpoint reversion, silver bullet PDH/PDL retest,
+Judas continuation, mitigation block) plus regime-filtered RSI/ATR, deployed per
+symbol × timeframe. Live list: `sqlite3 judas_crew.db "SELECT symbol, strategy_family,
+version FROM active_strategies WHERE state='active'"`.
+
+| Symbol | Timeframe (family) | v | Strategy |
+|---|---|---|---|
+| 6J | 15m | 1 | atr_disp_continuation_5m_6j_v1 |
+| 6J | 1h | 1 | mnq_rsi_directional_filter_1h_v1 |
+| 6J | 5m | 1 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
+| 6J | 5m | 2 | atr_disp_continuation_5m_6j_v1 |
+| 6J | 5m | 3 | ob_midpoint_reversion_5m_loose_mcl_v1 |
+| MCL | 15m | 1 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
+| MCL | 1h | 1 | mnq_rsi_directional_filter_1h_v1 |
+| MCL | 5m | 1 | ob_midpoint_reversion_5m_loose_mcl_v1 |
+| MCL | 5m | 2 | judas_continuation_5m_v1 |
+| MCL | judas_1h | 1 | (native Judas sweep+CHoCH) |
+| MGC | 15m | 3 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
+| MGC | 15m | 5 | silver_bullet_pdh_pdl_retest_1h_mgc_v1 |
+| MGC | 1h | 5 | ifvg_midpoint_reversion_htf_bias_5m_v1 |
+| MGC | 1h | 6 | silver_bullet_pdh_pdl_retest_1h_mgc_v1 |
+| MGC | 5m | 2 | cisd_3candle_fvg_5m_v1 |
+| MGC | 5m | 17 | ifvg_midpoint_reversion_htf_bias_5m_v1 |
+| MGC | 5m | 18 | ob_midpoint_reversion_5m_loose_mcl_v1 |
+| MGC | 5m | 19 | judas_continuation_5m_v1 |
+| MGC | 5m_FIB | 1 | ict_silver_bullet_5m_FIB_mgc |
+| MGC | 5m_mitigation_block | 1 | ict_mitigation_block_5m_mgc_v1 |
+| MNQ | custom | 4 | regime_filtered_rsi_1h_stateless_v1 |
+| MNQ | 15m | 1 | atr_disp_continuation_5m_6j_v1 |
+| MNQ | 15m | 2 | silver_bullet_pdh_pdl_retest_5m_mnq_v2 |
+| MNQ | 15m | 4 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
+| MNQ | 15m | 5 | silver_bullet_pdh_pdl_retest_1h_mgc_v1 |
+| MNQ | 15m_FIB | 1 | ict_silver_bullet_5m_FIB_mgc |
+| MNQ | 1h | 1 | regime_filtered_rsi_1h_stateless_v1 |
+| MNQ | 5m | 8 | silver_bullet_pdh_pdl_retest_5m_mnq_v2 |
+| MNQ | 5m | 12 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
+| MNQ | 5m | 13 | ob_midpoint_reversion_5m_loose_mcl_v1 |
+| MNQ | 5m | 14 | judas_continuation_5m_v1 |
+| MNQ | 5m_FIB | 1 | ict_silver_bullet_5m_FIB_mgc |
+| ZF | 15m | 2 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
+| ZF | 1h | 1 | mnq_rsi_directional_filter_1h_v1 |
+| ZF | 1h | 2 | regime_filtered_rsi_1h_stateless_v1 |
+| ZF | 5m | 1 | judas_continuation_5m_v1 |
+
 ---
 
 ## Risk Guards (`src/research/lucid_guard.py` — enforced deterministically every scan)

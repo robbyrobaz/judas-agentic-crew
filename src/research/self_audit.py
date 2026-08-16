@@ -465,7 +465,7 @@ def _section_duplicate_fires(conn: sqlite3.Connection) -> list[str]:
         direction = g[0]["direction"]
         ts = g[0]["opened_at"]
         fam = g[0]["strategy_family"]
-        versions = sorted({int(t["strategy_version"]) for t in g})
+        versions = sorted({int(t["strategy_version"]) for t in g if t["strategy_version"] is not None})
         pnl_sum = sum(float(t["pnl_dollars"] or 0) for t in g)
         lines.append(
             f"  {ts}  {sym} {direction} {fam}  versions={versions}  "

@@ -36,7 +36,7 @@ from src.logging_setup import setup_logging  # noqa: E402
 log = setup_logging("nt_ledger_gap_sync")
 
 CREW_DB = str(REPO / "judas_crew.db")
-SINCE = "2026-08-12T00:00:00"  # LFE..100 cutover
+SINCE = "2026-08-16T00:00:00"  # LFE..104 cutover (account read from config)
 MIN_GAP_DOLLARS = 2.0
 MATCH_SLOP_S = 600
 

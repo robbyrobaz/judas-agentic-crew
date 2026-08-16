@@ -1285,7 +1285,7 @@ def _build_chat_prompt(message: str) -> str:
         "ids that conflict with the fresh data, the fresh data wins.\n\n"
         "The operator is in America/Phoenix. When replying, use PHX time by default. "
         "The backend and DB may still use UTC internally. Since 2026-07-26 the TradingCrew trades a "
-        "REAL Lucid 50K eval account (currently LFE05064290360100) via NinjaTrader — this is NOT paper.\n\n"
+        "REAL Lucid 50K eval account (see config.yaml ninjatrader.account) via NinjaTrader — this is NOT paper.\n\n"
         f"{freshness}\n"
         f"Current overview:\n{json.dumps(overview, indent=2)}\n\n"
         f"Active strategies ({len(active_strategies)}):\n{json.dumps(active_strategies, indent=2)}\n\n"
@@ -1414,14 +1414,14 @@ def create_app() -> Flask:
                     "SELECT COUNT(*) n, ROUND(COALESCE(SUM(pnl_dollars),0),2) pnl, "
                     "ROUND(SUM(CASE WHEN pnl_dollars>0 THEN pnl_dollars ELSE 0 END)/"
                     "NULLIF(-SUM(CASE WHEN pnl_dollars<0 THEN pnl_dollars ELSE 0 END),0),2) pf "
-                    "FROM trades WHERE status='closed' AND opened_at>='2026-08-12'"
+                    "FROM trades WHERE status='closed' AND opened_at>='2026-08-16'"
                 ).fetchone()
                 gaps = conn.execute(
                     "SELECT COUNT(*) n, ROUND(COALESCE(SUM(pnl_dollars),0),2) pnl "
                     "FROM trades WHERE exit_reason='nt_ledger_gap'"
                 ).fetchone()
                 out["era"] = {"trades": era["n"], "pnl": era["pnl"], "pf": era["pf"],
-                              "since": "2026-08-12",
+                              "since": "2026-08-16",
                               "ledger_gap_trades": gaps["n"], "ledger_gap_pnl": gaps["pnl"]}
         except Exception:  # noqa: BLE001
             out["era"] = None
@@ -1439,7 +1439,7 @@ def create_app() -> Flask:
                     SELECT t.id, t.symbol, t.direction, t.qty, t.entry_fill, t.exit_fill,
                            ROUND(t.pnl_dollars,2) pnl_dollars, t.exit_reason,
                            t.opened_at, t.closed_at,
-                           CASE WHEN t.opened_at < '2026-07-30' THEN 'LFE..89' ELSE 'LFE..100' END account,
+                           CASE WHEN t.opened_at < '2026-07-30' THEN 'LFE..89' WHEN t.opened_at < '2026-08-16' THEN 'LFE..100' ELSE 'LFE..104' END account,
                            COALESCE(c.name, a.strategy_family, t.strategy_family) strategy
                     FROM trades t
                     LEFT JOIN active_strategies a ON a.id = t.strategy_id

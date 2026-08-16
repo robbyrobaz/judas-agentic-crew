@@ -1,0 +1,10 @@
+[Unit]
+Description=Judas Crew NT-truth ledger reconcile — books untracked crew fills as nt_ledger_gap trades
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rob/judas-agentic-crew
+ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python scripts/nt_ledger_gap_sync.py
+EnvironmentFile=/home/rob/judas-agentic-crew/.env
+StandardOutput=journal
+StandardError=journal

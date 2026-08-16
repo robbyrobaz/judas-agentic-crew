@@ -1,0 +1,9 @@
+[Unit]
+Description=Judas Crew NT ledger reconcile — hourly at :25
+
+[Timer]
+OnCalendar=*-*-* *:25:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

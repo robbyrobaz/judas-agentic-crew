@@ -50,12 +50,10 @@ def _kick_trader() -> None:
 COOLDOWN_MIN = 60  # don't re-queue/kick for the SAME unmanaged book within this window
 
 
-def _unmanaged_signature(db_path: str) -> str | None:
+def _unmanaged_signature(db_path: str, truth: dict) -> str | None:
     """Sorted 'SYM:SIDE:qty' signature of unmanaged NT contracts, '' if none,
     None on read failure (treat as unknown — do nothing)."""
     import sqlite3
-    from src.research.agent_tools import get_nt_positions
-    truth = get_nt_positions()
     if not truth.get("ok"):
         return None
     if truth.get("flat"):
@@ -103,11 +101,32 @@ def _recently_tasked(db_path: str, signature: str) -> bool:
     return False
 
 
+def _cache_truth_snapshot(truth: dict) -> None:
+    """Dump the latest NT-truth positions to data/nt_truth_positions.json so the
+    dashboard can show LIVE account truth without its own WinRM round-trip
+    (fresh to ~1 minute). Best-effort."""
+    import json
+    from datetime import datetime, timezone
+    try:
+        if truth.get("ok"):
+            truth = dict(truth)
+            truth["cached_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            out = REPO / "data" / "nt_truth_positions.json"
+            tmp = out.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(truth, indent=1))
+            tmp.replace(out)
+    except Exception:  # noqa: BLE001
+        log.exception("reconciler.truth_cache_failed")
+
+
 def main() -> int:
     try:
         from src.portfolio_runtime import _orphan_body
+        from src.research.agent_tools import get_nt_positions
         db_path = str(REPO / "judas_crew.db")
-        sig = _unmanaged_signature(db_path)
+        truth = get_nt_positions()
+        _cache_truth_snapshot(truth)
+        sig = _unmanaged_signature(db_path, truth)
         if sig is None:
             log.warning("reconciler.truth_unavailable — skipping this tick")
             return 0

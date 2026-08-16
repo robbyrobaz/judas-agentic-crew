@@ -30,7 +30,8 @@ from src.research.operator_agent import GOALS_PREAMBLE as _GOALS_PREAMBLE  # noq
 
 OPERATOR_MANAGER_PROMPT = (
     "You are the Operator Manager for the entire Judas system. You oversee the agentic team "
-    "(Operator + Researcher + Trader + Registrar + Coder) plus the live paper TradingCrew "
+    "(Operator + Researcher + Trader + Registrar + Coder) plus the TradingCrew — which since "
+    "2026-07-26 places REAL orders on a Lucid 50K eval account via NinjaTrader — "
     "and the ResearchCrew. You have broad read access to current system state, timers, recent "
     "experiments, session status, findings memory, delegations, candidates, and demotions. "
     "You do not bypass deterministic trading gates, do not imply live trading, and do not "
@@ -599,7 +600,7 @@ def _fetch_research_stats() -> dict[str, Any]:
                 "bt_pf": bt["bt_pf"],
                 "bt_trades": bt["bt_trades"],
                 "bt_winrate": bt["bt_winrate"],
-                # Forward-test (live paper) — per STRATEGY (stable id). Untraded
+                # Forward-test (live account fills — REAL Lucid eval since 2026-07-26) — per STRATEGY. Untraded
                 # strategies show null (—): no live edge yet, not a symbol total.
                 "profit_factor": sid_lm.get("profit_factor"),
                 "trades": sid_lm.get("trades"),
@@ -1283,7 +1284,8 @@ def _build_chat_prompt(message: str) -> str:
         "Always treat the provided blocks as ground truth. If chat history references stale "
         "ids that conflict with the fresh data, the fresh data wins.\n\n"
         "The operator is in America/Phoenix. When replying, use PHX time by default. "
-        "The backend and DB may still use UTC internally. This repo is IBKR paper-only, not live.\n\n"
+        "The backend and DB may still use UTC internally. Since 2026-07-26 the TradingCrew trades a "
+        "REAL Lucid 50K eval account (currently LFE05064290360100) via NinjaTrader — this is NOT paper.\n\n"
         f"{freshness}\n"
         f"Current overview:\n{json.dumps(overview, indent=2)}\n\n"
         f"Active strategies ({len(active_strategies)}):\n{json.dumps(active_strategies, indent=2)}\n\n"
@@ -1387,6 +1389,43 @@ def create_app() -> Flask:
     @app.get("/api/positions")
     def positions() -> Any:
         return jsonify({"positions": _fetch_open_positions(), "ts": __import__("datetime").datetime.utcnow().isoformat() + "Z"})
+
+    @app.get("/api/live_account")
+    def live_account() -> Any:
+        """LIVE account truth: NT positions (1-min reconciler cache), guard
+        state, and era stats INCLUDING nt_ledger_gap rows — the numbers the
+        managed-trades views can't see."""
+        import json as _json
+        out: dict[str, Any] = {}
+        try:
+            from src.config import load_config
+            out["account"] = load_config().ninjatrader.account
+        except Exception:  # noqa: BLE001
+            out["account"] = None
+        for key, fname in (("nt_truth", "nt_truth_positions.json"),
+                           ("guard", "lucid_guard_state.json")):
+            try:
+                out[key] = _json.loads((REPO_ROOT / "data" / fname).read_text())
+            except Exception:  # noqa: BLE001
+                out[key] = None
+        try:
+            with get_conn(_db_path()) as conn:
+                era = conn.execute(
+                    "SELECT COUNT(*) n, ROUND(COALESCE(SUM(pnl_dollars),0),2) pnl, "
+                    "ROUND(SUM(CASE WHEN pnl_dollars>0 THEN pnl_dollars ELSE 0 END)/"
+                    "NULLIF(-SUM(CASE WHEN pnl_dollars<0 THEN pnl_dollars ELSE 0 END),0),2) pf "
+                    "FROM trades WHERE status='closed' AND opened_at>='2026-08-12'"
+                ).fetchone()
+                gaps = conn.execute(
+                    "SELECT COUNT(*) n, ROUND(COALESCE(SUM(pnl_dollars),0),2) pnl "
+                    "FROM trades WHERE exit_reason='nt_ledger_gap'"
+                ).fetchone()
+                out["era"] = {"trades": era["n"], "pnl": era["pnl"], "pf": era["pf"],
+                              "since": "2026-08-12",
+                              "ledger_gap_trades": gaps["n"], "ledger_gap_pnl": gaps["pnl"]}
+        except Exception:  # noqa: BLE001
+            out["era"] = None
+        return jsonify(out)
 
     @app.get("/api/signals")
     def signals() -> Any:

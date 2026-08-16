@@ -457,9 +457,25 @@ function PositionRow({ pos }: { pos: OpenPosition }) {
   );
 }
 
+type LiveAccount = {
+  account: string | null;
+  nt_truth: {
+    open_positions: { instrument: string; contract: string; side: string; qty: number; avg_price: number }[];
+    flat: boolean; cached_utc?: string;
+  } | null;
+  guard: {
+    day_pnl: number; cushion: number; mll_floor: number; halt_entries: boolean;
+    force_flat: boolean; reason?: string; updated_utc?: string;
+    daily_profit_soft: number; daily_profit_hard: number;
+  } | null;
+  era: { trades: number; pnl: number; pf: number | null; since: string;
+         ledger_gap_trades: number; ledger_gap_pnl: number } | null;
+};
+
 function CenterPanel({ ov }: { ov: Overview | null }) {
   const [livePositions, setLivePositions] = useState<OpenPosition[] | null>(null);
   const [posTs, setPosTs] = useState<string | null>(null);
+  const [liveAcct, setLiveAcct] = useState<LiveAccount | null>(null);
 
   useEffect(() => {
     const load = () =>
@@ -468,6 +484,16 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
         .catch(() => {});
     load();
     const t = setInterval(load, 10_000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const load = () =>
+      apiFetch<LiveAccount>("/api/live_account")
+        .then(setLiveAcct)
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 30_000);
     return () => clearInterval(t);
   }, []);
 
@@ -513,9 +539,68 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
           </div>
         </div>
       )}
+      {liveAcct && (
+        <div style={{ marginBottom: 14, background: C.surface, border: `1px solid ${C.gold}55`, borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.13em", textTransform: "uppercase", color: C.gold }}>
+              Live Account Truth · {liveAcct.account ?? "—"} · REAL
+            </span>
+            {liveAcct.nt_truth?.cached_utc && (
+              <span style={{ fontSize: 9, color: C.muted, fontFamily: "monospace", marginLeft: "auto" }}>
+                NT truth {ageStr(liveAcct.nt_truth.cached_utc)} · 1-min reconciler
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 22, flexWrap: "wrap", marginBottom: 8 }}>
+            {liveAcct.guard && (
+              <>
+                <div>
+                  <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Day P&amp;L (guarded)</div>
+                  <div style={{ fontSize: 16, fontFamily: "monospace", fontWeight: 700, color: pnlColor(liveAcct.guard.day_pnl) }}>
+                    {pnlStr(liveAcct.guard.day_pnl)}
+                    <span style={{ fontSize: 10, color: C.muted }}> / −$1k halt · +${(liveAcct.guard.daily_profit_hard ?? 1500).toLocaleString()} cap</span>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>MLL Cushion</div>
+                  <div style={{ fontSize: 16, fontFamily: "monospace", fontWeight: 700, color: liveAcct.guard.cushion < 500 ? C.red : C.text }}>
+                    ${liveAcct.guard.cushion?.toLocaleString()} <span style={{ fontSize: 10, color: C.muted }}>floor ${liveAcct.guard.mll_floor?.toLocaleString()}</span>
+                  </div>
+                </div>
+                {(liveAcct.guard.halt_entries || liveAcct.guard.force_flat) && (
+                  <div>
+                    <div style={{ fontSize: 9, color: C.red, textTransform: "uppercase", letterSpacing: "0.08em" }}>Guard</div>
+                    <div style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: C.red }}>{liveAcct.guard.reason ?? "HALTED"}</div>
+                  </div>
+                )}
+              </>
+            )}
+            {liveAcct.era && (
+              <div>
+                <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Era since {liveAcct.era.since} (incl. ledger gaps)</div>
+                <div style={{ fontSize: 16, fontFamily: "monospace", fontWeight: 700, color: pnlColor(liveAcct.era.pnl) }}>
+                  {pnlStr(liveAcct.era.pnl)} <span style={{ fontSize: 10, color: C.muted }}>{liveAcct.era.trades} tr · PF {liveAcct.era.pf ?? "—"} · gaps {liveAcct.era.ledger_gap_trades} ({pnlStr(liveAcct.era.ledger_gap_pnl)})</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>NT Positions (account truth — includes fills the DB missed)</div>
+          {(!liveAcct.nt_truth || liveAcct.nt_truth.flat || (liveAcct.nt_truth.open_positions ?? []).length === 0)
+            ? <div style={{ fontSize: 11, color: C.muted }}>Flat</div>
+            : (liveAcct.nt_truth.open_positions).map((p, i) => (
+              <div key={i} style={{ display: "flex", gap: 10, fontSize: 12, fontFamily: "monospace", padding: "2px 0" }}>
+                <span style={{ fontWeight: 700, color: C.text }}>{p.contract}</span>
+                <span style={{ color: p.side === "LONG" ? C.green : C.red }}>{p.side} x{p.qty}</span>
+                <span style={{ color: C.muted }}>@ {p.avg_price}</span>
+              </div>
+            ))
+          }
+        </div>
+      )}
+
       <div style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, paddingLeft: 2 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.13em", textTransform: "uppercase", color: C.gold }}>Open Positions</span>
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.13em", textTransform: "uppercase", color: C.gold }}>Managed Trades (DB)</span>
           {positions.length > 0 && (
             <span style={{ fontSize: 9, background: C.gold + "28", color: C.gold, borderRadius: 4, padding: "0 5px", fontFamily: "monospace" }}>{positions.length}</span>
           )}
@@ -561,7 +646,7 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
         <SectionTitle>Strategy Leaderboard</SectionTitle>
         <div style={{ display: "flex", gap: 14, marginBottom: 6, paddingLeft: 2, fontSize: 9, color: C.muted }}>
           <span><span style={{ color: C.blue, fontWeight: 700 }}>BT</span> = walk-forward backtest (per strategy)</span>
-          <span><span style={{ color: C.gold, fontWeight: 700 }}>FT</span> = forward test, live paper (per symbol)</span>
+          <span><span style={{ color: C.gold, fontWeight: 700 }}>FT</span> = live account fills (REAL Lucid eval since Jul 26)</span>
         </div>
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>

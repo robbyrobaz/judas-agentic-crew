@@ -28,8 +28,9 @@ def test_banned_symbols():
     assert not lg.is_banned("MNQ") and not lg.is_banned("MGC")
 
 
-def test_contract_cap_is_aggregate_4():
-    assert lg.contract_cap() == 4
+def test_contract_cap_is_aggregate_10():
+    # raised 4->10 for risk-based sizing (Lucid's own limit: 4 minis/40 micros)
+    assert lg.contract_cap() == 10
 
 
 def test_clear_when_flat_and_midday():
@@ -184,13 +185,13 @@ def test_gate_enforces_aggregate_cap(tmp_path):
     from src.portfolio_runtime import _gate_fire
     from src.db.models import init_db
     db = str(tmp_path / "g.db"); init_db(db)
-    # 3 open + 1 new = 4 -> ok (not a lucid block)
+    # 9 open + 1 new = 10 -> ok (not a lucid block)
     r3 = _gate_fire(db, _fire("MNQ"), max_open_positions=99, max_trades_per_day=99,
-                    nt_open_contracts=3)
+                    nt_open_contracts=9)
     assert r3 is None or not str(r3).startswith("lucid")
-    # 4 open + 1 new = 5 -> blocked
+    # 10 open + 1 new = 11 -> blocked (cap raised 4->10 for risk-based sizing)
     r4 = _gate_fire(db, _fire("MNQ"), max_open_positions=99, max_trades_per_day=99,
-                    nt_open_contracts=4)
+                    nt_open_contracts=10)
     assert str(r4).startswith("lucid_contract_cap")
 
 
@@ -231,3 +232,17 @@ def test_lucid_guard_assess_does_not_fail_open_when_positions_open(monkeypatch):
     # Should have computed a decision (not None) because positions exist
     assert decision is not None
     assert nt_contracts == 1
+
+
+def test_eval_risk_sizing():
+    from src.portfolio_runtime import _eval_sized_qty
+    # MNQ ($2/pt): 30pt stop = $60 risk -> 4 lots at $250 budget
+    assert _eval_sized_qty("MNQ", 1, 20000.0, 19970.0) == 4
+    # MNQ wide 340pt stop = $680 -> 1 lot (the tail that kills flat sizing)
+    assert _eval_sized_qty("MNQ", 1, 20000.0, 19660.0) == 1
+    # MGC ($10/pt): 2.7pt stop = $27 -> capped at 5
+    assert _eval_sized_qty("MGC", 1, 4000.0, 3997.3) == 5
+    # full-size 6J: untouched
+    assert _eval_sized_qty("6J", 1, 0.0063, 0.0062) == 1
+    # never below strategy qty, never above cap
+    assert _eval_sized_qty("MNQ", 3, 20000.0, 19700.0) == 3

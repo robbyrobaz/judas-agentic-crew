@@ -46,7 +46,8 @@ _STATE_PATH = _DATA_DIR / "lucid_guard_state.json"
 RULES = {
     "venue": "lucidflex_50k_eval",
     "banned_symbols": {"MET", "MBT", "DX"},
-    "max_contracts_aggregate": 4,
+    "max_contracts_aggregate": 10,  # raised 4->10 for risk-based sizing (2026-08-16);
+                                    # Lucid's own limit is 4 minis / 40 micros — still 4x margin
     "daily_profit_soft": 1200.0,   # halt NEW entries at day P&L >= this
     "daily_profit_hard": 1500.0,   # flatten all + halt at day P&L >= this
     "daily_loss_soft": -700.0,     # halt NEW entries at day P&L <= this

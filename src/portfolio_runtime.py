@@ -144,9 +144,30 @@ def _find_seed_strategy(strategy_name: str) -> dict[str, Any] | None:
     return None
 
 
-# EVAL SIZING floor (Rob 2026-08-16): micro contracts trade at least 2 lots.
-# Full-size contracts (6J, ZF) are deliberately absent — they keep strategy qty.
-_EVAL_QTY_FLOOR = {"MNQ": 2, "MGC": 2, "MCL": 2}
+# EVAL SIZING (Rob 2026-08-16, v2 — RISK-BASED): every micro trade gets the same
+# dollar risk budget, so tight-stop setups size UP (where the edge concentrates)
+# and wide-stop setups size DOWN. Fixed lot counts died on the tails: the worst
+# observed 1-lot MNQ stop was -$683 — at a flat 5 lots that single trade
+# (-$3,415) beats Lucid's unannounced ~$1,200 DLL on its own. qty =
+# clamp(TARGET_RISK / stop_distance_dollars, 1, MAX) for micros; full-size
+# contracts (6J, ZF) keep strategy qty.
+_EVAL_RISK_SYMBOLS = {"MNQ", "MGC", "MCL"}
+_EVAL_TARGET_RISK = 250.0   # $ risk per trade; ~3 straight losers hits the -$900 hard halt
+_EVAL_MAX_QTY = 5           # per-trade lot cap (Lucid allows 40 micros; agg cap is separate)
+
+
+def _eval_sized_qty(symbol: str, qty: int, entry: float, stop: float) -> int:
+    """Risk-based per-trade sizing for the eval book (micros only)."""
+    sym = symbol.upper()
+    if sym not in _EVAL_RISK_SYMBOLS:
+        return max(1, int(qty or 1))
+    spec = _CONTRACT_SPECS.get(sym, {})
+    dpp = (spec.get("tick_value", 1.0) / spec["tick"]) if spec.get("tick") else 1.0
+    stop_dollars = abs(float(entry) - float(stop)) * dpp
+    if stop_dollars <= 0:
+        return max(1, int(qty or 1))
+    sized = int(_EVAL_TARGET_RISK // stop_dollars)
+    return max(1, min(_EVAL_MAX_QTY, max(int(qty or 1), sized)))
 
 
 @dataclass
@@ -1636,12 +1657,11 @@ def _place_fire_with_record(
     # Effective open count for the aggregate cap = live NT snapshot + what THIS
     # scan has already placed (so a burst of fires can't collectively breach 4).
     _eff_contracts = (nt_open_contracts + placed_so_far) if nt_open_contracts is not None else None
-    # EVAL SIZING (Rob 2026-08-16): micros trade a 2-lot floor to pass the $3k
-    # eval on a useful calendar — on an EVAL the cash at risk is the reset fee.
+    # EVAL SIZING (Rob 2026-08-16): risk-based qty — equal dollar risk per
+    # trade, tight stops size up, wide stops size down (tail-safe vs the DLL).
     # Applied BEFORE gating so the contract cap, the placed order, and the DB
-    # row all see the same qty. Full-size contracts (6J, ZF) keep strategy qty;
-    # the aggregate 4-cap and daily-loss guards still bound every day.
-    fire.qty = max(int(fire.qty or 1), _EVAL_QTY_FLOOR.get(fire.symbol.upper(), 1))
+    # row all see the same qty. Daily-loss guards still bound every day.
+    fire.qty = _eval_sized_qty(fire.symbol, fire.qty, fire.entry, fire.stop)
     gate_reason = _gate_fire(
         db_path,
         fire,

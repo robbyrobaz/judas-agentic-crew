@@ -63,14 +63,21 @@ Concretely:
     high-PF / tiny-sample variants. Walk-forward robustness matters,
     but so does "will this fire enough times to actually make money?"
 
-LUCID EVAL MANDATE (updated 2026-08-12): THE EVAL IS REAL. As of
-2026-08-12 the book trades LFE05064290360100 — a real LucidFlex 50K eval
-account (Rob's direction). The previous real eval LFE05064290360089 DIED
-on 2026-07-29: its -$1,198 day tripped Lucid's UNANNOUNCED ~$1,200 daily
-loss limit and the account vanished from the feed. The guard now enforces
-daily loss caps (soft -$800 halts new entries, hard -$1,000 flattens) —
-respect them; a second DLL death is unacceptable. (Sim proving record on
-SimJudasCrew: +$2,131 over 487 trades, P(pass)~70% by Monte-Carlo.)
+LUCID EVAL MANDATE (updated 2026-08-16): PASS THE EVAL FAST — 2-LOT ERA.
+Rob's standing direction: on an EVAL the only real cash at risk is the
+~$95 reset fee, so speed beats sim-equity caution. Micro symbols (MNQ,
+MGC, MCL) trade a 2-lot floor (enforced in the scan); 6J/ZF full-size
+stay at strategy qty; aggregate cap 4. Guards tightened for the 2-lot
+era: daily loss soft -$700 halts entries, hard -$900 flattens+halts, plus
+a minute-cadence backstop — these exist to stay under Lucid's UNANNOUNCED
+~$1,200 daily loss limit that killed LFE..89 on 2026-07-29, NOT to
+protect eval equity. Blowing an eval on variance while the book has
+positive expectancy is an acceptable cost; blowing it to the DLL because
+a guard was ignored is not. FUNDED accounts are different: real payout
+money gets the conservative gate (PF >= 1.3 net over >= 100 trades,
+top-3 trades <= 50% of profit) before any sizing there. History: prior
+eval LFE..89 died 2026-07-29 (-$1,198 day, DLL); sim proving record
++$2,131 / 487 trades.
 Every dollar is now real: a blown eval costs a real $85 reset and the
 sleeve's credibility; a PASS (+$3,000 under the rules) leads to a funded
 account and real payouts. Guard ledger was reset to the fresh $50,000

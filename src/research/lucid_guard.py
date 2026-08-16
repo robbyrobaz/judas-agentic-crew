@@ -49,8 +49,11 @@ RULES = {
     "max_contracts_aggregate": 4,
     "daily_profit_soft": 1200.0,   # halt NEW entries at day P&L >= this
     "daily_profit_hard": 1500.0,   # flatten all + halt at day P&L >= this
-    "daily_loss_soft": -800.0,     # halt NEW entries at day P&L <= this
-    "daily_loss_hard": -1000.0,    # flatten all + halt (Lucid's unannounced ~$1,200 eval DLL)
+    "daily_loss_soft": -700.0,     # halt NEW entries at day P&L <= this
+    "daily_loss_hard": -900.0,     # flatten all + halt. Tightened -1000 -> -900 at the
+                                   # 2026-08-16 2-lot sizing: worst-case overshoot between
+                                   # 5-min scans (~2-3 stops x $120) must still land under
+                                   # Lucid's unannounced ~$1,200 eval DLL.
     "mll_trail": 2000.0,           # $ trailing from peak daily-CLOSE equity
     "base_target": 3000.0,         # eval profit target (context only)
     "eod_flat_et": (16, 40),       # flatten all at/after this ET time

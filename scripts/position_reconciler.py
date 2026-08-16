@@ -119,6 +119,39 @@ def _cache_truth_snapshot(truth: dict) -> None:
         log.exception("reconciler.truth_cache_failed")
 
 
+def _minute_loss_backstop(truth: dict) -> None:
+    """Minute-cadence daily-loss backstop for the 2-lot era (2026-08-16).
+
+    The 5-min scan owns the full guard; between scans a fast losing sequence
+    can overshoot toward Lucid's unannounced ~$1,200 eval DLL. Every minute:
+    read NT's day-realized P&L; at <= hard, flatten every open crew position
+    (CLOSEPOSITION also cancels that instrument's working orders) and drop
+    kill.flag so the next scan takes no entries until Rob clears it."""
+    try:
+        from src.research.agent_tools import _nt_live_broker, close_nt_position
+        from src.research.lucid_guard import RULES
+        broker = _nt_live_broker()
+        summ = broker.account_summary()
+        if not summ:
+            return
+        realized = float(summ.get("realized_pnl") or 0.0)
+        if realized > RULES["daily_loss_hard"]:
+            return
+        log.critical("reconciler.DAILY_LOSS_BACKSTOP realized=$%.0f <= hard $%.0f — "
+                     "flattening + kill.flag", realized, RULES["daily_loss_hard"])
+        for p in (truth.get("open_positions") or []):
+            try:
+                res = close_nt_position(symbol=str(p.get("instrument")))
+                log.critical("reconciler.backstop_flatten %s -> %s", p.get("instrument"), res)
+            except Exception:  # noqa: BLE001
+                log.exception("reconciler.backstop_flatten_failed %s", p)
+        (REPO / "kill.flag").write_text(
+            f"daily-loss backstop: realized ${realized:.0f} <= {RULES['daily_loss_hard']} "
+            "— remove this file to resume trading\n")
+    except Exception:  # noqa: BLE001
+        log.exception("reconciler.loss_backstop_failed")
+
+
 def main() -> int:
     try:
         from src.portfolio_runtime import _orphan_body
@@ -126,6 +159,8 @@ def main() -> int:
         db_path = str(REPO / "judas_crew.db")
         truth = get_nt_positions()
         _cache_truth_snapshot(truth)
+        if truth.get("ok"):
+            _minute_loss_backstop(truth)
         sig = _unmanaged_signature(db_path, truth)
         if sig is None:
             log.warning("reconciler.truth_unavailable — skipping this tick")

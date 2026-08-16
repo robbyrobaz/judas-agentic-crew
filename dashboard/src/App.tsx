@@ -457,6 +457,14 @@ function PositionRow({ pos }: { pos: OpenPosition }) {
   );
 }
 
+type LiveHistTrade = {
+  id: number; symbol: string; direction: string; qty: number;
+  entry_fill: number | null; exit_fill: number | null; pnl_dollars: number | null;
+  exit_reason: string | null; opened_at: string; closed_at: string | null;
+  account: string; strategy: string | null;
+};
+type LiveHistDay = { day: string; n: number; pnl: number; pf: number | null; cum: number };
+
 type LiveAccount = {
   account: string | null;
   nt_truth: {
@@ -494,6 +502,18 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
         .catch(() => {});
     load();
     const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const [liveHist, setLiveHist] = useState<{ trades: LiveHistTrade[]; days: LiveHistDay[] } | null>(null);
+  const [histOpen, setHistOpen] = useState(false);
+  useEffect(() => {
+    const load = () =>
+      apiFetch<{ trades: LiveHistTrade[]; days: LiveHistDay[] }>("/api/live_history")
+        .then(setLiveHist)
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 60_000);
     return () => clearInterval(t);
   }, []);
 
@@ -681,6 +701,75 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <SectionTitle>Live Trade History — real accounts</SectionTitle>
+        <div style={{ fontSize: 9, color: C.muted, marginBottom: 6, paddingLeft: 2 }}>
+          Every closed trade since the 2026-07-26 cutover to real Lucid evals (LFE..89 → LFE..100), incl. nt_ledger_gap reconciliation rows. Gross fill-to-fill P&amp;L.
+        </div>
+        {!liveHist || liveHist.days.length === 0
+          ? <EmptySlate>No live trades yet</EmptySlate>
+          : (
+            <>
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", marginBottom: 8 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: C.surface2 }}>
+                      {["Day", "Trades", "Day P&L", "Day PF", "Cumulative"].map((h) => (
+                        <th key={h} style={{ padding: "6px 10px", textAlign: "left", color: C.muted, fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {liveHist.days.map((d) => (
+                      <tr key={d.day} style={{ borderBottom: `1px solid ${C.border}20` }}>
+                        <td style={{ padding: "5px 10px", fontFamily: "monospace", color: C.text }}>{d.day}</td>
+                        <td style={{ padding: "5px 10px", fontFamily: "monospace", color: C.muted }}>{d.n}</td>
+                        <td style={{ padding: "5px 10px", fontFamily: "monospace", fontWeight: 700, color: pnlColor(d.pnl) }}>{pnlStr(d.pnl)}</td>
+                        <td style={{ padding: "5px 10px", fontFamily: "monospace", color: C.muted }}>{d.pf ?? "—"}</td>
+                        <td style={{ padding: "5px 10px", fontFamily: "monospace", fontWeight: 700, color: pnlColor(d.cum) }}>{pnlStr(d.cum)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <button onClick={() => setHistOpen(!histOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, color: C.text, borderRadius: 6, padding: "4px 10px", fontSize: 10, cursor: "pointer" }}>
+                  {histOpen ? "Hide" : "Show"} all {liveHist.trades.length} trades
+                </button>
+              </div>
+              {histOpen && (
+                <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "auto", maxHeight: 420 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ background: C.surface2, position: "sticky", top: 0 }}>
+                        {["Closed", "Acct", "Symbol", "Dir", "Strategy", "Entry", "Exit", "P&L", "Reason"].map((h) => (
+                          <th key={h} style={{ padding: "5px 8px", textAlign: "left", color: C.muted, fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {liveHist.trades.map((t) => (
+                        <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}20` }}>
+                          <td style={{ padding: "4px 8px", fontFamily: "monospace", color: C.muted, whiteSpace: "nowrap" }}>{(t.closed_at ?? t.opened_at).slice(5, 16).replace("T", " ")}</td>
+                          <td style={{ padding: "4px 8px", fontFamily: "monospace", color: C.muted }}>{t.account}</td>
+                          <td style={{ padding: "4px 8px", fontFamily: "monospace", fontWeight: 700, color: C.text }}>{t.symbol}</td>
+                          <td style={{ padding: "4px 8px", color: t.direction === "long" ? C.green : C.red, textTransform: "uppercase", fontSize: 10 }}>{t.direction}</td>
+                          <td style={{ padding: "4px 8px", color: C.muted, fontSize: 10, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.strategy ?? "—"}</td>
+                          <td style={{ padding: "4px 8px", fontFamily: "monospace", color: C.muted }}>{t.entry_fill ?? "—"}</td>
+                          <td style={{ padding: "4px 8px", fontFamily: "monospace", color: C.muted }}>{t.exit_fill ?? "—"}</td>
+                          <td style={{ padding: "4px 8px", fontFamily: "monospace", fontWeight: 700, color: pnlColor(t.pnl_dollars) }}>{pnlStr(t.pnl_dollars)}</td>
+                          <td style={{ padding: "4px 8px", color: t.exit_reason === "nt_ledger_gap" ? C.gold : C.muted, fontSize: 10 }}>{t.exit_reason ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )
+        }
       </div>
     </div>
   );

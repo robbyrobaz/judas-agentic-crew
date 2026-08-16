@@ -1427,6 +1427,48 @@ def create_app() -> Flask:
             out["era"] = None
         return jsonify(out)
 
+    @app.get("/api/live_history")
+    def live_history() -> Any:
+        """Full REAL-money trade history (since the 2026-07-26 cutover to real
+        Lucid evals): every closed trade with strategy attribution + daily
+        aggregates with running cumulative — how it really performed."""
+        try:
+            with get_conn(_db_path()) as conn:
+                trades = [dict(r) for r in conn.execute(
+                    """
+                    SELECT t.id, t.symbol, t.direction, t.qty, t.entry_fill, t.exit_fill,
+                           ROUND(t.pnl_dollars,2) pnl_dollars, t.exit_reason,
+                           t.opened_at, t.closed_at,
+                           CASE WHEN t.opened_at < '2026-07-30' THEN 'LFE..89' ELSE 'LFE..100' END account,
+                           COALESCE(c.name, a.strategy_family, t.strategy_family) strategy
+                    FROM trades t
+                    LEFT JOIN active_strategies a ON a.id = t.strategy_id
+                    LEFT JOIN custom_strategies c
+                        ON c.id = CAST(json_extract(a.params_json,'$.custom_strategy_id') AS INTEGER)
+                    WHERE t.status='closed' AND t.opened_at >= '2026-07-26'
+                    ORDER BY COALESCE(t.closed_at, t.opened_at) DESC
+                    LIMIT 500
+                    """
+                ).fetchall()]
+                days = [dict(r) for r in conn.execute(
+                    """
+                    SELECT substr(COALESCE(closed_at, opened_at),1,10) day,
+                           COUNT(*) n, ROUND(SUM(pnl_dollars),2) pnl,
+                           ROUND(SUM(CASE WHEN pnl_dollars>0 THEN pnl_dollars ELSE 0 END)/
+                                 NULLIF(-SUM(CASE WHEN pnl_dollars<0 THEN pnl_dollars ELSE 0 END),0),2) pf
+                    FROM trades WHERE status='closed' AND opened_at >= '2026-07-26'
+                    GROUP BY day ORDER BY day
+                    """
+                ).fetchall()]
+                cum = 0.0
+                for d in days:
+                    cum = round(cum + (d["pnl"] or 0), 2)
+                    d["cum"] = cum
+                days.reverse()
+                return jsonify({"trades": trades, "days": days})
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc), "trades": [], "days": []}), 500
+
     @app.get("/api/signals")
     def signals() -> Any:
         return jsonify({"signals": _fetch_recent_signals(limit=int(request.args.get("limit", 20)))})

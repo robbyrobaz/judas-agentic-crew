@@ -1427,6 +1427,47 @@ def create_app() -> Flask:
             out["era"] = None
         return jsonify(out)
 
+    @app.get("/api/strategy_leaderboard")
+    def strategy_leaderboard() -> Any:
+        """Per ACTIVE strategy: walk-forward backtest stats + LIVE stats from
+        REAL-account fills only (since the 2026-07-26 cutover). This is the
+        board that answers 'is this strategy earning real money', unlike the
+        all-time view that mixes in the sim era."""
+        try:
+            with get_conn(_db_path()) as conn:
+                rows = [dict(r) for r in conn.execute(
+                    """
+                    SELECT a.id, a.symbol, a.strategy_family, a.version,
+                      COALESCE(c.name, a.strategy_family) strategy,
+                      COALESCE(json_extract(a.metrics_json,'$.avg_test_pf'),
+                               json_extract(a.metrics_json,'$.pf')) bt_pf,
+                      COALESCE(json_extract(a.metrics_json,'$.n_trades'),
+                               json_extract(a.metrics_json,'$.trades')) bt_n,
+                      json_extract(a.metrics_json,'$.win_rate') bt_wr,
+                      (SELECT COUNT(*) FROM trades t WHERE t.strategy_id=a.id
+                         AND t.status='closed' AND t.opened_at>='2026-07-26') live_n,
+                      (SELECT ROUND(COALESCE(SUM(t.pnl_dollars),0),0) FROM trades t
+                         WHERE t.strategy_id=a.id AND t.status='closed'
+                         AND t.opened_at>='2026-07-26') live_pnl,
+                      (SELECT ROUND(SUM(CASE WHEN t.pnl_dollars>0 THEN t.pnl_dollars ELSE 0 END)/
+                              NULLIF(-SUM(CASE WHEN t.pnl_dollars<0 THEN t.pnl_dollars ELSE 0 END),0),2)
+                         FROM trades t WHERE t.strategy_id=a.id AND t.status='closed'
+                         AND t.opened_at>='2026-07-26') live_pf,
+                      (SELECT ROUND(100.0*SUM(t.pnl_dollars>0)/COUNT(*),0) FROM trades t
+                         WHERE t.strategy_id=a.id AND t.status='closed'
+                         AND t.opened_at>='2026-07-26') live_wr,
+                      (SELECT MAX(t.opened_at) FROM trades t WHERE t.strategy_id=a.id) last_fire
+                    FROM active_strategies a
+                    LEFT JOIN custom_strategies c
+                      ON c.id = CAST(json_extract(a.params_json,'$.custom_strategy_id') AS INTEGER)
+                    WHERE a.state='active'
+                    ORDER BY live_pnl DESC, bt_pf DESC
+                    """
+                ).fetchall()]
+                return jsonify({"strategies": rows, "live_since": "2026-07-26"})
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc), "strategies": []}), 500
+
     @app.get("/api/live_history")
     def live_history() -> Any:
         """Full REAL-money trade history (since the 2026-07-26 cutover to real
@@ -1437,8 +1478,10 @@ def create_app() -> Flask:
                 trades = [dict(r) for r in conn.execute(
                     """
                     SELECT t.id, t.symbol, t.direction, t.qty, t.entry_fill, t.exit_fill,
+                           t.stop_price, t.target_price,
                            ROUND(t.pnl_dollars,2) pnl_dollars, t.exit_reason,
                            t.opened_at, t.closed_at,
+                           CAST(ROUND((julianday(t.closed_at) - julianday(t.opened_at)) * 1440) AS INTEGER) held_min,
                            CASE WHEN t.opened_at < '2026-07-30' THEN 'LFE..89' WHEN t.opened_at < '2026-08-16' THEN 'LFE..100' ELSE 'LFE..104' END account,
                            COALESCE(c.name, a.strategy_family, t.strategy_family) strategy
                     FROM trades t

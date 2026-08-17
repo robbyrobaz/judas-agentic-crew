@@ -549,8 +549,14 @@ def _bt_metrics(metrics: dict) -> dict:
         return None
 
     pf = _first("avg_test_profit_factor", "avg_test_PF", "backtest_pf", "profit_factor", "pf")
-    n = _first("total_test_trades", "total_combined_test_trades", "n_trades", "n_signals")
-    wr = _first("avg_test_win_rate", "win_rate", "winrate")
+    n = _first("total_test_trades", "total_combined_test_trades", "n_trades", "n_signals", "n")
+    wr = _first("avg_test_win_rate", "win_rate", "winrate", "wr_pct", "wr")
+    if wr is None:
+        # derive from win/loss counts (generators vary: n_wins/n_losses or w/l)
+        wins = _first("n_wins", "w")
+        losses = _first("n_losses", "l")
+        if wins is not None and losses is not None and (float(wins) + float(losses)) > 0:
+            wr = 100.0 * float(wins) / (float(wins) + float(losses))
     # win rate may be a fraction (0-1) or already a percentage
     if wr is not None:
         wr = float(wr)
@@ -1438,12 +1444,8 @@ def create_app() -> Flask:
                 rows = [dict(r) for r in conn.execute(
                     """
                     SELECT a.id, a.symbol, a.strategy_family, a.version,
+                      a.metrics_json,
                       COALESCE(c.name, a.strategy_family) strategy,
-                      COALESCE(json_extract(a.metrics_json,'$.avg_test_pf'),
-                               json_extract(a.metrics_json,'$.pf')) bt_pf,
-                      COALESCE(json_extract(a.metrics_json,'$.n_trades'),
-                               json_extract(a.metrics_json,'$.trades')) bt_n,
-                      json_extract(a.metrics_json,'$.win_rate') bt_wr,
                       (SELECT COUNT(*) FROM trades t WHERE t.strategy_id=a.id
                          AND t.status='closed' AND t.opened_at>='2026-07-26') live_n,
                       (SELECT ROUND(COALESCE(SUM(t.pnl_dollars),0),0) FROM trades t
@@ -1461,9 +1463,19 @@ def create_app() -> Flask:
                     LEFT JOIN custom_strategies c
                       ON c.id = CAST(json_extract(a.params_json,'$.custom_strategy_id') AS INTEGER)
                     WHERE a.state='active'
-                    ORDER BY live_pnl DESC, bt_pf DESC
                     """
                 ).fetchall()]
+                for r in rows:
+                    try:
+                        bt = _bt_metrics(json.loads(r.pop("metrics_json") or "{}"))
+                    except Exception:  # noqa: BLE001
+                        bt = {"bt_pf": None, "bt_trades": None, "bt_winrate": None}
+                    r["bt_pf"] = bt["bt_pf"]
+                    r["bt_n"] = bt["bt_trades"]
+                    r["bt_wr"] = bt["bt_winrate"]
+                rows.sort(key=lambda r: (r["live_pnl"] if r["live_n"] else float("-inf"),
+                                         r["bt_pf"] if r["bt_pf"] is not None else float("-inf")),
+                          reverse=True)
                 return jsonify({"strategies": rows, "live_since": "2026-07-26"})
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": str(exc), "strategies": []}), 500

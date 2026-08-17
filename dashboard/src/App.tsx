@@ -518,7 +518,6 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
   }, []);
 
   const positions = livePositions ?? ov?.open_positions ?? [];
-  const recentTrades = ov?.recent_trades ?? [];
   // Sort by live P&L (skin in the game) first, then backtest PF; nulls last.
   const rank = (s: ActiveStrategy) => [
     s.total_pnl_dollars ?? -Infinity,
@@ -633,32 +632,6 @@ function CenterPanel({ ov }: { ov: Overview | null }) {
         {positions.length === 0
           ? <EmptySlate>No open positions</EmptySlate>
           : positions.map((pos) => <PositionRow key={pos.id} pos={pos} />)
-        }
-      </div>
-
-      <div style={{ marginBottom: 14 }}>
-        <SectionTitle>Recent Trades</SectionTitle>
-        {recentTrades.length === 0
-          ? <EmptySlate>No trades yet</EmptySlate>
-          : (
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
-              {recentTrades.map((t, i) => {
-                const pnl = t.pnl_dollars;
-                const ts = t.closed_at ?? t.opened_at;
-                return (
-                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: i < recentTrades.length - 1 ? `1px solid ${C.border}30` : "none" }}>
-                    <span style={{ fontSize: 10, color: C.muted, fontFamily: "monospace", flexShrink: 0 }}>{fmtTime(ts)}</span>
-                    <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: C.text, flexShrink: 0 }}>{t.symbol}</span>
-                    <span style={{ fontSize: 11, color: t.direction === "long" ? C.green : C.red, textTransform: "uppercase", flexShrink: 0 }}>{t.direction}</span>
-                    <span style={{ fontSize: 10, color: C.muted, flex: 1 }}>{t.status} @ {t.entry_fill?.toFixed(2) ?? "—"}</span>
-                    {pnl != null && (
-                      <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: pnlColor(pnl) }}>{pnlStr(pnl)}</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )
         }
       </div>
 

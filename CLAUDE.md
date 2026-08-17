@@ -6,10 +6,11 @@
 >   `config.yaml` `ninjatrader.account`; WinRM bridge to REBEL). Runtime is
 >   `portfolio` (deterministic 5-min scan, zero LLM); the CrewAI flow below is legacy.
 > - **LLM: MiniMax-M3** (not M2.1). Agents: researcher/operator/registrar/trader/coder/reviewer.
-> - **ROB'S MANDATE (2-lot era):** pass the $3k eval FAST — eval risk budget = the
->   ~$95 reset fee. Micros (MNQ/MGC/MCL) trade a 2-lot floor. Guards: daily loss
->   soft -$700 / hard -$900 flatten + minute backstop, $2k trailing MLL, 4-contract
->   cap, EOD flat 16:40 ET — sized to Lucid's unannounced ~$1,200 eval DLL.
+> - **ROB'S MANDATE:** pass the $3k eval FAST — eval risk budget = the ~$95 reset
+>   fee. Micros (MNQ/MGC/MCL) use RISK-BASED sizing: $250 risk per trade, qty
+>   clamped [strategy qty, 5]. Guards: daily loss soft -$700 / hard -$900 flatten
+>   + minute backstop, $2k trailing MLL, 10-contract aggregate cap, EOD flat
+>   16:40 ET — sized to Lucid's unannounced ~$1,200 eval DLL.
 > - Risk rules below (RiskGuardian -$300 etc.) apply ONLY to the dormant legacy crew path.
 > - Position truth: NT sqlite does NOT persist live Lucid positions — the scan and
 >   1-min reconciler read NT's per-instrument position files. Ledger completeness is

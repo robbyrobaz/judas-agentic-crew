@@ -131,6 +131,7 @@ def insert_active_strategy(
     # Ensure symbol/strategy_family inside params match the row.
     use_params = {**use_params, "symbol": sym, "strategy_family": fam}
     with get_conn(_ensure_db()) as conn:
+        _validate_lucid_ban(sym)  # refuse banned symbols at insert time too
         _validate_custom_link(conn, use_params)
         # BEGIN IMMEDIATE so the MAX(version) read and the INSERT are atomic —
         # otherwise two concurrent inserts read the same max and create duplicate
@@ -269,6 +270,7 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
             _pre_params.setdefault("execution_engine", "judas_native")
             _fixed_params = json.dumps(_pre_params)
             _validate_params_json(_fixed_params)
+            _validate_lucid_ban(symbol)  # gate BEFORE custom_link so banned symbols fail first
             _validate_custom_link(conn, _pre_params)
             current = conn.execute(
                 """
@@ -445,6 +447,28 @@ def _supersede_where_clause(
         "symbol = ? AND strategy_family = ? AND state = 'active' AND id != ?",
         (symbol, family, new_id),
     )
+
+
+def _validate_lucid_ban(symbol: str) -> None:
+    """Refuse to promote an active on a Lucid-banned symbol. The guard layer
+    (src/research/lucid_guard.py:is_banned) is the source of truth: MET, MBT,
+    DX are banned on this eval, period — broker execution layer being able to
+    route an order is irrelevant, the portfolio refuses to fire. Without this
+    gate, candidates on banned symbols used to slip through and sit as
+    permanent zombies (demotions 4413/4404-4411 for DX/6J/ZF; demotions
+    4426-4429 for MET/MBT promotion of 2026-08-18T13Z). Raises ValueError
+    so the rejection is loud and the registrar can route the candidate to a
+    non-banned symbol."""
+    from src.research import lucid_guard as _lg
+    if _lg.is_banned(symbol):
+        banned = sorted(_lg.contract_cap.__globals__.get("RULES", {}).get("banned_symbols", set()))
+        # Fallback string if we cannot reach RULES (defensive)
+        ban_list = ",".join(banned) if banned else "see lucid_guard.banned_symbols"
+        raise ValueError(
+            f"symbol {symbol!r} is in lucid_guard banned_symbols ({ban_list}); "
+            f"any active promoted on it is a permanent zombie. Drop the candidate "
+            f"or route to a non-banned symbol."
+        )
 
 
 def _validate_custom_link(conn, params: dict[str, Any]) -> None:

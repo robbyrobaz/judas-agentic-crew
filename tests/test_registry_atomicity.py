@@ -182,44 +182,53 @@ def test_insert_active_strategy_custom_different_csids_coexist(db_path):
     """Regression (2026-07-05): for the `custom` family, the slot key is the
     custom_strategy_id, not the family. Different csids load different code
     (different architectures), so multiple customs on the same symbol MUST
-    coexist. Before the fix, promoting a new iFVG variant on MBT would
-    supersede an existing ATR-disp variant on the same symbol — loss of
-    architectural diversity the brief explicitly allows."""
+    coexist. Before the fix, promoting a new iFVG variant on a non-banned
+    symbol would supersede an existing ATR-disp variant on the same symbol —
+    loss of architectural diversity the brief explicitly allows.
+
+    NOTE (2026-08-18): original test used MBT, but MBT is in
+    lucid_guard.banned_symbols = {"MET", "MBT", "DX"} (see
+    src/research/lucid_guard.py RULES["banned_symbols"]) and is now rejected
+    at insert time by _validate_lucid_ban. Switched to MCL — the architectural
+    coexistence logic is symbol-agnostic; MCL is non-banned and has a
+    similar multi-active slot profile in production."""
     from src import strategy_registry as sr
+
+    test_symbol = "MCL"  # non-banned; was MBT pre-2026-08-18
 
     # Insert two distinct test custom_strategy_id rows so the test doesn't
     # depend on specific production csids.
     conn = sqlite3.connect(sr._db_path())
     cur = conn.execute(
-        "INSERT INTO custom_strategies (name, code, active, created_at_utc, symbol, rationale, backtest_metrics_json) VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), 'MBT', 'test stub', '{}')",
-        ("test_slotkey_csid_a", "def evaluate(bars, params): return []"),
+        "INSERT INTO custom_strategies (name, code, active, created_at_utc, symbol, rationale, backtest_metrics_json) VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), ?, 'test stub', '{}')",
+        ("test_slotkey_csid_a", "def evaluate(bars, params): return []", test_symbol),
     )
     csid_a = cur.lastrowid
     cur = conn.execute(
-        "INSERT INTO custom_strategies (name, code, active, created_at_utc, symbol, rationale, backtest_metrics_json) VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), 'MBT', 'test stub', '{}')",
-        ("test_slotkey_csid_b", "def evaluate(bars, params): return []"),
+        "INSERT INTO custom_strategies (name, code, active, created_at_utc, symbol, rationale, backtest_metrics_json) VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), ?, 'test stub', '{}')",
+        ("test_slotkey_csid_b", "def evaluate(bars, params): return []", test_symbol),
     )
     csid_b = cur.lastrowid
     conn.commit()
     conn.close()
 
     try:
-        # Two distinct customs on MBT — different csids. Both must stay active.
+        # Two distinct customs on the symbol — different csids. Both must stay active.
         sr.insert_active_strategy(
-            symbol="MBT", strategy_family="custom",
-            params={"symbol": "MBT", "strategy_family": "custom",
+            symbol=test_symbol, strategy_family="custom",
+            params={"symbol": test_symbol, "strategy_family": "custom",
                     "execution_engine": "custom", "custom_strategy_id": csid_a,
                     "timeframe": "5m"},
         )
         sr.insert_active_strategy(
-            symbol="MBT", strategy_family="custom",
-            params={"symbol": "MBT", "strategy_family": "custom",
+            symbol=test_symbol, strategy_family="custom",
+            params={"symbol": test_symbol, "strategy_family": "custom",
                     "execution_engine": "custom", "custom_strategy_id": csid_b,
                     "timeframe": "5m"},
         )
 
         actives = [r for r in sr.list_active_strategies()
-                   if r["symbol"] == "MBT" and r["strategy_family"] == "custom"
+                   if r["symbol"] == test_symbol and r["strategy_family"] == "custom"
                    and r["state"] == "active"]
         active_csids = sorted(
             r["params"].get("custom_strategy_id") for r in actives
@@ -231,13 +240,13 @@ def test_insert_active_strategy_custom_different_csids_coexist(db_path):
         # A THIRD insert with the SAME csid as the first should supersede
         # ONLY the first row — the second (different csid) must stay active.
         sr.insert_active_strategy(
-            symbol="MBT", strategy_family="custom",
-            params={"symbol": "MBT", "strategy_family": "custom",
+            symbol=test_symbol, strategy_family="custom",
+            params={"symbol": test_symbol, "strategy_family": "custom",
                     "execution_engine": "custom", "custom_strategy_id": csid_a,
                     "timeframe": "5m"},
         )
         actives = [r for r in sr.list_active_strategies()
-                   if r["symbol"] == "MBT" and r["strategy_family"] == "custom"
+                   if r["symbol"] == test_symbol and r["strategy_family"] == "custom"
                    and r["state"] == "active"]
         active_csids = sorted(
             r["params"].get("custom_strategy_id") for r in actives

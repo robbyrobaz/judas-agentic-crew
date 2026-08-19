@@ -463,7 +463,17 @@ def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.D
         bars = bars_by_sym.get(symbol)
         if bars is None:
             return fires
-        sig = evaluate_custom_strategy(code=code, bars=bars, params={**custom_params, "__csid__": custom_id})
+        # CRITICAL: merge the active row's params_json BEFORE custom_params so
+        # operator-tuned values override any shadow keys in
+        # ``backtest_metrics_json`` (e.g. CSID 232's metrics carry
+        # ``lookback=20/min_gap_factor=0.20/htf_ema_period=60`` shadows
+        # which would otherwise mask the active row's tuned values like
+        # ``htf_ema_period=110`` on #4529). Without this merge the agent
+        # code would receive only ``{"backtest_metrics": ..., "__csid__": N}``
+        # and fall through to its hard-coded defaults — see finding 75f2741b
+        # (2026-08-19) where CSID 254 trade #4549 fired at 1.5R target
+        # (default) despite the active row documenting ``target_r=2.0``.
+        sig = evaluate_custom_strategy(code=code, bars=bars, params={**custom_params, **params, "__csid__": custom_id})
         if sig is None or not isinstance(sig, dict):
             return fires
         try:

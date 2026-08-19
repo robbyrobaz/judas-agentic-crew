@@ -404,3 +404,74 @@ def test_portfolio_runtime_dispatches_custom_engine(tools, db, monkeypatch):
     assert f.symbol == "MGC"
     assert f.direction == "long"
     assert f.features.get("custom_strategy_id") == cid
+
+
+# Regression test for finding 75f2741b (2026-08-19):
+# Custom strategies were running on code defaults because the active row's
+# params_json was NEVER merged into the evaluate() call. This test pins
+# the contract that operator-tuned params in active_strategies.params_json
+# MUST reach the strategy code and MUST shadow any same-named keys in the
+# CSID's backtest_metrics_json shadow.
+def test_portfolio_runtime_passes_active_params_to_custom_strategy(tools, db, monkeypatch):
+    param_echo_code = """
+def evaluate(bars, params):
+    last = float(bars['close'].iloc[-1])
+    return {
+        'direction': 'long',
+        'entry': last,
+        # Use the active row's tuned target_r (must be 3.0, NOT default 1.5)
+        'stop': last - 1.0,
+        'target': last + float(params.get('target_r', 1.5)),
+    }
+"""
+    prop = tools["propose_custom_strategy"](
+        name="param_echo_v1", symbol="MGC", code=param_echo_code,
+        rationale="r", backtest_metrics={"target_r": 1.5, "shadow_key": 99},
+    )
+    cid = prop["custom_strategy_id"]
+
+    monkeypatch.setenv("JUDAS_DB_PATH", db)
+
+    with get_conn(db) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO active_strategies
+                (symbol, strategy_family, version, params_json, metrics_json,
+                 state, activated_at_utc, notes)
+            VALUES ('MGC','custom',1,?,'{}', 'active', '2026-01-01T00:00:00Z','seed')
+            """,
+            (json.dumps({
+                "execution_engine": "custom",
+                "custom_strategy_id": cid,
+                "strategy_name": "param_echo_v1",
+                "qty": 1,
+                "target_r": 3.0,  # operator-tuned value MUST reach evaluate()
+            }),),
+        )
+        active_id = int(cur.lastrowid)
+
+    from src.portfolio_runtime import evaluate_active_strategy
+
+    bars = _synth_bars(50)
+    active_row = {
+        "id": active_id,
+        "symbol": "MGC",
+        "strategy_family": "custom",
+        "version": 1,
+        "params": {
+            "execution_engine": "custom",
+            "custom_strategy_id": cid,
+            "strategy_name": "param_echo_v1",
+            "qty": 1,
+            "target_r": 3.0,
+        },
+    }
+    fires = evaluate_active_strategy(active_row, {"MGC": bars})
+    assert len(fires) == 1
+    f = fires[0]
+    # The active row's target_r=3.0 wins over the backtest_metrics shadow
+    # target_r=1.5 (and over the code default 1.5). entry + 3.0 must equal
+    # the target; entry + 1.5 would be a failure.
+    assert abs((f.target - f.entry) - 3.0) < 1e-9, (
+        f"active params not passed to evaluate(); got target-entry={f.target - f.entry}, expected 3.0"
+    )

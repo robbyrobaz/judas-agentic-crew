@@ -1,15 +1,15 @@
 {
- "updated_utc": "2026-08-14T12:30:38.106392+00:00",
- "day_pnl": -67.85,
- "cushion": 642.65,
+ "updated_utc": "2026-08-19T00:35:13.206278+00:00",
+ "day_pnl": -0.8,
+ "cushion": 916.6,
  "mll_floor": 48000.0,
- "nt_contracts": 2,
+ "nt_contracts": 1,
  "halt_entries": false,
  "force_flat": false,
  "reason": "clear",
  "daily_profit_soft": 1200.0,
  "daily_profit_hard": 1500.0,
- "max_contracts": 4,
+ "max_contracts": 10,
  "mll_trail": 2000.0,
  "base_target": 3000.0
 }

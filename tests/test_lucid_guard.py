@@ -55,23 +55,28 @@ def test_hard_profit_flattens():
 
 
 def test_soft_loss_halts_entries_only():
-    d = lg.assess(cur_equity=49_150, day_start=50_000, peak_close=50_000,
-                  nt_contracts=1, now_utc=NOON)  # -$850 day
+    # Caps are cushion-scaled (2026-08-20). Starting cushion $2,000; a -$560 day
+    # leaves $1,440 -> soft -$504 (breached), hard -$648 (not) => entries halt only.
+    d = lg.assess(cur_equity=49_440, day_start=50_000, peak_close=50_000,
+                  nt_contracts=1, now_utc=NOON)
     assert d.halt_entries and not d.force_flat
     assert "DAILY_LOSS_SOFT" in d.reason
 
 
 def test_hard_loss_flattens():
-    # -$1,050 day: under Lucid's unannounced ~$1,200 eval DLL, must flatten+halt
-    d = lg.assess(cur_equity=48_950, day_start=50_000, peak_close=50_000,
+    # -$700 day off a $2,000 cushion leaves $1,300 -> hard -$585 breached.
+    # (Under the OLD flat -$900 cap this day was allowed — and five of them
+    # killed LFE..104. It now flattens.)
+    d = lg.assess(cur_equity=49_300, day_start=50_000, peak_close=50_000,
                   nt_contracts=2, now_utc=NOON)
     assert d.halt_entries and d.force_flat
     assert "DAILY_LOSS_HARD" in d.reason
 
 
 def test_small_loss_no_halt():
-    d = lg.assess(cur_equity=49_500, day_start=50_000, peak_close=50_000,
-                  nt_contracts=1, now_utc=NOON)  # -$500 day
+    # -$300 day: cushion $1,700 -> soft -$595, untouched.
+    d = lg.assess(cur_equity=49_700, day_start=50_000, peak_close=50_000,
+                  nt_contracts=1, now_utc=NOON)
     assert not d.halt_entries and not d.force_flat
 
 
@@ -235,14 +240,87 @@ def test_lucid_guard_assess_does_not_fail_open_when_positions_open(monkeypatch):
 
 
 def test_eval_risk_sizing():
+    """Sizing at a FRESH eval cushion ($2,000 -> $100/trade budget)."""
     from src.portfolio_runtime import _eval_sized_qty
-    # MNQ ($2/pt): 30pt stop = $60 risk -> 4 lots at $250 budget
-    assert _eval_sized_qty("MNQ", 1, 20000.0, 19970.0) == 4
+    C = 2000.0
+    # MNQ ($2/pt): 15pt stop = $30 risk -> 3 lots
+    assert _eval_sized_qty("MNQ", 1, 20000.0, 19985.0, cushion=C) == 3
     # MNQ wide 340pt stop = $680 -> 1 lot (the tail that kills flat sizing)
-    assert _eval_sized_qty("MNQ", 1, 20000.0, 19660.0) == 1
-    # MGC ($10/pt): 2.7pt stop = $27 -> capped at 5
-    assert _eval_sized_qty("MGC", 1, 4000.0, 3997.3) == 5
+    assert _eval_sized_qty("MNQ", 1, 20000.0, 19660.0, cushion=C) == 1
+    # MGC ($10/pt): 1pt stop = $10 -> would be 10, capped at 5
+    assert _eval_sized_qty("MGC", 1, 4000.0, 3999.0, cushion=C) == 5
     # full-size 6J: untouched
-    assert _eval_sized_qty("6J", 1, 0.0063, 0.0062) == 1
+    assert _eval_sized_qty("6J", 1, 0.0063, 0.0062, cushion=C) == 1
     # never below strategy qty, never above cap
-    assert _eval_sized_qty("MNQ", 3, 20000.0, 19700.0) == 3
+    assert _eval_sized_qty("MNQ", 3, 20000.0, 19700.0, cushion=C) == 3
+
+
+# ─── 2026-08-20 post-mortem: cushion-scaled risk ─────────────────────────────
+
+def test_daily_caps_scale_with_cushion():
+    # fresh $2k cushion -> the old fixed ceilings
+    soft, hard = lg.daily_loss_caps(2000.0)
+    assert soft == -700.0 and hard == -900.0
+    # bled to $1,000 cushion -> caps tighten
+    soft, hard = lg.daily_loss_caps(1000.0)
+    assert soft == -350.0 and hard == -450.0
+    # nearly dead -> allowance is bounded by the cushion itself, never above half
+    soft, hard = lg.daily_loss_caps(50.0)
+    assert soft == -25.0 and hard == -30.0
+
+
+def test_risk_budget_scales_and_fails_small():
+    assert lg.risk_budget(2000.0) == 100.0     # fresh eval
+    assert lg.risk_budget(800.0) == 40.0       # bled -> min
+    assert lg.risk_budget(None) == 40.0        # unknown account NEVER sizes up
+    assert lg.risk_budget(99_000.0) == 250.0   # capped
+
+
+def test_sizing_shrinks_as_cushion_bleeds():
+    from src.portfolio_runtime import _eval_sized_qty
+    # MGC $10/pt, 5pt stop = $50 risk/lot
+    assert _eval_sized_qty("MGC", 1, 4000.0, 3995.0, cushion=2000.0) == 2   # $100 budget
+    assert _eval_sized_qty("MGC", 1, 4000.0, 3995.0, cushion=800.0) == 1    # $40 budget
+    # unknown cushion never sizes up
+    assert _eval_sized_qty("MGC", 1, 4000.0, 3995.0, cushion=None) == 1
+    # full-size contracts untouched
+    assert _eval_sized_qty("6J", 1, 0.0063, 0.0062, cushion=2000.0) == 1
+
+
+def test_replay_the_sequence_that_killed_lfe104():
+    """The five real losing days of 2026-08-16..20 must NOT reach the floor.
+
+    Actual (flat -$700/-$900 caps, flat $250/trade): -225/-496/-221/-743/-150
+    = -$2,002 vs a $2,000 trail -> account dead by $1.80.
+    Under cushion scaling each day's allowance shrinks, so the same *relative*
+    bad run leaves the account alive."""
+    cushion = 2000.0
+    # each day the book loses its full soft allowance (worst realistic case)
+    for _ in range(5):
+        soft, _hard = lg.daily_loss_caps(cushion)
+        cushion += soft          # soft is negative
+        assert cushion > 0, "cushion-scaled caps must never reach the MLL floor"
+    # five maximally-bad days still leave real runway
+    assert cushion > 200
+
+
+def test_caps_can_never_walk_through_the_floor():
+    """Consecutive maximum-loss days must not breach the MLL while trading is
+    permitted; below the exhausted threshold the guard stops entries."""
+    cushion = 2000.0
+    for _ in range(50):
+        if cushion < lg.RULES["cushion_exhausted"]:
+            break                # guard halts entries here — see test below
+        soft, hard = lg.daily_loss_caps(cushion)
+        assert hard <= soft, "hard cap must allow at least as much as soft"
+        cushion += hard          # worst case: every day hits the HARD cap
+        assert cushion > 0, "cushion-scaled caps walked the account through the floor"
+    assert cushion > 0
+
+
+def test_exhausted_cushion_halts_entries():
+    # equity $48,050 vs floor $48,000 -> $50 cushion, no day loss
+    d = lg.assess(cur_equity=48_050, day_start=48_050, peak_close=50_000,
+                  nt_contracts=0, now_utc=NOON)
+    assert d.halt_entries
+    assert "CUSHION_EXHAUSTED" in d.reason

@@ -67,21 +67,25 @@ Concretely:
 LUCID EVAL MANDATE (updated 2026-08-16): PASS THE EVAL FAST — 2-LOT ERA.
 Rob's standing direction: on an EVAL the only real cash at risk is the
 ~$95 reset fee, so speed beats sim-equity caution. Micro symbols (MNQ, MGC,
-MCL) use RISK-BASED sizing: every trade gets a $250 risk budget, so
-tight-stop setups run up to 5 lots and wide-stop setups run 1 (the worst
-1-lot MNQ stop seen was -$683 — flat 5-lot sizing would have been a
--$3,415 single-trade DLL death). 6J/ZF full-size stay at strategy qty;
-aggregate cap 10 micros. Guards tightened for the 2-lot
-era: daily loss soft -$700 halts entries, hard -$900 flattens+halts, plus
-a minute-cadence backstop — these exist to stay under Lucid's UNANNOUNCED
+MCL) use CUSHION-SCALED sizing: per-trade risk = 5% of the cushion
+remaining before the trailing MLL (a fresh $2,000 cushion = $100/trade),
+so size SHRINKS as the account bleeds. 6J/ZF full-size stay at strategy
+qty; aggregate cap 10 micros. Daily loss caps are scaled the same way
+(35%/45% of remaining cushion, ceilings -$700/-$900), plus a
+minute-cadence backstop — these exist to stay under Lucid's UNANNOUNCED
 ~$1,200 daily loss limit that killed LFE..89 on 2026-07-29, NOT to
 protect eval equity. Blowing an eval on variance while the book has
 positive expectancy is an acceptable cost; blowing it to the DLL because
 a guard was ignored is not. FUNDED accounts are different: real payout
 money gets the conservative gate (PF >= 1.3 net over >= 100 trades,
 top-3 trades <= 50% of profit) before any sizing there. History: prior
-eval LFE..89 died 2026-07-29 (-$1,198 day, DLL); sim proving record
-+$2,131 / 487 trades.
+eval LFE..89 died 2026-07-29 (-$1,198 day, DLL); LFE..104 died 2026-08-20
+NOT to a single bad day but to FIVE moderate losing days (-$2,002 total)
+that flat daily caps all permitted against a $2k trail — hence cushion
+scaling. Its 35 trades ran PF 0.44, the worst on record; at 1 lot the same
+run would have finished -$847 and survived. Sizing multiplies whatever
+edge exists — when the book is not earning, the priority is roster
+quality, not size.
 Every dollar is now real: a blown eval costs a real $85 reset and the
 sleeve's credibility; a PASS (+$3,000 under the rules) leads to a funded
 account and real payouts. Guard ledger was reset to the fresh $50,000

@@ -13,10 +13,17 @@ Rules (authoritative memory reference_lucid_50k_rules, + Rob 2026-07-24):
     flattens everything and halts. $1,500 = 50% of the $3k target = the Lucid
     consistency ceiling, so capping the day here keeps the account compliant.
   - $2,000 TRAILING max-loss from peak daily-CLOSE equity — breach => flatten+halt.
-  - Daily LOSS caps: soft -$800 halts NEW entries; hard -$1,000 flattens+halts.
-    Lucid runs an UNANNOUNCED ~$1,200 daily loss limit on evals (it killed
-    LFE..89 on 2026-07-29's -$1,198 day) — the hard cap sits under it with
-    room for flatten slippage.
+  - Daily LOSS caps: CUSHION-SCALED (2026-08-20). Ceilings are -$700 soft /
+    -$900 hard (under Lucid's UNANNOUNCED ~$1,200 eval DLL that killed LFE..89),
+    but each day may only lose a FRACTION of the cushion remaining before the
+    trailing MLL: 35% soft / 45% hard, never more than half the cushion.
+    WHY: LFE..104 died 2026-08-20 with FIXED caps — five losing days
+    (-$225/-$496/-$221/-$743/-$150) each passed -$700/-$900 and summed to
+    -$2,002 against the $2k trail. Fixed daily caps bound the DAY but permit
+    unlimited CUMULATIVE loss; scaling makes the sequence converge.
+  - Per-trade risk budget is scaled the same way (risk_budget()) — 5% of
+    remaining cushion, so size shrinks as the account bleeds (anti-martingale).
+  - Cushion below $100: halt entries, the eval is not recoverable by trading.
   - EOD FLAT by 4:45 PM ET (Lucid cutoff; auto-liq 4:59:59 ET). We flatten at
     4:40 ET to leave fill room.
 
@@ -50,11 +57,26 @@ RULES = {
                                     # Lucid's own limit is 4 minis / 40 micros — still 4x margin
     "daily_profit_soft": 1200.0,   # halt NEW entries at day P&L >= this
     "daily_profit_hard": 1500.0,   # flatten all + halt at day P&L >= this
-    "daily_loss_soft": -700.0,     # halt NEW entries at day P&L <= this
-    "daily_loss_hard": -900.0,     # flatten all + halt. Tightened -1000 -> -900 at the
-                                   # 2026-08-16 2-lot sizing: worst-case overshoot between
-                                   # 5-min scans (~2-3 stops x $120) must still land under
-                                   # Lucid's unannounced ~$1,200 eval DLL.
+    "daily_loss_soft": -700.0,     # CEILING on the halt-new-entries cap (see cushion scaling)
+    "daily_loss_hard": -900.0,     # CEILING on the flatten+halt cap. Both are now scaled DOWN
+                                   # by remaining MLL cushion — see daily_loss_caps(). Fixed
+                                   # caps killed LFE..104 on 2026-08-20: five losing days, each
+                                   # individually inside -$700/-$900, summed past the $2k trail.
+    # Cushion scaling (2026-08-20 post-mortem). Each day may risk only a FRACTION
+    # of what's left before the trailing MLL, so consecutive red days shrink
+    # geometrically instead of spending a flat -$700 five times against a $2k trail.
+    "daily_loss_soft_pct": 0.35,   # of remaining cushion
+    "daily_loss_hard_pct": 0.45,
+    "daily_loss_floor": -150.0,    # never clamp the soft cap tighter than this
+    # Per-trade risk budget = this fraction of remaining cushion, clamped.
+    # At a fresh $2,000 cushion -> $100/trade (~20 losing trades of runway, vs
+    # the 8 that the old flat $250 allowed against a book firing ~10/day).
+    "risk_pct_of_cushion": 0.05,
+    "risk_min": 40.0,
+    "risk_max": 250.0,
+    # Below this much cushion the eval is not recoverable by trading — halt and
+    # let Rob reset ($95) instead of grinding the remainder into commissions.
+    "cushion_exhausted": 100.0,
     "mll_trail": 2000.0,           # $ trailing from peak daily-CLOSE equity
     "base_target": 3000.0,         # eval profit target (context only)
     "eod_flat_et": (16, 40),       # flatten all at/after this ET time
@@ -192,6 +214,44 @@ def peak_close_equity(default: float, now_utc: datetime | None = None) -> float:
     return float(max(candidates))
 
 
+# ---- cushion-scaled risk (2026-08-20 post-mortem) -------------------------
+
+def daily_loss_caps(cushion: float) -> tuple[float, float]:
+    """(soft, hard) daily-loss caps in dollars (negative), scaled to the
+    cushion remaining before the trailing MLL.
+
+    WHY: LFE..104 died 2026-08-20 with FIXED caps. Five consecutive losing
+    days of -$225/-$496/-$221/-$743/-$150 each passed a flat -$700 soft /
+    -$900 hard and summed to -$2,002 against a $2,000 trail. Fixed daily caps
+    permit unlimited cumulative loss; scaling each day to a fraction of what's
+    LEFT makes the sequence decay geometrically and never reach the floor.
+    """
+    c = max(0.0, float(cushion))
+    soft_mag = min(abs(RULES["daily_loss_soft"]), c * RULES["daily_loss_soft_pct"])
+    hard_mag = min(abs(RULES["daily_loss_hard"]), c * RULES["daily_loss_hard_pct"])
+    # Small-cushion floor so the book can still take a normal trade — but NEVER
+    # more than half the cushion, or the floor itself walks the account through
+    # the MLL (10 consecutive floor-days did exactly that in the first draft).
+    # Bounded this way the sequence converges toward 0 and cannot cross it.
+    soft_mag = max(soft_mag, min(abs(RULES["daily_loss_floor"]), c * 0.5))
+    hard_mag = max(hard_mag, min(abs(RULES["daily_loss_floor"]) * 1.35, c * 0.6))
+    return round(-soft_mag, 2), round(-hard_mag, 2)
+
+
+def risk_budget(cushion: float | None) -> float:
+    """Dollar risk allowed on ONE trade, as a fraction of remaining cushion.
+
+    Anti-martingale: as the account bleeds toward the trailing MLL, every new
+    trade gets smaller, so a losing streak decays instead of compounding. A
+    None/unknown cushion falls back to the minimum (fail-small, never
+    fail-big — an unreadable account is the worst time to size up)."""
+    if cushion is None:
+        return RULES["risk_min"]
+    c = max(0.0, float(cushion))
+    return round(min(RULES["risk_max"],
+                     max(RULES["risk_min"], c * RULES["risk_pct_of_cushion"])), 2)
+
+
 # ---- the assessment (pure) ------------------------------------------------
 
 def assess(*, cur_equity: float, day_start: float, peak_close: float,
@@ -214,14 +274,25 @@ def assess(*, cur_equity: float, day_start: float, peak_close: float,
         d.halt_entries = True
         d.reasons.append(f"TRAILING MLL BREACH: equity ${cur_equity:.0f} <= floor ${d.mll_floor:.0f}")
 
-    # Loss side — daily loss caps sit under Lucid's unannounced ~$1,200 eval DLL.
-    if d.day_pnl <= RULES["daily_loss_hard"]:
+    # Cushion exhausted — stop trading a dead eval (2026-08-20).
+    if 0 < d.cushion < RULES["cushion_exhausted"]:
+        d.halt_entries = True
+        d.reasons.append(
+            f"CUSHION_EXHAUSTED ${d.cushion:.0f} < ${RULES['cushion_exhausted']:.0f} "
+            "— eval not recoverable by trading; reset the account")
+
+    # Loss side — caps sit under Lucid's unannounced ~$1,200 eval DLL AND are
+    # scaled to what's actually left before the trailing MLL (2026-08-20).
+    soft_cap, hard_cap = daily_loss_caps(d.cushion)
+    if d.day_pnl <= hard_cap:
         d.force_flat = True
         d.halt_entries = True
-        d.reasons.append(f"DAILY_LOSS_HARD ${d.day_pnl:.0f} <= ${RULES['daily_loss_hard']:.0f} (flatten+stop)")
-    elif d.day_pnl <= RULES["daily_loss_soft"]:
+        d.reasons.append(f"DAILY_LOSS_HARD ${d.day_pnl:.0f} <= ${hard_cap:.0f} "
+                         f"(cushion-scaled; flatten+stop)")
+    elif d.day_pnl <= soft_cap:
         d.halt_entries = True
-        d.reasons.append(f"DAILY_LOSS_SOFT ${d.day_pnl:.0f} <= ${RULES['daily_loss_soft']:.0f} (halt new entries)")
+        d.reasons.append(f"DAILY_LOSS_SOFT ${d.day_pnl:.0f} <= ${soft_cap:.0f} "
+                         f"(cushion-scaled; halt new entries)")
 
     # Profit hard cap — lock the day in.
     if d.day_pnl >= RULES["daily_profit_hard"]:

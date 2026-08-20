@@ -144,20 +144,29 @@ def _find_seed_strategy(strategy_name: str) -> dict[str, Any] | None:
     return None
 
 
-# EVAL SIZING (Rob 2026-08-16, v2 — RISK-BASED): every micro trade gets the same
-# dollar risk budget, so tight-stop setups size UP (where the edge concentrates)
-# and wide-stop setups size DOWN. Fixed lot counts died on the tails: the worst
-# observed 1-lot MNQ stop was -$683 — at a flat 5 lots that single trade
-# (-$3,415) beats Lucid's unannounced ~$1,200 DLL on its own. qty =
-# clamp(TARGET_RISK / stop_distance_dollars, 1, MAX) for micros; full-size
-# contracts (6J, ZF) keep strategy qty.
+# EVAL SIZING (v3 — CUSHION-SCALED, 2026-08-20 post-mortem). v2 used a FLAT
+# $250 risk per trade, calibrated against Lucid's ~$1,200 daily loss limit but
+# NEVER against the $2,000 trailing MLL. At $250/trade the trail absorbs 8
+# losing trades; the book fires ~10/day. LFE..104 died on 2026-08-20 after five
+# losing days (-$2,002 vs a $2k trail) that the flat daily caps all permitted;
+# the same 35 trades at 1 lot would have finished -$847 and survived.
+#
+# Now: risk per trade = a fraction of the cushion REMAINING before the MLL
+# (lucid_guard.risk_budget), so size shrinks as the account bleeds. Wide stops
+# still size down, tight stops still size up — but the ceiling falls with the
+# account instead of staying flat while the runway disappears.
 _EVAL_RISK_SYMBOLS = {"MNQ", "MGC", "MCL"}
-_EVAL_TARGET_RISK = 250.0   # $ risk per trade; ~3 straight losers hits the -$900 hard halt
 _EVAL_MAX_QTY = 5           # per-trade lot cap (Lucid allows 40 micros; agg cap is separate)
 
 
-def _eval_sized_qty(symbol: str, qty: int, entry: float, stop: float) -> int:
-    """Risk-based per-trade sizing for the eval book (micros only)."""
+def _eval_sized_qty(symbol: str, qty: int, entry: float, stop: float,
+                    cushion: float | None = None) -> int:
+    """Cushion-scaled per-trade sizing for the eval book (micros only).
+
+    ``cushion`` = dollars remaining before the trailing MLL floor. None means
+    the guard couldn't read the account this scan → smallest budget (never
+    size up on an unknown account).
+    """
     sym = symbol.upper()
     if sym not in _EVAL_RISK_SYMBOLS:
         return max(1, int(qty or 1))
@@ -166,7 +175,12 @@ def _eval_sized_qty(symbol: str, qty: int, entry: float, stop: float) -> int:
     stop_dollars = abs(float(entry) - float(stop)) * dpp
     if stop_dollars <= 0:
         return max(1, int(qty or 1))
-    sized = int(_EVAL_TARGET_RISK // stop_dollars)
+    from src.research import lucid_guard as _lg
+    budget = _lg.risk_budget(cushion)
+    sized = int(budget // stop_dollars)
+    # NOTE: floor of 1 — a single lot whose stop exceeds the budget still
+    # trades (the strategy's own qty is the author's intent), but the
+    # cushion-scaled DAILY caps stop the day before those compound.
     return max(1, min(_EVAL_MAX_QTY, max(int(qty or 1), sized)))
 
 
@@ -1655,6 +1669,7 @@ def _place_fire_with_record(
     skip_strategy_open_check: bool = False,
     lucid_block_entries: bool = False,
     nt_open_contracts: int | None = None,
+    lucid_cushion: float | None = None,
 ) -> dict[str, Any]:
     """Gate, optionally place, and persist a single ActiveFire.
 
@@ -1667,11 +1682,11 @@ def _place_fire_with_record(
     # Effective open count for the aggregate cap = live NT snapshot + what THIS
     # scan has already placed (so a burst of fires can't collectively breach 4).
     _eff_contracts = (nt_open_contracts + placed_so_far) if nt_open_contracts is not None else None
-    # EVAL SIZING (Rob 2026-08-16): risk-based qty — equal dollar risk per
-    # trade, tight stops size up, wide stops size down (tail-safe vs the DLL).
+    # EVAL SIZING (v3): qty scales to the cushion left before the trailing MLL.
     # Applied BEFORE gating so the contract cap, the placed order, and the DB
-    # row all see the same qty. Daily-loss guards still bound every day.
-    fire.qty = _eval_sized_qty(fire.symbol, fire.qty, fire.entry, fire.stop)
+    # row all see the same qty. Cushion-scaled daily caps bound every day.
+    fire.qty = _eval_sized_qty(fire.symbol, fire.qty, fire.entry, fire.stop,
+                               cushion=lucid_cushion)
     gate_reason = _gate_fire(
         db_path,
         fire,
@@ -1846,12 +1861,14 @@ def run_portfolio_scan(
     # soft/hard caps, $2k trailing MLL, aggregate 4-contract cap, EOD flatten.
     lucid_block_entries = False
     lucid_nt_contracts: int | None = None
+    lucid_cushion: float | None = None
     if route == "ninjatrader":
         try:
             from src.research import lucid_guard as _lg
             _decision, lucid_nt_contracts = _lucid_guard_assess(_nt_broker(), bars_by_sym)
             if _decision is not None:
                 lucid_block_entries = _decision.halt_entries
+                lucid_cushion = _decision.cushion
                 _lg.write_state(_decision, lucid_nt_contracts or 0)
                 if _decision.reasons:
                     log.warning("lucid_guard: %s (day_pnl=$%.0f, cushion=$%.0f, contracts=%d)",
@@ -1928,6 +1945,7 @@ def run_portfolio_scan(
                     route=route,
                     lucid_block_entries=lucid_block_entries,
                     nt_open_contracts=lucid_nt_contracts,
+                    lucid_cushion=lucid_cushion,
                 )
                 if outcome["decision"] == "TRADE":
                     placed += 1
@@ -1963,6 +1981,7 @@ def run_portfolio_scan(
             route=route,
             lucid_block_entries=lucid_block_entries,
             nt_open_contracts=lucid_nt_contracts,
+            lucid_cushion=lucid_cushion,
         )
         leg_a_traded = outcome_a["decision"] == "TRADE"
         if leg_a_traded:
@@ -1982,6 +2001,7 @@ def run_portfolio_scan(
             route=route,
             lucid_block_entries=lucid_block_entries,
             nt_open_contracts=lucid_nt_contracts,
+            lucid_cushion=lucid_cushion,
             # Leg A of the same pair row may have just been recorded as
             # an open trade with the same strategy_id; that's expected
             # for pairs. Bypass the per-strategy open check here.

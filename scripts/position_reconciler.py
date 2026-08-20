@@ -135,10 +135,22 @@ def _minute_loss_backstop(truth: dict) -> None:
         if not summ:
             return
         realized = float(summ.get("realized_pnl") or 0.0)
-        if realized > RULES["daily_loss_hard"]:
+        # Cushion-scaled hard cap (2026-08-20) — same rule the 5-min scan uses,
+        # so the minute backstop tightens as the account bleeds instead of
+        # holding a flat -$900 that a slow multi-day bleed walks straight past.
+        from src.research.lucid_guard import daily_loss_caps, peak_close_equity
+        cash = float(summ.get("cash") or 0.0)
+        cushion = None
+        if cash > 0:
+            floor = peak_close_equity(default=cash) - RULES["mll_trail"]
+            cushion = cash - floor
+        _, hard = daily_loss_caps(cushion if cushion is not None
+                                  else abs(RULES["daily_loss_hard"]) / 0.45)
+        if realized > hard:
             return
-        log.critical("reconciler.DAILY_LOSS_BACKSTOP realized=$%.0f <= hard $%.0f — "
-                     "flattening + kill.flag", realized, RULES["daily_loss_hard"])
+        log.critical("reconciler.DAILY_LOSS_BACKSTOP realized=$%.0f <= hard $%.0f "
+                     "(cushion=$%s) — flattening + kill.flag",
+                     realized, hard, f"{cushion:.0f}" if cushion is not None else "?")
         for p in (truth.get("open_positions") or []):
             try:
                 res = close_nt_position(symbol=str(p.get("instrument")))
@@ -146,8 +158,8 @@ def _minute_loss_backstop(truth: dict) -> None:
             except Exception:  # noqa: BLE001
                 log.exception("reconciler.backstop_flatten_failed %s", p)
         (REPO / "kill.flag").write_text(
-            f"daily-loss backstop: realized ${realized:.0f} <= {RULES['daily_loss_hard']} "
-            "— remove this file to resume trading\n")
+            f"daily-loss backstop: realized ${realized:.0f} <= cushion-scaled hard "
+            f"cap ${hard:.0f} — remove this file to resume trading\n")
     except Exception:  # noqa: BLE001
         log.exception("reconciler.loss_backstop_failed")
 

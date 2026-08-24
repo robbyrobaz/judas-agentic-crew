@@ -14,3 +14,15 @@ dashboard/dist/
 
 # Derived runtime state — live active contract per symbol, rewritten each scan
 active_contracts.json
+
+# Daily-loss kill-switch flag (created by portfolio_scan when daily cap breached; remove to resume)
+kill.flag
+
+# Runtime data caches and state files — never source-controlled
+cache_1h/
+data/lucid_guard_ledger.json
+data/lucid_guard_state.json
+data/lucid_guard_ledger.*.bak
+data/lucid_guard_state.*.bak
+data/nt_truth_positions.json
+last_bar_closes.json

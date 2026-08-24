@@ -990,6 +990,11 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
             family = str(row["strategy_family"])
             old_version = int(row["version"])
             old_params_json = str(row["params_json"] or "{}")
+            # Preserve the original backtest metrics across the retire+re-promote.
+            # Previously this column was hardcoded to '{}' which dropped the BT
+            # evidence on every pm_agent_modify — leaving the new active row
+            # with no backtest trail. See finding 7831.
+            old_metrics_json = str(row["metrics_json"] or "{}")
             now = _utc_now()
 
             # Ensure new_params has identifying keys for validation parity.
@@ -1024,18 +1029,21 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
 
             # 2) Insert new active row at old_version + 1 BEFORE retiring old,
             #    so external readers never see a zero-active window.
+            #    metrics_json is propagated from the old row so the backtest
+            #    evidence survives the retire+re-promote.
             cur = conn.execute(
                 """
                 INSERT INTO active_strategies
                     (symbol, strategy_family, version, params_json, metrics_json,
                      source_candidate_id, state, activated_at_utc, notes)
-                VALUES (?, ?, ?, ?, '{}', ?, 'active', ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
                 """,
                 (
                     symbol,
                     family,
                     old_version + 1,
                     json.dumps(merged, default=str),
+                    old_metrics_json,
                     candidate_id,
                     now,
                     f"PM agent modify: {rationale}",

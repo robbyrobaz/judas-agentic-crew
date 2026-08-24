@@ -280,6 +280,55 @@ def test_modify_strategy_params_is_atomic_retire_promote(tmp_path, monkeypatch):
         assert old_state[0] == "retired"
 
 
+def test_modify_strategy_params_preserves_metrics_json(tmp_path, monkeypatch):
+    """Regression for finding 7831: pm_agent_modify was hardcoding the new
+    active row's metrics_json to '{}', dropping the original backtest
+    evidence on every retire+re-promote. The fix propagates the old
+    row's metrics_json forward to the new active row.
+    """
+    db = tmp_path / "j.db"
+    monkeypatch.setenv("JUDAS_DB_PATH", str(db))
+    monkeypatch.setenv("MINIMAX_API_KEY", "fake")
+
+    init_db(str(db))
+    original_metrics = json.dumps(
+        {"pf_20": 2.5, "n_signals": 138, "expectancy_r": 1.63}
+    )
+    with get_conn(str(db)) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO active_strategies
+                (symbol, strategy_family, version, params_json, metrics_json,
+                 state, activated_at_utc, notes)
+            VALUES ('MGC','judas_1h',1,?, ?, 'active', '2026-01-01T00:00:00Z', 'seed')
+            """,
+            (json.dumps({"strategy_name": "judas_base_1h", "symbol": "MGC"}),
+             original_metrics),
+        )
+        sid = int(cur.lastrowid)
+
+    new_params = {"strategy_name": "judas_base_1h", "symbol": "MGC", "target_r": 3.0}
+    fake = _scripted_llm([
+        _fake_llm_response(
+            tool_name="modify_strategy_params",
+            args={"id": sid, "new_params": new_params, "rationale": "tighten"},
+        ),
+        _fake_llm_response(content="modified."),
+    ])
+    monkeypatch.setattr(pm_agent, "_call_llm", fake)
+
+    result = pm_agent.run_pm_decision(db_path=str(db), turn_budget=5, time_budget_s=30)
+    assert result.success
+
+    with sqlite3.connect(str(db)) as conn:
+        # New active row carries forward the original backtest metrics.
+        new_row = conn.execute(
+            "SELECT id, version, metrics_json FROM active_strategies WHERE state='active'"
+        ).fetchone()
+        assert new_row[1] == 2
+        assert json.loads(new_row[2]) == json.loads(original_metrics)
+
+
 # ---------------------------------------------------------------------------
 # 7 + 8) place_paper_order routes through broker seam; honors dry_run
 # ---------------------------------------------------------------------------

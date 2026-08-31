@@ -382,3 +382,41 @@ def test_custom_engine_requires_loadable_code_link(db_path):
             params={"execution_engine": "custom", "custom_strategy_id": 999999,
                     "strategy_name": "x", "symbol": "MGC"},
         )
+
+
+def test_non_custom_engine_with_custom_strategy_id_is_zombie(db_path):
+    """2026-08-30 guard: a row with execution_engine != 'custom' but
+    custom_strategy_id set is a zombie (can never fire). The custom branch
+    refuses (wrong engine); the judas/buffet branch refuses to load custom
+    code. The runtime's zombie_skip silently drops it (per findings 712520f8
+    + e18c0432). The registry-side validator must catch this at promotion
+    time so the operator/researcher sees the error instead of an idle row.
+
+    Regression for the 2026-08-30 #4598 MCL promotion bug: candidate was
+    emitted with csid=156 + execution_engine='judas_native' (the registrar's
+    default), but csid=156 is a custom row that only fires under
+    execution_engine='custom'. The promotion succeeded; the row sits idle.
+    """
+    import pytest
+    from src import strategy_registry as sr
+    from src.db.models import get_conn
+
+    # Seed a real custom_strategy row so csid=1 is valid (we only need the
+    # engine/csid mismatch check, not the loadability check, to fire first).
+    with get_conn(db_path) as conn:
+        conn.execute(
+            "INSERT INTO custom_strategies (id, created_at_utc, name, symbol, "
+            "code, rationale, backtest_metrics_json, active) "
+            "VALUES (1, '2026-08-30T00:00:00Z', 'test_zombie_csid', 'MGC', "
+            "'code', 'test', '{}', 1)"
+        )
+
+    with pytest.raises(ValueError, match="zombie combination"):
+        sr.insert_active_strategy(
+            symbol="MGC", strategy_family="atr_disp_continuation_5m",
+            params={
+                "execution_engine": "judas_native",
+                "custom_strategy_id": 1,  # <-- the bug: csid set, wrong engine
+                "strategy_name": "test_zombie",
+            },
+        )

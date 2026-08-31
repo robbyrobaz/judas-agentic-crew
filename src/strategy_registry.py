@@ -472,18 +472,40 @@ def _validate_lucid_ban(symbol: str) -> None:
 
 
 def _validate_custom_link(conn, params: dict[str, Any]) -> None:
-    """Refuse to activate an execution_engine='custom' row without a LOADABLE
-    code link. Root cause of the 2026-06 idle-strategies bug: custom rows were
-    promoted with no custom_strategy_id, so the scan's custom branch bailed
-    (custom_id<=0 → no signal, ever) and they sat silently dead for a week.
+    """Refuse to activate any row whose engine/code-link combination is a
+    zombie (could never fire). Two cases:
+
+    1. execution_engine='custom' WITHOUT a loadable custom_strategy_id — root
+       cause of the 2026-06 idle-strategies bug: custom rows were promoted with
+       no custom_strategy_id, the scan's custom branch bailed (custom_id<=0 →
+       no signal, ever), and they sat silently dead for a week.
+    2. execution_engine != 'custom' BUT custom_strategy_id is set — symmetric
+       zombie: the custom branch refuses to run (wrong engine), the judas/
+       buffet branch refuses to load custom code, and the runtime's
+       zombie_skip guard silently drops the row per findings 712520f8 +
+       e18c0432 (2026-07-24T00Z). It can never fire.
+
     Raises ValueError so the promotion fails loudly instead of birthing a
-    zombie — the registrar can look up the right code id and retry."""
-    if str(params.get("execution_engine", "")).lower() != "custom":
-        return
+    zombie — the registrar/researcher can fix the params and retry."""
+    engine = str(params.get("execution_engine", "")).lower()
     try:
         csid = int(params.get("custom_strategy_id") or 0)
     except (TypeError, ValueError):
         csid = 0
+    # Case 2: non-custom engine + custom_strategy_id set → ZOMBIE (caught at
+    # runtime by portfolio_runtime.zombie_skip; catch it here at promotion time).
+    if engine != "custom" and csid > 0:
+        raise ValueError(
+            f"zombie combination: execution_engine={engine!r} but "
+            f"custom_strategy_id={csid} is set. The custom branch refuses to "
+            f"run (wrong engine) and the {engine} branch refuses to load "
+            f"custom code — the row can never fire. Either set "
+            f"execution_engine='custom' (loads csid {csid}) or remove "
+            f"custom_strategy_id from params."
+        )
+    # Case 1: custom engine without a loadable code link → ZOMBIE.
+    if engine != "custom":
+        return
     if csid <= 0:
         raise ValueError(
             "custom engine requires a custom_strategy_id linking code in "

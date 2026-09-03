@@ -29,3 +29,21 @@ Uploaded to the private Google Drive folder
 [`Judas Crew Backtest Data — 2026-09-02`](https://drive.google.com/drive/folders/1FEHpb1cnxKN9l37MzbySLXEI8y1xNTn5).
 Post-upload verification reported five matching files and zero differences
 from the local checksum-verified backup.
+
+## Expanded futures market data
+
+After a machine-wide futures-data inventory, the broader NQ/MNQ history was
+added under
+[`Full Futures Market Data — 1min and Tick`](https://drive.google.com/drive/folders/1nautWmcifxJOI4X-9kGVN8zzFewpyII_).
+
+| Item | Contents | Integrity |
+|---|---|---|
+| `nq-futures-1minute-candles-all-sources-2026-09-02.tar.gz` | 19 NQ one-minute source, canonical, continuous, contract-backfill, NT, IBKR, and Databento-derived CSV files. The largest continuous set has 582,768 bars from 2025-04-03 through 2026-09-03. | SHA-256 `92f74d17c90ab803d247bdff324509a6d23b7022a0cb8cbe284872dff7ad9b12` |
+| `nq-futures-derived-replay-data-2026-09-02.tar.gz` | Replay, labeled, and model-training Parquet datasets used for backtest/replay analysis. | SHA-256 `72daddf331de797fc62f5e182a5ad51854ada8b89af0326cc7ed9c734d75b72d` |
+| `Databento NQ Trades — Monthly Parquet/` | 10 monthly Parquet files containing 72,560,324 NQ trade ticks from 2025-10-01 through 2026-08-11. December 2025 through 2026-01-25 is not present in the local source. | Remote comparison: 10 matching files, zero differences |
+
+Exact duplicate copies were omitted. Files explicitly stored under a
+`CORRUPTED_20260403` directory were excluded. Unrelated options, cryptocurrency,
+and Numerai datasets were not treated as Judas futures data. The actively
+written 6.3 GB `nq_feed.duckdb` operational store was not stopped or copied;
+its available one-minute CSV exports are included in the 1-minute archive.

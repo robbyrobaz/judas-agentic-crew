@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 import time
@@ -30,8 +31,8 @@ from src.research.operator_agent import GOALS_PREAMBLE as _GOALS_PREAMBLE  # noq
 
 OPERATOR_MANAGER_PROMPT = (
     "You are the Operator Manager for the entire Judas system. You oversee the agentic team "
-    "(Operator + Researcher + Trader + Registrar + Coder) plus the TradingCrew — which since "
-    "2026-07-26 places REAL orders on a Lucid 50K eval account via NinjaTrader — "
+    "(Operator + Researcher + Trader + Registrar + Coder) plus the TradingCrew, which "
+    "currently places simulated orders on NinjaTrader account SimJudasFutures, "
     "and the ResearchCrew. You have broad read access to current system state, timers, recent "
     "experiments, session status, findings memory, delegations, candidates, and demotions. "
     "You do not bypass deterministic trading gates, do not imply live trading, and do not "
@@ -606,8 +607,8 @@ def _fetch_research_stats() -> dict[str, Any]:
                 "bt_pf": bt["bt_pf"],
                 "bt_trades": bt["bt_trades"],
                 "bt_winrate": bt["bt_winrate"],
-                # Forward-test (live account fills — REAL Lucid eval since 2026-07-26) — per STRATEGY. Untraded
-                # strategies show null (—): no live edge yet, not a symbol total.
+                # Current-era simulated fills per strategy. Untraded strategies
+                # show null (—): no forward evidence yet, not a symbol total.
                 "profit_factor": sid_lm.get("profit_factor"),
                 "trades": sid_lm.get("trades"),
                 "winrate": sid_lm.get("winrate"),
@@ -685,7 +686,7 @@ def _dollar_per_point(symbol: str) -> float:
 
 
 def _load_price_cache() -> dict[str, dict]:
-    """Load last_bar_closes.json, then fill any gaps from cached parquet files."""
+    """Load the newest timestamped close across JSON and all bar timeframes."""
     p = REPO_ROOT / "last_bar_closes.json"
     cache: dict[str, dict] = {}
     if p.exists():
@@ -693,21 +694,28 @@ def _load_price_cache() -> dict[str, dict]:
             cache = json.loads(p.read_text())
         except Exception:
             pass
-    # Supplement with parquet files for symbols not in JSON cache.
+    # Replace stale JSON values with newer 5m/15m/1h parquet closes.
     cache_dir = REPO_ROOT / "cache_1h"
     if cache_dir.exists():
         try:
             import pandas as pd
-            for parquet in cache_dir.glob("*_1h.parquet"):
-                sym = parquet.stem.replace("_1h", "").upper()
-                if sym in cache:
-                    continue
+            for parquet in cache_dir.glob("*.parquet"):
+                stem = parquet.stem
+                sym = stem.rsplit("_", 1)[0].upper()
                 try:
                     df = pd.read_parquet(parquet, columns=["ts", "close"])
                     if df.empty:
                         continue
                     last = df.iloc[-1]
-                    cache[sym] = {"close": float(last["close"]), "ts": str(last["ts"])}
+                    candidate_ts = pd.to_datetime(last["ts"], utc=True, errors="coerce")
+                    cached_ts = pd.to_datetime(cache.get(sym, {}).get("ts"), utc=True,
+                                               errors="coerce")
+                    if pd.isna(candidate_ts):
+                        continue
+                    if sym not in cache or pd.isna(cached_ts) or candidate_ts > cached_ts:
+                        cache[sym] = {"close": float(last["close"]),
+                                      "ts": candidate_ts.isoformat(),
+                                      "timeframe": stem.rsplit("_", 1)[-1]}
                 except Exception:
                     pass
         except Exception:
@@ -718,6 +726,15 @@ def _load_price_cache() -> dict[str, dict]:
 def _fetch_open_positions() -> list[dict[str, Any]]:
     """Return open trades enriched with current price and unrealized P&L."""
     price_cache = _load_price_cache()
+    live_marks: dict[int, dict[str, Any]] = {}
+    live_mark_ts: str | None = None
+    try:
+        snap = _unrealized_snapshot()
+        live_marks = {int(p["id"]): p for p in snap.get("positions", [])}
+        age_s = float(snap.get("age_s") or 0.0)
+        live_mark_ts = datetime.fromtimestamp(time.time() - age_s, tz=timezone.utc).isoformat()
+    except Exception:
+        pass
     try:
         with get_conn(_db_path()) as conn:
             rows = conn.execute(
@@ -767,6 +784,10 @@ def _fetch_open_positions() -> list[dict[str, Any]]:
         pc = price_cache.get(sym) or price_cache.get(sym.lower())
         current_price = float(pc["close"]) if pc and "close" in pc else None
         price_ts = str(pc["ts"]) if pc and "ts" in pc else None
+        live_mark = live_marks.get(int(row["id"]))
+        if live_mark and live_mark.get("price") is not None and math.isfinite(float(live_mark["price"])):
+            current_price = float(live_mark["price"])
+            price_ts = live_mark_ts
 
         unrealized_pnl = None
         pts_to_stop = None
@@ -1038,7 +1059,7 @@ def _fetch_agents_last_run() -> dict[str, Any]:
 # hammer it — that flooding is what locked the nqtrader account before).
 _NT_SNAPSHOT_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
 _NT_SNAPSHOT_TTL_S = 60.0
-# SimJudasCrew starting cash. NT's RealizedPnL() field is unreliable (reported
+# SimJudasFutures starting cash. NT's RealizedPnL() field is unreliable (reported
 # -100.65 when actual cash moved -223.90 on 2026-06-02); cash delta is the
 # source of truth, matching the "nt_balances is primary P&L source" rule.
 _NT_STARTING_CASH = 50000.0
@@ -1132,7 +1153,8 @@ def _unrealized_snapshot() -> dict[str, Any]:
             return {**data, "age_s": 0.0}
 
         import asyncio
-        from ib_async import IB, ContFuture
+        from ib_async import IB, Future
+        from src import bar_cache
         ibkr = load_config().ibkr
         syms = sorted({str(o["symbol"]).upper() for o in opens})
 
@@ -1155,21 +1177,40 @@ def _unrealized_snapshot() -> dict[str, Any]:
                     await asyncio.sleep(2)
             out: dict[str, float] = {}
             try:
+                # Delayed-frozen is sufficient for a dashboard mark and avoids
+                # error 354 when this IBKR login lacks live quote entitlement.
+                ib.reqMarketDataType(4)
                 for s in syms:
                     root = "JPY" if s == "6J" else s
-                    q = await ib.qualifyContractsAsync(ContFuture(root, exchange=_EXCH.get(s, "CME")))
+                    month = bar_cache.active_contract_month(s)
+                    if not month:
+                        continue
+                    q = await ib.qualifyContractsAsync(Future(
+                        symbol=root,
+                        lastTradeDateOrContractMonth=month,
+                        exchange=_EXCH.get(s, "CME"),
+                    ))
                     if not q:
                         continue
                     t = ib.reqMktData(q[0], "", True, False)
                     await asyncio.sleep(2.0)
-                    p = t.last if (t.last and t.last == t.last) else (t.close or None)
-                    if p:
+                    p = t.last if (t.last and math.isfinite(float(t.last))) else t.close
+                    if p is not None and math.isfinite(float(p)) and float(p) > 0:
                         out[s] = float(p)
             finally:
                 ib.disconnect()
             return out
 
+        # Quotes come from IBKR only. Never subscribe through NinjaTrader ATI;
+        # it permits only one market-data handler and will pop modal errors.
         px = asyncio.run(_live_prices())
+        # Exact-contract IBKR snapshots are best-effort. Fill missing symbols
+        # from the newest local bar so the panel remains complete and honest.
+        for s in syms:
+            if s not in px:
+                mark = bar_cache.latest_cached_mark(s)
+                if mark:
+                    px[s] = float(mark["close"])
         positions, total = [], 0.0
         for o in opens:
             s = str(o["symbol"]).upper()
@@ -1290,8 +1331,8 @@ def _build_chat_prompt(message: str) -> str:
         "Always treat the provided blocks as ground truth. If chat history references stale "
         "ids that conflict with the fresh data, the fresh data wins.\n\n"
         "The operator is in America/Phoenix. When replying, use PHX time by default. "
-        "The backend and DB may still use UTC internally. Since 2026-07-26 the TradingCrew trades a "
-        "REAL Lucid 50K eval account (see config.yaml ninjatrader.account) via NinjaTrader — this is NOT paper.\n\n"
+        "The backend and DB may still use UTC internally. The TradingCrew currently trades "
+        "NinjaTrader simulation account SimJudasFutures. Never describe it as live or real money.\n\n"
         f"{freshness}\n"
         f"Current overview:\n{json.dumps(overview, indent=2)}\n\n"
         f"Active strategies ({len(active_strategies)}):\n{json.dumps(active_strategies, indent=2)}\n\n"
@@ -1420,14 +1461,15 @@ def create_app() -> Flask:
                     "SELECT COUNT(*) n, ROUND(COALESCE(SUM(pnl_dollars),0),2) pnl, "
                     "ROUND(SUM(CASE WHEN pnl_dollars>0 THEN pnl_dollars ELSE 0 END)/"
                     "NULLIF(-SUM(CASE WHEN pnl_dollars<0 THEN pnl_dollars ELSE 0 END),0),2) pf "
-                    "FROM trades WHERE status='closed' AND opened_at>='2026-08-16'"
+                    "FROM trades WHERE status='closed' AND opened_at>='2026-09-02'"
                 ).fetchone()
                 gaps = conn.execute(
                     "SELECT COUNT(*) n, ROUND(COALESCE(SUM(pnl_dollars),0),2) pnl "
-                    "FROM trades WHERE exit_reason='nt_ledger_gap'"
+                    "FROM trades WHERE exit_reason='nt_ledger_gap' "
+                    "AND opened_at>='2026-09-02'"
                 ).fetchone()
                 out["era"] = {"trades": era["n"], "pnl": era["pnl"], "pf": era["pf"],
-                              "since": "2026-08-16",
+                              "since": "2026-09-02",
                               "ledger_gap_trades": gaps["n"], "ledger_gap_pnl": gaps["pnl"]}
         except Exception:  # noqa: BLE001
             out["era"] = None
@@ -1435,10 +1477,9 @@ def create_app() -> Flask:
 
     @app.get("/api/strategy_leaderboard")
     def strategy_leaderboard() -> Any:
-        """Per ACTIVE strategy: walk-forward backtest stats + LIVE stats from
-        REAL-account fills only (since the 2026-07-26 cutover). This is the
-        board that answers 'is this strategy earning real money', unlike the
-        all-time view that mixes in the sim era."""
+        """Per CURRENT active strategy version: backtest stats plus trades
+        attributed to that exact active strategy id in the current sim era.
+        Historical trades on retired/superseded versions remain in history."""
         try:
             with get_conn(_db_path()) as conn:
                 rows = [dict(r) for r in conn.execute(
@@ -1447,17 +1488,17 @@ def create_app() -> Flask:
                       a.metrics_json,
                       COALESCE(c.name, a.strategy_family) strategy,
                       (SELECT COUNT(*) FROM trades t WHERE t.strategy_id=a.id
-                         AND t.status='closed' AND t.opened_at>='2026-07-26') live_n,
+                         AND t.status='closed' AND t.opened_at>='2026-09-02') live_n,
                       (SELECT ROUND(COALESCE(SUM(t.pnl_dollars),0),0) FROM trades t
                          WHERE t.strategy_id=a.id AND t.status='closed'
-                         AND t.opened_at>='2026-07-26') live_pnl,
+                         AND t.opened_at>='2026-09-02') live_pnl,
                       (SELECT ROUND(SUM(CASE WHEN t.pnl_dollars>0 THEN t.pnl_dollars ELSE 0 END)/
                               NULLIF(-SUM(CASE WHEN t.pnl_dollars<0 THEN t.pnl_dollars ELSE 0 END),0),2)
                          FROM trades t WHERE t.strategy_id=a.id AND t.status='closed'
-                         AND t.opened_at>='2026-07-26') live_pf,
+                         AND t.opened_at>='2026-09-02') live_pf,
                       (SELECT ROUND(100.0*SUM(t.pnl_dollars>0)/COUNT(*),0) FROM trades t
                          WHERE t.strategy_id=a.id AND t.status='closed'
-                         AND t.opened_at>='2026-07-26') live_wr,
+                         AND t.opened_at>='2026-09-02') live_wr,
                       (SELECT MAX(t.opened_at) FROM trades t WHERE t.strategy_id=a.id) last_fire
                     FROM active_strategies a
                     LEFT JOIN custom_strategies c
@@ -1476,15 +1517,13 @@ def create_app() -> Flask:
                 rows.sort(key=lambda r: (r["live_pnl"] if r["live_n"] else float("-inf"),
                                          r["bt_pf"] if r["bt_pf"] is not None else float("-inf")),
                           reverse=True)
-                return jsonify({"strategies": rows, "live_since": "2026-07-26"})
+                return jsonify({"strategies": rows, "live_since": "2026-09-02"})
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": str(exc), "strategies": []}), 500
 
     @app.get("/api/live_history")
     def live_history() -> Any:
-        """Full REAL-money trade history (since the 2026-07-26 cutover to real
-        Lucid evals): every closed trade with strategy attribution + daily
-        aggregates with running cumulative — how it really performed."""
+        """Trade history with era/account labels and strategy attribution."""
         try:
             with get_conn(_db_path()) as conn:
                 trades = [dict(r) for r in conn.execute(
@@ -1494,7 +1533,10 @@ def create_app() -> Flask:
                            ROUND(t.pnl_dollars,2) pnl_dollars, t.exit_reason,
                            t.opened_at, t.closed_at,
                            CAST(ROUND((julianday(t.closed_at) - julianday(t.opened_at)) * 1440) AS INTEGER) held_min,
-                           CASE WHEN t.opened_at < '2026-07-30' THEN 'LFE..89' WHEN t.opened_at < '2026-08-16' THEN 'LFE..100' ELSE 'LFE..104' END account,
+                           CASE WHEN t.opened_at < '2026-07-30' THEN 'LFE..89'
+                                WHEN t.opened_at < '2026-08-16' THEN 'LFE..100'
+                                WHEN t.opened_at < '2026-09-02' THEN 'LFE..104'
+                                ELSE 'SimJudasFutures' END account,
                            COALESCE(c.name, a.strategy_family, t.strategy_family) strategy
                     FROM trades t
                     LEFT JOIN active_strategies a ON a.id = t.strategy_id
@@ -1677,15 +1719,15 @@ def create_app() -> Flask:
 
     @app.get("/api/briefs")
     def list_briefs() -> Any:
-        """List daily briefs from the last 30 days, most recent first."""
+        """List the 30 most recent daily briefs, most recent first."""
         with get_conn(_db_path()) as conn:
             try:
                 rows = conn.execute(
                     """
                     SELECT id, brief_date, created_at_utc, summary_json, acknowledged_at_utc
                     FROM daily_briefs
-                    WHERE brief_date >= date('now', '-30 days')
                     ORDER BY brief_date DESC, created_at_utc DESC
+                    LIMIT 30
                     """
                 ).fetchall()
             except Exception:

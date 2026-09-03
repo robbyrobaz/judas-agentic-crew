@@ -76,6 +76,7 @@ def _install_pair_mocks(monkeypatch, *, leg_b_fails: bool, leg_b_raises: bool = 
         lambda: [_fake_pair_row()],
     )
     monkeypatch.setattr(portfolio_runtime, "fetch_bars", lambda *a, **kw: {})
+    monkeypatch.setattr(portfolio_runtime, "_is_instrument_blocked", lambda _s: False)
     monkeypatch.setattr(portfolio_runtime, "evaluate_active_strategy", _fake_pair_fires)
 
     cancel_calls: list[int] = []

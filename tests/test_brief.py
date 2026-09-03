@@ -286,6 +286,7 @@ def test_write_brief_step_via_flow(tmp_path, monkeypatch):
     # Force noop routing so the Phase 5 explore triggers don't flip this
     # test's expectation of decision == "noop".
     monkeypatch.setattr(of, "_decide_explore_or_noop", lambda *, db_path: ("noop", None))
+    monkeypatch.setattr(of, "_detect_pending_symptoms", lambda *, db_path: [])
 
     # Force morning_review to return "noop" path (no active strategies seeded
     # so review_all_active_strategies returns []).

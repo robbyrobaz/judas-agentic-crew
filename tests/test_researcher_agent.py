@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 
 from src.db.models import init_db
 from src.research import researcher_agent, pm_agent, agent_tools
@@ -81,3 +82,7 @@ def test_loop_invokes_propose_candidate(tmp_path, monkeypatch):
     )
     assert out.success is True
     assert any(a.action == "propose_candidate" for a in out.actions_taken)
+    with sqlite3.connect(db) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM strategy_candidates WHERE rationale='test pulse'"
+        ).fetchone()[0] == 1

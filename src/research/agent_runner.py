@@ -85,22 +85,17 @@ def daily_tokens_used(*, db_path: str) -> int:
 
 # Teams that keep running even over budget — position protection beats pacing.
 _BUDGET_EXEMPT_TEAMS = {"trader"}
-# 150M/day ≈ 1.05B/wk — ~40% of the ~2.8B weekly quota. This crew is the ONLY
-# MiniMax consumer (Rob, 2026-07-17), so the whole quota is ours; the headroom
-# is for burst days and the budget-exempt trader. Was 300M, but that was set
-# when only agent_runner recorded usage — now that ALL paths meter (pm/operator,
-# coder, reviewer), 300M/day would genuinely spend 2.1B/wk and peg the quota
-# again. The 2026-07-17 blowout reconciles exactly: unmetered operator runs
-# (~74M each × 4/day) + coder ≈ 2B/wk invisible burn.
-_DEFAULT_DAILY_TOKEN_BUDGET = 150_000_000
+# Conservative shared ceiling for non-trader reasoning. The trader remains
+# exempt because position protection must not stop for a research budget.
+_DEFAULT_DAILY_TOKEN_BUDGET = 20_000_000
 
 # Per-RUN token ceiling. 2026-07-17 lesson: with unlimited turns the ONLY stop
 # condition was MiniMax's 429 — the operator ran 47 min / 1,056 calls and ate
 # the entire 5h window in one cycle, then the coder did it again. A single
-# decision cycle never legitimately needs more than a few million tokens; when
+# decision cycle should fit well below one million tokens; when
 # the cap trips the agent wraps up cleanly and the next timer cycle continues.
 # Applies to EVERY LLM loop (agent_runner, pm_agent, autofix). Env-overridable.
-_DEFAULT_RUN_TOKEN_CAP = 3_000_000
+_DEFAULT_RUN_TOKEN_CAP = 750_000
 
 
 def run_token_cap() -> int:

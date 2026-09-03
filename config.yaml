@@ -18,25 +18,26 @@ execution:
 # WinRM → PowerShell → NT Client API on the Windows host. Password from env
 # WINDOWS_PASSWORD (set in the systemd unit), never committed here.
 ninjatrader:
-  account: LFE05064290360104  # REAL Lucid 50K Flex eval (wired 2026-08-16; LFE..100 blew MLL Fri 08-15 close $47,969.55 < $48,000)
+  account: SimJudasFutures    # NinjaTrader simulation account (wired 2026-09-02)
   host: 100.108.151.36        # Tailscale IP of the Windows NT box
   user: nqtrader
   python_exe: "C:\\PyBridge\\python.exe"
   outgoing_dir: "C:\\Users\\hartw\\Documents\\NinjaTrader 8\\outgoing"
   fill_timeout_s: 15
   fill_poll_s: 1.0
-  # Logical symbol → NT instrument string ("ROOT MM-YY"). Front months as of
-  # 2026-05-30; MNQ/MCL/DX June contracts roll ~mid-June — update at roll.
-  # ZF/6J are best-effort: verify the NT sim data feed carries them.
+  # Logical symbol → NT instrument string ("ROOT MM-YY"). These are a readable
+  # baseline only: every scan resolves the highest-volume live IBKR contract and
+  # rewrites the NT month from active_contracts.json. A missing/stale resolution
+  # blocks placement instead of falling back to these values.
   instrument_map:
-    MGC: "MGC 06-26"
-    MNQ: "MNQ 06-26"
-    MBT: "MBT 06-26"
-    MET: "MET 06-26"
-    MCL: "MCL 07-26"
-    DX:  "DX 06-26"
-    ZF:  "ZF 06-26"
-    "6J": "6J 06-26"
+    MGC: "MGC 12-26"
+    MNQ: "MNQ 09-26"
+    MBT: "MBT 09-26"
+    MET: "MET 09-26"
+    MCL: "MCL 10-26"
+    DX:  "DX 09-26"
+    ZF:  "ZF 12-26"
+    "6J": "6J 09-26"
 
 symbols:
   - symbol: MGC
@@ -58,16 +59,16 @@ strategy:
 
 risk:
   max_contracts: 1
-  max_open_positions: 4        # Lucid eval aggregate cap (was 12) — see lucid_guard
+  max_open_positions: 4        # maximum simultaneous managed trade rows
   max_trades_per_day: 24
 
 # LucidFlex 50k EVAL rules (enforced in src/research/lucid_guard.py, wired into
 # the scan). Documented here for humans/operator; the guard module is the source
-# of truth. Rob 2026-07-24: profit-only daily caps, aggregate 4-contract cap.
+# of truth. The sim keeps the latest risk-based 10-contract aggregate cap.
 lucid:
   venue: lucidflex_50k_eval
   banned_symbols: [MET, MBT, DX]   # crypto + dollar index — Lucid disallows
-  max_contracts_aggregate: 4        # total across the whole book
+  max_contracts_aggregate: 10       # total contracts across the whole book
   daily_profit_soft: 1200           # halt NEW entries at day P&L >= +$1,200
   daily_profit_hard: 1500           # flatten all + halt at day P&L >= +$1,500
   mll_trail: 2000                   # $2k trailing max-loss from peak daily close

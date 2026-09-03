@@ -7,6 +7,7 @@
 __pycache__/
 *.pyc
 *.tsbuildinfo
+*.log
 outputs/
 logs/
 dashboard/node_modules/
@@ -25,4 +26,5 @@ data/lucid_guard_state.json
 data/lucid_guard_ledger.*.bak
 data/lucid_guard_state.*.bak
 data/nt_truth_positions.json
+data/reviewer_last_run
 last_bar_closes.json

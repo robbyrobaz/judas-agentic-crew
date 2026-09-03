@@ -28,7 +28,9 @@ from src.config import load_config
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Judas Agentic Crew — ICT Judas Swing on IBKR paper")
+    p = argparse.ArgumentParser(
+        description="Judas Agentic Crew — IBKR market data, NinjaTrader simulated execution"
+    )
     p.add_argument(
         "--symbol",
         default="MGC",

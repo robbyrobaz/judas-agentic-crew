@@ -81,7 +81,9 @@ def _strategy_name(row: Any) -> str:
     return f"{row['symbol']}/{row['strategy_family']}/v{row['version']}"
 
 
-def compute_live_metrics(*, db_path: str, strategy_id: int) -> StrategyMetrics:
+def compute_live_metrics(
+    *, db_path: str, strategy_id: int, real_fills_only: bool = False
+) -> StrategyMetrics:
     """Compute rolling-20 metrics for ``strategy_id`` from the trades table.
 
     Returns ``StrategyMetrics``. For < 5 closed trades, pf_20 / expectancy_20
@@ -98,11 +100,13 @@ def compute_live_metrics(*, db_path: str, strategy_id: int) -> StrategyMetrics:
         name = _strategy_name(active)
 
         # Closed trades for this strategy, most recent first.
+        real_filter = " AND exit_reason LIKE '%_real'" if real_fills_only else ""
         closed = conn.execute(
-            """
+            f"""
             SELECT pnl_dollars, opened_at, closed_at
             FROM trades
             WHERE strategy_id = ? AND status = 'closed'
+            {real_filter}
             ORDER BY datetime(COALESCE(closed_at, opened_at)) DESC
             """,
             (strategy_id,),

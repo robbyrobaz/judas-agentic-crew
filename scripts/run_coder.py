@@ -26,7 +26,7 @@ def main() -> int:
     if pending == 0:
         print("coder: no pending tasks — skipping")
         return 0
-    result = run_coder_decision(db_path=db_path)
+    result = run_coder_decision(db_path=db_path, turn_budget=1)
     print(
         f"coder: success={result.success} tasks_processed={len(result.actions_taken)} "
         f"elapsed={result.elapsed_s:.1f}s fallback={result.fallback_used}"

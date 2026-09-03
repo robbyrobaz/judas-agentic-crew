@@ -107,6 +107,7 @@ def _find_state_payload(rows: list[dict]) -> dict | None:
 
 def test_operator_flow_kickoff_completes_and_persists(state_db, monkeypatch):
     module, db_path = state_db
+    monkeypatch.setattr(module, "_detect_pending_symptoms", lambda *, db_path: [])
     # PM-agent era: morning_review only routes to "fix_bug" or "noop".
     # Conftest sets JUDAS_PM_AGENT_INHIBIT=1 and pops MINIMAX_API_KEY so the
     # PM agent short-circuits; no symptoms in the empty fixture DB means

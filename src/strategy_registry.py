@@ -219,8 +219,12 @@ def create_candidate(
     rationale: str,
     status: str = "candidate",
     source_experiment_id: int | None = None,
+    db_path: str | None = None,
 ) -> int:
-    with get_conn(_ensure_db()) as conn:
+    target_db = db_path or _ensure_db()
+    if db_path:
+        init_db(target_db)
+    with get_conn(target_db) as conn:
         cur = conn.execute(
             """
             INSERT INTO strategy_candidates

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -18,14 +20,29 @@ def main() -> int:
         "JUDAS_DB_PATH",
         str(Path(__file__).resolve().parents[1] / "judas_crew.db"),
     )
-    # UNCAPPED (2026-06-23): no artificial turn/time limit — the reviewer runs
-    # until done (verify the dossier, run the devil's-advocate pass, then act).
-    # Wall-clock ceiling is the systemd TimeoutStartSec (20min). 0 = unlimited.
+    state_path = Path(__file__).resolve().parents[1] / "data" / "reviewer_last_run"
+    last_run = state_path.stat().st_mtime if state_path.exists() else 0.0
+    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(last_run))
+    with sqlite3.connect(db_path) as conn:
+        candidates = conn.execute(
+            "SELECT COUNT(*) FROM strategy_candidates WHERE status='candidate'"
+        ).fetchone()[0]
+        tasks = conn.execute(
+            "SELECT COUNT(*) FROM agent_tasks WHERE team='reviewer' AND status='open'"
+        ).fetchone()[0]
+        new_trades = conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE status='closed' AND closed_at > ?", (since,)
+        ).fetchone()[0]
+    if candidates == 0 and tasks == 0 and new_trades == 0 and time.time() - last_run < 86400:
+        print("reviewer: no new evidence or pending work — skipping")
+        return 0
     result = run_reviewer_decision(
         db_path=db_path,
-        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "0")),
-        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "0")),
+        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "8")),
+        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "600")),
     )
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.touch()
     print(
         f"reviewer: success={result.success} actions={len(result.actions_taken)} "
         f"turns={result.turns_used} elapsed={result.elapsed_s:.1f}s "

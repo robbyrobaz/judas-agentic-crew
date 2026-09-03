@@ -4,7 +4,7 @@
 The detectors are timeframe-agnostic; a strategy's ``timeframe`` param just
 selects which bars bar_cache feeds it. This clones each existing active
 strategy onto the requested timeframes (default 5m + 15m) so the crew starts
-producing more frequent signals. These run on the SimJudasCrew SIM account, so
+producing more frequent signals. These run on the SimJudasFutures SIM account, so
 this is forward-testing, not real-money risk — a small bootstrap that gives the
 M3 research crew a faster validation loop to expand/tune from.
 
@@ -95,7 +95,7 @@ def main() -> int:
                         "(symbol, strategy_family, version, params_json, metrics_json, state, activated_at_utc, notes) "
                         "VALUES (?, ?, 1, ?, ?, 'active', ?, ?)",
                         (sym, fam, json.dumps(new_params), json.dumps(metrics), _utc_now(),
-                         f"multi-tf bootstrap: {tf} clone of {base_name} (paper/SimJudasCrew)"),
+                         f"multi-tf bootstrap: {tf} clone of {base_name} (sim/SimJudasFutures)"),
                     )
                     print(f"seeded {sym} {fam} {new_name} tf={tf}")
                 seeded += 1

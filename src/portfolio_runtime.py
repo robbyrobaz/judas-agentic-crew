@@ -896,29 +896,58 @@ def _save_signal_and_trade(db_path: str, fire: ActiveFire, order: dict[str, Any]
     return {"signal_id": signal_id, "trade_id": trade_id}
 
 
-def _reconcile_open_trades(db_path: str, bars_by_sym: dict[str, pd.DataFrame]) -> int:
-    """Close any open DB trades whose stop or target was crossed by the last bar.
+async def _fetch_ibkr_fills_by_order_id(
+    *, host: str, port: int, client_id: int
+) -> dict[int, Any]:
+    """Fetch the current IBKR execution set, keyed by numeric order id."""
+    ib = IB()
+    try:
+        await ib.connectAsync(host, port, clientId=client_id, timeout=15)
+        return {
+            int(fill.execution.orderId): fill
+            for fill in ib.fills()
+            if getattr(fill, "execution", None) is not None
+        }
+    except Exception as exc:  # noqa: BLE001
+        log.warning("IBKR execution fetch unavailable: %s", exc)
+        return {}
+    finally:
+        if ib.isConnected():
+            ib.disconnect()
+
+
+def _reconcile_open_trades(
+    db_path: str,
+    bars_by_sym: dict[str, pd.DataFrame],
+    *,
+    host: str | None = None,
+    port: int | None = None,
+    client_id: int | None = None,
+) -> int:
+    """Close open DB trades from real IBKR fills, then bar-touch fallback.
 
     This is a best-effort reconciliation: it uses the cached 1H bars to detect
-    whether stop/target was hit since the trade was opened.  Fill price is set
-    to the stop or target level (paper account semantics).  Returns number of
-    trades closed.
+    Synthetic fallback exits are explicitly tagged so performance review can
+    exclude them. Returns the number of trades closed.
     """
     from src.db.models import get_conn
 
     with get_conn(db_path) as conn:
         open_trades = conn.execute(
-            "SELECT id, symbol, direction, qty, entry_fill, stop_price, target_price, opened_at "
+            "SELECT id, symbol, direction, qty, entry_fill, stop_price, target_price, opened_at, "
+            "tp_order_id, sl_order_id "
             "FROM trades WHERE status = 'open'"
         ).fetchall()
+
+    fills: dict[int, Any] = {}
+    if host is not None and port is not None and client_id is not None:
+        fills = asyncio.run(_fetch_ibkr_fills_by_order_id(
+            host=host, port=port, client_id=client_id,
+        ))
 
     closed = 0
     for row in open_trades:
         sym = str(row["symbol"]).upper()
-        bars = bars_by_sym.get(sym)
-        if bars is None or bars.empty:
-            continue
-
         opened_at = str(row["opened_at"])
         stop = float(row["stop_price"] or 0)
         target = float(row["target_price"] or 0)
@@ -934,42 +963,61 @@ def _reconcile_open_trades(db_path: str, bars_by_sym: dict[str, pd.DataFrame]) -
         ts_sz = spec.get("tick", 0.01)
         dpp = ts_val / ts_sz if ts_sz else 1.0
 
-        # Only look at bars since the trade opened.
-        try:
-            since = pd.to_datetime(opened_at, utc=True)
-        except Exception:
-            continue
-        post = bars[bars["ts"] > since]
-        if post.empty:
-            continue
-
         exit_fill: float | None = None
         exit_reason: str | None = None
         exit_ts: str | None = None
 
-        for _, b in post.iterrows():
+        for oid_key, reason in (("tp_order_id", "target_real"),
+                                ("sl_order_id", "stop_real")):
+            try:
+                fill = fills.get(int(row[oid_key])) if row[oid_key] else None
+            except (TypeError, ValueError):
+                fill = None
+            if fill is not None:
+                execution = fill.execution
+                exit_fill = float(getattr(execution, "avgPrice", 0) or
+                                  getattr(execution, "price", 0))
+                exit_reason = reason
+                fill_time = getattr(fill, "time", None)
+                exit_ts = fill_time.isoformat() if hasattr(fill_time, "isoformat") else str(fill_time)
+                break
+
+        bars = bars_by_sym.get(sym)
+        if exit_fill is None and (bars is None or bars.empty):
+            continue
+
+        # Only look at bars since the trade opened when no real execution exists.
+        try:
+            since = pd.to_datetime(opened_at, utc=True)
+        except Exception:
+            continue
+        post = bars[bars["ts"] > since] if exit_fill is None else None
+        if exit_fill is None and post.empty:
+            continue
+
+        for _, b in post.iterrows() if post is not None else []:
             low, high = float(b["low"]), float(b["high"])
             ts_str = str(b["ts"])
             if direction == "long":
                 if low <= stop:
                     exit_fill = stop
-                    exit_reason = "stop"
+                    exit_reason = "stop_synthetic"
                     exit_ts = ts_str
                     break
                 if high >= target:
                     exit_fill = target
-                    exit_reason = "target"
+                    exit_reason = "target_synthetic"
                     exit_ts = ts_str
                     break
             else:
                 if high >= stop:
                     exit_fill = stop
-                    exit_reason = "stop"
+                    exit_reason = "stop_synthetic"
                     exit_ts = ts_str
                     break
                 if low <= target:
                     exit_fill = target
-                    exit_reason = "target"
+                    exit_reason = "target_synthetic"
                     exit_ts = ts_str
                     break
 
@@ -982,8 +1030,9 @@ def _reconcile_open_trades(db_path: str, bars_by_sym: dict[str, pd.DataFrame]) -
         )
         with get_conn(db_path) as conn:
             conn.execute(
-                "UPDATE trades SET status='closed', exit_fill=?, pnl_dollars=?, closed_at=? WHERE id=?",
-                (exit_fill, pnl, exit_ts, int(row["id"])),
+                "UPDATE trades SET status='closed', exit_fill=?, pnl_dollars=?, "
+                "exit_reason=?, closed_at=? WHERE id=?",
+                (exit_fill, pnl, exit_reason, exit_ts, int(row["id"])),
             )
         log.info(
             "reconcile.closed trade_id=%d sym=%s reason=%s exit=%.4f pnl=%.2f",
@@ -1382,7 +1431,7 @@ def _orphan_body(db_path: str) -> int:
 
     2026-07-17: this used to AUTO-FLATTEN excess qty every cycle. That was wrong
     twice over — (1) it would dump genuinely profitable unmanaged positions the
-    moment the feed could see them (SimJudasCrew was +$5k on 9 unmanaged
+    moment the feed could see them (the legacy SimJudasCrew era was +$5k on 9 unmanaged
     contracts), and (2) Rob's mandate is that the LLM crew, not a blind
     deterministic guardrail, manages positions. So this now DETECTS and QUEUES
     for the crew's judgment instead of closing anything itself.
@@ -1487,8 +1536,8 @@ def _point_value(symbol: str) -> float:
 
 def _lucid_guard_assess(broker, bars_by_sym: dict):
     """LucidFlex 50k eval guard for the NT account. Returns
-    (decision, nt_open_contracts) or (None, 0) if live data is unavailable
-    (fail-open — the deterministic banned-symbol/EOD gates still apply).
+    (decision, nt_open_contracts). Unavailable or invalid broker data halts
+    new entries until a trustworthy account snapshot is available.
 
     Equity = NT cash + unrealized (open positions marked to the latest cached
     bar close), so the profit/MLL guards don't fire late on a running position.
@@ -1498,12 +1547,15 @@ def _lucid_guard_assess(broker, bars_by_sym: dict):
         summ = broker.account_summary()
         positions = broker.positions()
         if summ is None or "cash" not in summ or positions is None:
-            log.warning("lucid_guard: NT data unavailable (summ=%s pos=%s) — P&L guards skipped this scan",
-                        summ is not None, positions is not None)
-            return None, 0
+            reason = "NT account data unavailable; entries halted fail-closed"
+            log.error("lucid_guard: %s (summ=%s pos=%s)", reason,
+                      summ is not None, positions is not None)
+            return _lg.GuardDecision(halt_entries=True, cushion=0.0,
+                                     reasons=[reason]), None
         cash = float(summ["cash"])
         unrealized = 0.0
         nt_contracts = 0
+        missing_marks: list[str] = []
         for p in positions:
             sym = str(p.get("symbol", "")).upper()
             qty = int(p.get("qty", 0) or 0)
@@ -1511,24 +1563,31 @@ def _lucid_guard_assess(broker, bars_by_sym: dict):
             avg = float(p.get("avg_price", 0) or 0)
             df = bars_by_sym.get(sym)
             if df is None or not len(df) or avg <= 0:
+                missing_marks.append(sym or "unknown")
                 continue
             cur = float(df["close"].iloc[-1])
             sign = 1.0 if p.get("side") == "LONG" else -1.0
             unrealized += (cur - avg) * sign * qty * _point_value(sym)
+        if missing_marks:
+            reason = ("NT open-position mark unavailable for "
+                      f"{','.join(sorted(set(missing_marks)))}; entries halted fail-closed")
+            log.error("lucid_guard: %s", reason)
+            return _lg.GuardDecision(halt_entries=True, cushion=0.0,
+                                     reasons=[reason]), nt_contracts
         # Defensive guard (2026-08-09): mirror the record_daily_close defense. A
         # broker returning cash=$0 with zero positions is a broken read (WinRM /
         # NT sim zero / field-name mismatch / ledger seeded from a different
         # account). Without this check, peak_close_equity() pins to start_balance
-        # and the trailing MLL breach becomes perpetual (finding 2b1e5ae5) — the
-        # guard would refuse every entry indefinitely even though the book is
-        # flat and healthy. Fail-open to let the deterministic banned-symbol /
-        # aggregate-cap gates continue to enforce.
+        # and the trailing MLL breach becomes perpetual (finding 2b1e5ae5).
+        # The read is not trustworthy enough to authorize fresh risk.
         if cash == 0 and nt_contracts == 0:
-            log.warning(
+            log.error(
                 "lucid_guard: cash=$0 + 0 contracts (likely stale broker read or "
-                "ledger/account mismatch) \u2014 P&L guards skipped this scan"
+                "ledger/account mismatch) \u2014 entries halted fail-closed"
             )
-            return None, 0
+            reason = "NT cash is zero with no positions; entries halted fail-closed"
+            return _lg.GuardDecision(halt_entries=True, cushion=0.0,
+                                     reasons=[reason]), 0
         cur_equity = cash + unrealized
         day_start = _lg.day_start_equity()
         if day_start is None:
@@ -1538,10 +1597,13 @@ def _lucid_guard_assess(broker, bars_by_sym: dict):
         peak_close = _lg.peak_close_equity(default=cur_equity)
         decision = _lg.assess(cur_equity=cur_equity, day_start=day_start,
                               peak_close=peak_close, nt_contracts=nt_contracts)
+        decision = _lg.apply_profit_latch(decision)
         return decision, nt_contracts
     except Exception as exc:  # noqa: BLE001
         log.error("lucid_guard assess failed: %s", exc, exc_info=True)
-        return None, 0
+        reason = f"NT account guard failed; entries halted fail-closed: {exc}"
+        return _lg.GuardDecision(halt_entries=True, cushion=0.0,
+                                 reasons=[reason]), None
 
 
 def _lucid_flatten_all(db_path: str, broker) -> int:
@@ -1833,6 +1895,20 @@ def run_portfolio_scan(
     # 1h-only view for the ibkr-route bar-touch reconciler (NT route reconciles
     # via real fill GUIDs and ignores this).
     bars_by_sym = {s: df for (s, tf), df in bars_by_pair.items() if tf == bar_cache.DEFAULT_TF}
+    # The guard must mark open positions from the freshest available bar. The
+    # active strategy roster can be entirely 5m/15m, leaving the legacy 1h view
+    # empty and silently excluding unrealized P&L from the daily cap.
+    guard_bars_by_sym: dict[str, pd.DataFrame] = {}
+    guard_bar_ts: dict[str, pd.Timestamp] = {}
+    for (sym, _tf), df in bars_by_pair.items():
+        if df is None or df.empty or "ts" not in df.columns:
+            continue
+        ts = pd.to_datetime(df["ts"].iloc[-1], utc=True, errors="coerce")
+        if pd.isna(ts):
+            continue
+        if sym not in guard_bar_ts or ts > guard_bar_ts[sym]:
+            guard_bar_ts[sym] = ts
+            guard_bars_by_sym[sym] = df
 
     # Reconcile open trades. NT route reads REAL fills from the OIF files; the
     # IBKR/legacy route uses bar-touch against the cached 1H bars.
@@ -1855,7 +1931,9 @@ def run_portfolio_scan(
         except Exception as exc:  # noqa: BLE001
             log.error("orphan reconcile failed: %s", exc, exc_info=True)
     else:
-        _reconcile_open_trades(db_path, bars_by_sym)
+        _reconcile_open_trades(
+            db_path, bars_by_sym, host=host, port=port, client_id=exec_client_id,
+        )
 
     # LucidFlex 50k eval guard (NT route). One assessment per scan: profit
     # soft/hard caps, $2k trailing MLL, aggregate 4-contract cap, EOD flatten.
@@ -1865,7 +1943,7 @@ def run_portfolio_scan(
     if route == "ninjatrader":
         try:
             from src.research import lucid_guard as _lg
-            _decision, lucid_nt_contracts = _lucid_guard_assess(_nt_broker(), bars_by_sym)
+            _decision, lucid_nt_contracts = _lucid_guard_assess(_nt_broker(), guard_bars_by_sym)
             if _decision is not None:
                 lucid_block_entries = _decision.halt_entries
                 lucid_cushion = _decision.cushion

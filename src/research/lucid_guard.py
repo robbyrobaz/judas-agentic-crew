@@ -48,13 +48,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DATA_DIR = _REPO_ROOT / "data"
 _LEDGER_PATH = _DATA_DIR / "lucid_guard_ledger.json"
 _STATE_PATH = _DATA_DIR / "lucid_guard_state.json"
+_PROFIT_LOCK_PATH = _DATA_DIR / "lucid_guard_profit_lock.json"
 
 # Single active venue. If more are added later, key this off config.
 RULES = {
     "venue": "lucidflex_50k_eval",
     "banned_symbols": {"MET", "MBT", "DX"},
-    "max_contracts_aggregate": 10,  # raised 4->10 for risk-based sizing (2026-08-16);
-                                    # Lucid's own limit is 4 minis / 40 micros — still 4x margin
+    "max_contracts_aggregate": 10,  # risk-based sizing cap; aligned with config.yaml
     "daily_profit_soft": 1200.0,   # halt NEW entries at day P&L >= this
     "daily_profit_hard": 1500.0,   # flatten all + halt at day P&L >= this
     "daily_loss_soft": -700.0,     # CEILING on the halt-new-entries cap (see cushion scaling)
@@ -312,6 +312,44 @@ def assess(*, cur_equity: float, day_start: float, peak_close: float,
         d.reasons.append(why)
 
     return d
+
+
+def apply_profit_latch(decision: GuardDecision,
+                       now_utc: datetime | None = None) -> GuardDecision:
+    """Latch a soft/hard profit cap for the rest of the trading day.
+
+    Without this, a runner could cross +$1,200, retreat below it, and allow
+    fresh entries later. A hard-cap fill with slippage could similarly fall
+    back below the threshold. The date-keyed latch resets automatically on the
+    next Globex trading day.
+    """
+    today = trading_date(now_utc)
+    level = "hard" if decision.day_pnl >= RULES["daily_profit_hard"] else (
+        "soft" if decision.day_pnl >= RULES["daily_profit_soft"] else "")
+    try:
+        prior = json.loads(_PROFIT_LOCK_PATH.read_text()) if _PROFIT_LOCK_PATH.exists() else {}
+    except (json.JSONDecodeError, OSError):
+        prior = {}
+    if prior.get("trading_date") == today:
+        if prior.get("level") == "hard" or not level:
+            level = str(prior.get("level") or level)
+    if level:
+        decision.halt_entries = True
+        if level == "hard":
+            decision.force_flat = True
+        marker = f"DAILY_PROFIT_{level.upper()}_LATCHED for {today}"
+        if marker not in decision.reasons:
+            decision.reasons.append(marker)
+        try:
+            _DATA_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = _PROFIT_LOCK_PATH.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"trading_date": today, "level": level,
+                                       "updated_utc": (now_utc or datetime.now(timezone.utc)).isoformat()},
+                                      indent=1))
+            tmp.replace(_PROFIT_LOCK_PATH)
+        except OSError:
+            pass
+    return decision
 
 
 def write_state(decision: GuardDecision, nt_contracts: int,

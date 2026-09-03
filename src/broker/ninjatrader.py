@@ -1,8 +1,8 @@
 """NinjaTrader order placement adapter via WinRM bridge to a Windows NT host.
 
 Copied from judas-futures-workshop/src/broker/ninjatrader.py and adapted for
-judas-agentic-crew. The crew routes EXECUTION to a NinjaTrader sim account
-("SimJudasCrew") while still sourcing market DATA from IBKR (clientId 150).
+judas-agentic-crew. The crew routes execution to `SimJudasFutures` while
+sourcing all market data from IBKR (clientId 150).
 
 Bridge pattern:
     Python here  → WinRM/PowerShell on Windows → Python on Windows →

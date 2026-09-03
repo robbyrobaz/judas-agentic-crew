@@ -17,3 +17,7 @@ dependencies = [
     "flask>=3.0.0",
     "waitress>=3.0.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

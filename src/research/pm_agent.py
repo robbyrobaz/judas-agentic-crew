@@ -876,6 +876,7 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
                 decision="pm_agent_propose",
                 rationale=str(rationale or ""),
                 status="candidate",
+                db_path=db_path,
             )
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
@@ -1103,7 +1104,9 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
     # ---- custom strategy invention --------------------------------------
 
     def run_custom_backtest_tool(*, code: str, symbol: str, days: int = 90,
-                                 timeframe: str = "1h") -> dict:
+                                 timeframe: str = "1h",
+                                 params: dict | None = None,
+                                 qty: int = 1) -> dict:
         sym = str(symbol).upper()
         if sym not in _VALID_SYMBOLS:
             return {"ok": False, "error": f"unknown symbol: {sym}"}
@@ -1114,7 +1117,7 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
         try:
             metrics = csr.run_custom_backtest(
                 code=code, symbol=sym, days=int(days), db_path=db_path,
-                timeframe=str(timeframe),
+                timeframe=str(timeframe), params=params, qty=int(qty),
             )
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": f"backtest failed: {type(exc).__name__}: {exc}"}

@@ -307,6 +307,8 @@ def run_custom_backtest_on_bars(
     code: str,
     bars,
     params: dict | None = None,
+    symbol: str = "MGC",
+    qty: int = 1,
     timeout_s: int = 60,
 ) -> dict:
     """Replay ``bars`` through ``evaluate(bars, params)`` and aggregate.
@@ -336,6 +338,17 @@ def run_custom_backtest_on_bars(
                 "expectancy_r": 0.0, "max_drawdown": 0.0}
 
     p = dict(params or {})
+    sym = str(symbol).upper()
+    trade_qty = max(1, int(p.get("qty", qty) or 1))
+    from src.portfolio_runtime import _CONTRACT_SPECS
+    from src.tools.cost_model import COST_MODEL_VERSION, apply_costs_to_trade
+
+    spec = _CONTRACT_SPECS.get(sym)
+    if not spec or not spec.get("tick") or not spec.get("tick_value"):
+        return {"error": f"unknown contract economics for {sym}", "n_signals": 0,
+                "n_wins": 0, "n_losses": 0, "total_pnl": 0.0,
+                "pf": 0.0, "expectancy_r": 0.0, "max_drawdown": 0.0}
+    dollars_per_point = float(spec["tick_value"]) / float(spec["tick"])
 
     n_signals = 0
     wins = 0
@@ -368,18 +381,23 @@ def run_custom_backtest_on_bars(
                     if hit_stop or hit_target:
                         entry = open_trade["entry"]
                         risk = abs(entry - open_trade["stop"]) or 1.0
-                        if hit_target and not hit_stop:
-                            pnl = abs(open_trade["target"] - entry)
-                            r = pnl / risk
-                            if open_trade["direction"] == "short":
-                                pass  # magnitude same
+                        target_won = hit_target and not hit_stop
+                        points = (abs(open_trade["target"] - entry) if target_won
+                                  else -abs(entry - open_trade["stop"]))
+                        gross_pnl = points * dollars_per_point * trade_qty
+                        pnl = apply_costs_to_trade(
+                            symbol=sym,
+                            gross_pnl=gross_pnl,
+                            exit_reason="target" if target_won else "stop",
+                            qty=trade_qty,
+                        )
+                        if pnl > 0:
                             wins += 1
                         else:
-                            pnl = -abs(entry - open_trade["stop"])
-                            r = pnl / risk
                             losses += 1
                         pnls.append(float(pnl))
-                        rs.append(float(r))
+                        risk_dollars = risk * dollars_per_point * trade_qty
+                        rs.append(float(pnl / risk_dollars) if risk_dollars else 0.0)
                         open_trade = None
                         continue
 
@@ -439,8 +457,14 @@ def run_custom_backtest_on_bars(
         "n_losses": int(losses),
         "total_pnl": total_pnl,
         "pf": pf if pf != float("inf") else 999.0,
+        "profit_factor": pf if pf != float("inf") else 999.0,
         "expectancy_r": expectancy_r,
         "max_drawdown": float(max_dd),
+        "n_trades": len(pnls),
+        "symbol": sym,
+        "qty": trade_qty,
+        "dollars_per_point": dollars_per_point,
+        "cost_model": COST_MODEL_VERSION,
         "error": error,
     }
 
@@ -454,6 +478,8 @@ def run_custom_backtest(
     bars=None,
     timeout_s: int = 60,
     timeframe: str = "1h",
+    params: dict | None = None,
+    qty: int = 1,
 ) -> dict:
     """High-level entry point used by the PM agent tool.
 
@@ -470,7 +496,10 @@ def run_custom_backtest(
             "pf": 0.0, "expectancy_r": 0.0, "max_drawdown": 0.0,
             "error": "no bars available",
         }
-    return run_custom_backtest_on_bars(code=code, bars=bars, timeout_s=timeout_s)
+    return run_custom_backtest_on_bars(
+        code=code, bars=bars, params=params, symbol=symbol, qty=qty,
+        timeout_s=timeout_s,
+    )
 
 
 # ---------------------------------------------------------------------------

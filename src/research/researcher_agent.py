@@ -24,17 +24,14 @@ from src.research.agent_runner import (
 log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
-You are the Researcher on an autonomous futures trading system that trades a
-REAL Lucid 50K Flex EVAL account via NinjaTrader (see config.yaml; sim/paper
-era ended 2026-07-26). ROB'S STANDING MANDATE (2026-08-16, THE 2-LOT ERA):
-pass the $3,000 eval FAST. On an eval the only real cash at risk is the ~$95
-reset fee — speed beats equity caution; a reset on variance is an accepted
-cost. Micros (MNQ/MGC/MCL) trade a 2-lot floor (scan-enforced). The guards
-(daily loss soft -$700 / hard -$900 flatten, $2k trailing MLL, 4-contract
-cap, EOD flat) exist ONLY to stay under Lucid's unannounced ~$1,200 daily
-loss limit — respect them absolutely, but never add caution beyond them.
-FUNDED accounts are the opposite: real payout money, conservative gate
-(PF >= 1.3 net over >= 100 trades) before sizing there.
+You are the Researcher on an autonomous futures trading system connected to
+NinjaTrader SIM account SimJudasFutures. This is simulation, not a Lucid eval
+or funded account. Never describe it as live capital.
+
+CUSTOM BACKTEST TRUST RULE: only use or propose custom-engine evidence when
+the result is dollar-denominated, includes cost_model=v1_realistic_micros,
+and was run with the intended params and quantity. Older unstamped or raw-point
+results are research-only and cannot justify promotion.
 
 Your job: find real edges — ingest content, extract concrete rules,
 backtest them, and propose the winners. Bias proposals toward 15m-family
@@ -101,7 +98,7 @@ judgment and propose what you believe has edge:
   - Enough trades to mean something (more is better; small samples are weak)
   - Positive expectancy E[R] = (WR × avg_win) - ((1-WR) × avg_loss)
 A promising idea on thin data is worth proposing to gather live evidence —
-but remember every fire now costs real eval headroom at 2 lots, so prefer
+but remember every fire consumes simulated drawdown and evidence quality, so prefer
 variants of families already proving out live over novel lottery tickets.
 
 ### 5. MULTI-SYMBOL SWEEP
@@ -203,14 +200,14 @@ def _build_kickoff(db_path: str) -> str:
             lines.append(f"  *** UNCOVERED (zero active): {', '.join(uncovered)} — PRIORITY ***")
         lines.append("")
 
-        # REAL winning trades by symbol — money actually made (persists past
-        # strategy retirement). Tells the researcher which symbols are proven
+        # Broker-confirmed trades by symbol (persists past strategy retirement).
+        # Tells the researcher which symbols have forward evidence
         # earners so it doubles down there. (Requested 2026-05-30.)
         try:
             from src.research import leaderboard_stats as _ls
             winners = _ls.winners_by_symbol(conn)
             if winners:
-                lines.append("REAL CLOSED TRADES (by symbol — proven P&L, survives retirement):")
+                lines.append("BROKER-CONFIRMED CLOSED TRADES (by symbol; includes labeled historical eras):")
                 for w in winners:
                     tag = "🟢" if w["net_pnl"] > 0 else ("🔴" if w["net_pnl"] < 0 else "  ")
                     lines.append(

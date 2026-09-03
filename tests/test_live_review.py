@@ -218,6 +218,7 @@ def test_morning_review_invokes_pm_agent_and_routes(tmp_path, monkeypatch):
     monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
 
     module = _reload_operator_flow()
+    monkeypatch.setattr(module, "_detect_pending_symptoms", lambda *, db_path: [])
 
     calls: list[dict] = []
 
@@ -263,6 +264,7 @@ def test_morning_review_routes_to_noop_when_clean(tmp_path, monkeypatch):
     monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
 
     module = _reload_operator_flow()
+    monkeypatch.setattr(module, "_detect_pending_symptoms", lambda *, db_path: [])
 
     from src.research import pm_agent
 

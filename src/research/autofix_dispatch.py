@@ -354,8 +354,8 @@ def run_one_autofix(
             # UNCAPPED (2026-06-23): no artificial turn/time limit — the coder has
             # full repo access and runs until the fix is done + tested. Wall-clock
             # ceiling is the systemd TimeoutStartSec (45min). 0 = unlimited.
-            turn_budget=int(os.environ.get("JUDAS_AUTOFIX_TURNS", "0")),
-            time_budget_s=int(os.environ.get("JUDAS_AUTOFIX_TIME_S", "0")),
+            turn_budget=int(os.environ.get("JUDAS_AUTOFIX_TURNS", "12")),
+            time_budget_s=int(os.environ.get("JUDAS_AUTOFIX_TIME_S", "900")),
         )
     except Exception as exc:  # noqa: BLE001
         log.exception("autofix_dispatch.harness_failed")

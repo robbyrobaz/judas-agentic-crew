@@ -81,6 +81,7 @@ def _install_mocks(monkeypatch, active_rows):
         lambda: active_rows,
     )
     monkeypatch.setattr(portfolio_runtime, "fetch_bars", lambda *a, **kw: {})
+    monkeypatch.setattr(portfolio_runtime, "_is_instrument_blocked", lambda _s: False)
     monkeypatch.setattr(
         portfolio_runtime, "evaluate_active_strategy", _fake_single_fire
     )

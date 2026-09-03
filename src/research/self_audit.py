@@ -52,13 +52,13 @@ def build_leaderboard_block(db_path: str) -> str:
         )
         out.append("")
 
-        # REAL WINNING TRADES, by symbol — survives strategy retirement.
+        # Broker-confirmed closed trades by symbol — survives retirement.
         # A symbol can be net-profitable even if the strategy that earned it
         # was since retired/replaced; this keeps the win visible so agents
         # don't retire/ignore a productive symbol. (Requested 2026-05-30.)
         winners = ls.winners_by_symbol(conn)
         if winners:
-            out.append("REAL CLOSED TRADES (by symbol — money actually made; persists past retirement):")
+            out.append("BROKER-CONFIRMED CLOSED TRADES (by symbol; includes labeled historical eras):")
             for w in winners:
                 tag = "🟢" if w["net_pnl"] > 0 else ("🔴" if w["net_pnl"] < 0 else "  ")
                 out.append(

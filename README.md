@@ -1,286 +1,202 @@
-# judas-agentic-crew
+# Judas Agentic Crew
 
-A self-running futures trading system: a **pure-deterministic Python scanner** places
-bracket orders on a **real-money Lucid 50K eval account** via NinjaTrader, while a crew of
-**MiniMax-M3 LLM agents** (researcher, operator, registrar, trader, coder, reviewer)
-continuously researches strategies, reviews the portfolio, and manages anything the
-deterministic layer flags. The scanner that touches money makes **zero LLM calls**; the
-LLM budget is spent entirely on research and judgment.
+An autonomous futures-research and simulated-execution system. A deterministic
+Python scanner evaluates registered strategies and places bracket orders through
+NinjaTrader, while specialist LLM agents research, review, promote, retire, and
+repair strategies around it. The order path itself makes no LLM calls.
 
----
+> **Current venue:** NinjaTrader simulation account `SimJudasFutures`.
+> Nothing in the current dashboard, trade ledger, or account P&L should be
+> described as live or real-money performance.
 
-## Current State (2026-08-13)
+## Current snapshot — 2026-09-02
 
-| | |
+| Component | Current state |
 |---|---|
-| **Execution** | REAL LucidFlex 50K eval `LFE05064290360100` via NinjaTrader on REBEL (WinRM bridge, ATI order files) — wired 2026-08-12 |
-| **Scanner** | Every 5 min whenever Globex is open — deterministic, 0 LLM calls |
-| **LLM** | MiniMax-M3 (`https://api.minimax.io/v1` via LiteLLM) for all agents |
-| **Active strategies** | 36 active (4,301 retired, 48 superseded — full audit trail in `active_strategies`) |
-| **Symbols** | MGC, MNQ, ZF, MCL, 6J only (crypto MET/MBT + DX banned under Lucid rules) |
-| **Dashboard** | `http://127.0.0.1:5080/` (tailnet: `omen-claw.tail76e7df.ts.net:5080`) |
-| **Position watchdog** | `judas-crew-reconciler.timer` — every **1 minute**, NT truth vs DB (added 2026-08-13) |
+| Execution | NinjaTrader SIM, account `SimJudasFutures` |
+| Market data | IBKR only; the project never subscribes through NinjaTrader ATI |
+| Scanner | Deterministic, every 5 minutes while Globex/session gates allow |
+| Position/account guard | Every minute via `judas-crew-reconciler.timer` |
+| Active registry | 25 configurations: 3× 6J, 11× MGC, 9× MNQ, 2× ZF |
+| Research history | 8,281 experiments and 6,908 candidates in the local SQLite database |
+| Registry history | 4,445 versions: 25 active, 4,364 retired, 56 superseded |
+| Dashboard | `http://127.0.0.1:5080/` |
 
-### Account timeline
-
-| Era | Account | Outcome |
-|---|---|---|
-| → 2026-07-24 | IBKR paper → NT `SimJudasCrew` | Sim proving: +$2,131 / 487 trades, P(pass)~70% Monte-Carlo |
-| 2026-07-26 → 07-30 | **LFE..89** (real 50K eval) | −$849 / 59 trades. **DIED 07-30**: the −$1,198 day on 07-29 tripped Lucid's *unannounced* ~$1,200 daily loss limit; account vanished from the feed |
-| 2026-07-30 → 08-12 | (zombie period) | Every order rejected `account does not exist`; NT-reject auto-block froze the whole book — nobody noticed for 13 days |
-| 2026-08-12 → | **LFE..100** (real 50K eval) | Current. Daily-loss guards added specifically so the DLL death can't repeat |
-
-### Active Strategies (36, as of 2026-08-13)
-
-Mostly ICT-concept variants (IFVG/OB midpoint reversion, silver bullet PDH/PDL retest,
-Judas continuation, mitigation block) plus regime-filtered RSI/ATR, deployed per
-symbol × timeframe. Live list: `sqlite3 judas_crew.db "SELECT symbol, strategy_family,
-version FROM active_strategies WHERE state='active'"`.
-
-| Symbol | Timeframe (family) | v | Strategy |
-|---|---|---|---|
-| 6J | 15m | 1 | atr_disp_continuation_5m_6j_v1 |
-| 6J | 1h | 1 | mnq_rsi_directional_filter_1h_v1 |
-| 6J | 5m | 1 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
-| 6J | 5m | 2 | atr_disp_continuation_5m_6j_v1 |
-| 6J | 5m | 3 | ob_midpoint_reversion_5m_loose_mcl_v1 |
-| MCL | 15m | 1 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
-| MCL | 1h | 1 | mnq_rsi_directional_filter_1h_v1 |
-| MCL | 5m | 1 | ob_midpoint_reversion_5m_loose_mcl_v1 |
-| MCL | 5m | 2 | judas_continuation_5m_v1 |
-| MCL | judas_1h | 1 | (native Judas sweep+CHoCH) |
-| MGC | 15m | 3 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
-| MGC | 15m | 5 | silver_bullet_pdh_pdl_retest_1h_mgc_v1 |
-| MGC | 1h | 5 | ifvg_midpoint_reversion_htf_bias_5m_v1 |
-| MGC | 1h | 6 | silver_bullet_pdh_pdl_retest_1h_mgc_v1 |
-| MGC | 5m | 2 | cisd_3candle_fvg_5m_v1 |
-| MGC | 5m | 17 | ifvg_midpoint_reversion_htf_bias_5m_v1 |
-| MGC | 5m | 18 | ob_midpoint_reversion_5m_loose_mcl_v1 |
-| MGC | 5m | 19 | judas_continuation_5m_v1 |
-| MGC | 5m_FIB | 1 | ict_silver_bullet_5m_FIB_mgc |
-| MGC | 5m_mitigation_block | 1 | ict_mitigation_block_5m_mgc_v1 |
-| MNQ | custom | 4 | regime_filtered_rsi_1h_stateless_v1 |
-| MNQ | 15m | 1 | atr_disp_continuation_5m_6j_v1 |
-| MNQ | 15m | 2 | silver_bullet_pdh_pdl_retest_5m_mnq_v2 |
-| MNQ | 15m | 4 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
-| MNQ | 15m | 5 | silver_bullet_pdh_pdl_retest_1h_mgc_v1 |
-| MNQ | 15m_FIB | 1 | ict_silver_bullet_5m_FIB_mgc |
-| MNQ | 1h | 1 | regime_filtered_rsi_1h_stateless_v1 |
-| MNQ | 5m | 8 | silver_bullet_pdh_pdl_retest_5m_mnq_v2 |
-| MNQ | 5m | 12 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
-| MNQ | 5m | 13 | ob_midpoint_reversion_5m_loose_mcl_v1 |
-| MNQ | 5m | 14 | judas_continuation_5m_v1 |
-| MNQ | 5m_FIB | 1 | ict_silver_bullet_5m_FIB_mgc |
-| ZF | 15m | 2 | ifvg_midpoint_reversion_htf_bias_15m_v1 |
-| ZF | 1h | 1 | mnq_rsi_directional_filter_1h_v1 |
-| ZF | 1h | 2 | regime_filtered_rsi_1h_stateless_v1 |
-| ZF | 5m | 1 | judas_continuation_5m_v1 |
-
----
-
-## Risk Guards (`src/research/lucid_guard.py` — enforced deterministically every scan)
-
-| Guard | Value | Action |
-|---|---|---|
-| Daily loss **soft** | −$800 | halt new entries |
-| Daily loss **hard** | −$1,000 | flatten all + halt (sits under Lucid's unannounced ~$1,200 eval DLL) |
-| Daily profit soft | +$1,200 | halt new entries |
-| Daily profit hard | +$1,500 | flatten all + halt (consistency cap = 50% of $3k target) |
-| Trailing MLL | $2,000 from peak daily-close equity | flatten all + halt — terminal |
-| Aggregate contracts | ≤ 4 across the whole book (live NT count, not DB rows) | gate entries |
-| EOD flat | flatten 16:40 ET (Lucid cutoff 16:45) | flatten all + halt |
-| Banned symbols | MET, MBT, DX | entry gate refuses |
-
-Day P&L includes **unrealized** (positions marked to latest bar close). Guards fail-open on
-an NT-data outage; deterministic banned/EOD gates always apply.
-
----
-
-## Position Truth & the 1-Minute Reconciler (2026-08-13)
-
-Hard-won facts about where live positions actually live:
-
-- **NT's sqlite `Positions` table does NOT persist live Tradovate/Lucid positions** — it
-  sat empty while the account held 4 contracts. The live truth is the per-instrument
-  position files NT writes to `outgoing/<contract> <exch>_<account>_position.txt`
-  (`LONG;3;0.0062947`) on every position update. `NTBroker.positions()` merges both.
-- All agent NT tools resolve the account from `config.yaml` — never a hardcoded default.
-  (A stale `SimJudasCrew` default left the orphan check querying the flat sim account for
-  18 days while real positions sat naked.)
-- Entry orders that don't fill within the timeout are **cancelled**, not abandoned —
-  abandoned entries filled hours later as naked unmanaged positions.
-
-`scripts/position_reconciler.py` (every 1 min via `judas-crew-reconciler.timer`):
-compares NT truth against open DB trades → any unmanaged contracts get a high-urgency
-trader task (deduped) **and an immediate `judas-trader.service` start** — awareness gap is
-~1 minute instead of the hourly tick. A 60-min same-book cooldown means a deliberate HOLD
-by the trader isn't re-litigated every minute; any *change* in the unmanaged book fires
-immediately. Per the 2026-07-17 mandate, the LLM crew decides hold/flatten — the
-reconciler never auto-liquidates.
-
----
+The database is runtime state and is intentionally not committed. See
+[`docs/STRATEGY_SUMMARY.md`](docs/STRATEGY_SUMMARY.md) for a dated, reviewable
+snapshot of every active configuration and the best strategy families found.
+The corresponding private data-backup inventory and checksums are recorded in
+[`docs/BACKTEST_DATA_BACKUP.md`](docs/BACKTEST_DATA_BACKUP.md).
 
 ## Architecture
 
-```
-                    ┌──────────────────────────────────────────────┐
-                    │ NinjaTrader on REBEL (Windows, WinRM bridge)  │
-                    │ Lucid/Tradovate feed → LFE..100 (real 50K)    │
-                    └────────────▲──────────────────▲──────────────┘
-             OIF order files    │                   │  position files / sqlite / trace
-                                │                   │
-  judas-crew.timer (5 min) ── portfolio_runtime.py ── lucid_guard.py   ← 0 LLM calls
-                                │        │
-                                │        └── _orphan_body() ──┐
-  judas-crew-reconciler (1 min) ────────────────────────────── ┤→ agent_tasks (high urgency)
-                                                               │       │
-                                                               │       ▼
-        MiniMax-M3 agents:  trader ◄── kicked immediately ─────┘   (hold / flatten / adopt)
-        researcher · operator · registrar · reviewer · coder
-```
+```text
+IBKR market data ──► multi-timeframe bar cache ──► deterministic scanner
+                                                       │
+                                                       ▼
+                                            NinjaTrader SIM brackets
+                                                       │
+                              position/order/account truth via ATI + files
+                                                       │
+                 1-minute reconciler ◄─────────────────┘
+                        │
+                        ├─ account P&L guard
+                        └─ orphan/protection tasks ──► specialist agents
 
-## Agent Cadences (installed reality)
-
-| Unit | Cadence | LLM | Purpose |
-|---|---|---|---|
-| `judas-crew.timer` | every 5 min (Globex open) | 0 | Deterministic scan: fire strategies, place brackets, guards, orphan detect |
-| `judas-crew-reconciler.timer` | **every 1 min** | 0 | NT-truth position reconcile → task + immediate trader kick |
-| `judas-crew-watchdog.timer` | every 5 min | 0 | Kills a hung scanner |
-| `judas-trader.timer` | hourly self-gate (+ kicked on orphans) | low | Executes trader tasks (reconcile/close/hold) |
-| `judas-reviewer.timer` | hourly | med | Registry mutations review |
-| `judas-researcher.timer` | every 6 h | high | Research → backtest → propose (trimmed 07-09 after quota blowout) |
-| `judas-operator.timer` | every 6 h | med | Portfolio review, delegations, daily brief |
-| `judas-registrar.timer` | every 8 h (:40 offset) | low | Queue flush: promote/retire only |
-| `judas-coder.timer` | hourly self-gate | low | Autofix tasks |
-| `judas-dashboard.service` | always-on | 0 | Flask + React on `:5080` |
-
----
-
-## Promotion / Demotion Pipeline
-
-**Researcher proposes → Operator approves → Registrar executes**
-
-1. Researcher backtests → PF gate → `propose_candidate()` → `strategy_candidates`
-2. Operator reviews the queue, delegates approve/reject to Registrar
-3. Registrar `promote_candidate(id)` → atomically retires prior version, inserts v+1
-4. Demotion mirrors it: Operator flags on live metrics → Registrar `retire_strategy(id, reason)` → `auto_demotions` audit trail (append-only, one-click reactivate)
-
-Core rule: **empty slot beats net-loser.**
-
----
-
-## Safety Rails
-
-1. `lucid_guard` — the full table above, evaluated deterministically every scan
-2. `kill.flag` in repo root halts trading on next tick; `autofix.disable` halts the coder path
-3. Aggregate 4-contract cap counts LIVE NT contracts + this scan's placements (not DB rows)
-4. Per-strategy `already_open` gate prevents stacking
-5. Entry timeout ⇒ entry order **cancelled** (no abandoned working orders)
-6. Protective-leg death ⇒ `NAKED_RISK` emergency flatten of that fill
-7. NT-reject auto-block: a symbol NT keeps rejecting is skipped on a 6 h cooldown
-8. 1-min reconciler + orphan task path (see above) — unmanaged positions surface in ~1 min
-9. Order-path files write-protected from autofix: broker, config, `src/risk/**`
-
-Known operational trap: `flatten_position` on an orphan can **trigger stale entry-side
-stops and double the orphan** (2026-07-23 incident). For orphans with no protective stop,
-use `close_nt_position` — NT's CLOSEPOSITION flattens *and* cancels that instrument's
-working orders atomically.
-
----
-
-## Config
-
-| Setting | Value |
-|---|---|
-| Route | `execution.route: ninjatrader` (`config.yaml`) |
-| Account | `ninjatrader.account: LFE05064290360100` |
-| NT host | `100.108.151.36` (Tailscale, REBEL), user `nqtrader`, password via `WINDOWS_PASSWORD` in `.env` |
-| Bridge python | `C:\PyBridge\python.exe` |
-| OIF dir | `C:\Users\hartw\Documents\NinjaTrader 8\outgoing` |
-| LLM | `MiniMax-M3` @ `https://api.minimax.io/v1` (key in `.env`) |
-| DB | `judas_crew.db` (SQLite WAL) |
-
----
-
-## Repo Layout
-
-```
-main.py                            Entry point (scanner run)
-config.yaml                        Route, NT account/bridge, risk params
-scripts/
-  position_reconciler.py           1-min NT-truth vs DB reconcile + trader kick
-  run_dashboard.py                 Dashboard entry
-src/
-  portfolio_runtime.py             The 5-min scan (zero LLM): fires, gates, guards, orphan detect
-  broker/ninjatrader.py            WinRM bridge: brackets, positions (sqlite+files), working orders, cancels
-  research/
-    lucid_guard.py                 LucidFlex eval rule guards (pure, tested)
-    agent_tools.py                 LLM tool implementations (NT reads/cancels/close, tasks, backtests)
-    operator_agent.py / researcher_agent.py / registrar_agent.py /
-    trader_agent.py / coder_agent.py / reviewer via agent_runner.py
-  strategy_registry.py             Atomic promote/retire/reactivate
-  db/models.py                     SQLite schema
-systemd/                           All unit files + install.sh (rootless --user)
-dashboard/                         React + TypeScript + Tailwind frontend
-knowledge_base/                    ICT Judas concepts, workshop baselines
-AGENTIC_PLAN_V2.md                 Design spec
+researcher ─► candidate ─► operator/reviewer ─► registrar ─► active registry
+                                      coder handles bounded autofix tasks
 ```
 
----
+NinjaTrader is used for orders, positions, working-order state, and account
+summary only. Price subscriptions are sourced from IBKR. Contract selection is
+resolved from IBKR volume and written to `active_contracts.json`; order placement
+fails closed if that resolution is missing or stale.
 
-## Common Operations
+## Strategy portfolio
+
+The active portfolio is concentrated in three researched architectures:
+
+- **ATR/displacement continuation** — the strongest repeatable cross-symbol
+  result. Active on 6J 5m, MGC 5m/15m, MNQ 5m, and ZF 15m, with multiple
+  displacement thresholds and directional filters.
+- **Silver Bullet / rolling PDH-PDL retest** — active on MGC and MNQ at 5m/15m.
+  Moderate-PF variants are promising; very high PF or 80%+ win-rate variants
+  remain overfit-watch items until enough sim fills accumulate.
+- **iFVG midpoint reversion with HTF bias** — active on MGC and MNQ 15m, with
+  recorded PF around 2.1–2.5 and useful sample sizes.
+
+The portfolio also includes MNQ CISD/FVG and MGC range-cycle displacement
+experiments. Backtest figures are evidence, not guarantees. Older registry
+metrics were produced before the current `v1_realistic_micros` cost stamp and
+must be revalidated before any real-money use.
+
+Full metrics, evidence tiers, caveats, and all 25 active rows are in the
+[strategy summary](docs/STRATEGY_SUMMARY.md).
+
+## Deterministic risk controls
+
+Source of truth: [`src/research/lucid_guard.py`](src/research/lucid_guard.py).
+The Lucid-style limits remain enabled in sim so the same safety behavior can be
+tested without risking capital.
+
+| Guard | Rule | Action |
+|---|---|---|
+| Daily profit soft | +$1,200 including unrealized | Halt new entries and latch for the trading day |
+| Daily profit hard | +$1,500 including unrealized | `CLOSEPOSITION` all instruments and latch for the day |
+| Daily loss | Cushion-scaled; ceilings −$700 soft / −$900 hard | Halt or flatten before the trailing limit |
+| Trailing MLL | $2,000 from peak daily-close equity | Flatten and halt |
+| Aggregate contracts | 10 across the account | Reject new entries |
+| EOD | Flatten at 16:40 ET | Flat before the 16:45 cutoff |
+| Banned symbols | MET, MBT, DX | Reject entries |
+
+Open P&L is marked from the freshest IBKR bar available. Missing account,
+position, contract, or price data halts entries fail-closed. Existing strategy
+TP/SL brackets remain broker-native; account-level hard exits use NinjaTrader
+`CLOSEPOSITION`, which flattens and cancels working orders atomically.
+
+## Agent workflow and cadence
+
+| Unit | Cadence | Purpose |
+|---|---|---|
+| `judas-crew.timer` | every 5 min | Refresh bars, reconcile fills, evaluate strategies, place brackets |
+| `judas-crew-reconciler.timer` | every 1 min | Account guard and NT-truth/orphan reconciliation |
+| `judas-crew-watchdog.timer` | every 5 min | Detect and terminate a hung scanner |
+| `judas-crew-ledger.timer` | hourly at :25 | Reconcile NT fills missing from the local ledger |
+| `judas-reviewer.timer` | hourly | Review new evidence and registry mutations |
+| `judas-trader.timer` | hourly at :05, plus urgent kicks | Resolve position/order tasks |
+| `judas-coder.timer` | hourly at :10 | Process bounded autofix tasks |
+| `judas-researcher.timer` | every 6 h | Research, backtest, and propose candidates |
+| `judas-operator.timer` | every 6 h | Portfolio review and delegation |
+| `judas-registrar.timer` | every 8 h | Apply approved promotions/retirements |
+| `judas-dashboard.service` | continuous | Monitoring UI and API on port 5080 |
+
+Agent loops have turn, wall-time, per-run token, and shared daily-token budgets.
+The trader is exempt from the research token budget because position protection
+must remain available.
+
+## Safety invariants
+
+- Scanner/order decisions are deterministic; LLMs cannot bypass risk gates.
+- The current account must come from `config.yaml`; no stale account fallback.
+- Timed-out entries are cancelled rather than left working.
+- Every filled entry must receive both protective legs or be emergency-flattened.
+- Orphan flattening uses `CLOSEPOSITION`, never a naked opposing market order.
+- Contract rolls use the highest-volume eligible IBKR contract and fail closed.
+- NinjaTrader ATI market-data subscriptions are prohibited.
+- `kill.flag` halts scanner entries; `autofix.disable` halts coder mutations.
+- Custom backtests use contract dollar economics, quantity, execution costs, and
+  the `v1_realistic_micros` cost-model stamp.
+
+Additional reliability rules are recorded in
+[`knowledge_base/runtime_reliability_2026-09-02.md`](knowledge_base/runtime_reliability_2026-09-02.md).
+
+## Setup
+
+Requirements: Python 3.11+, an IBKR Gateway/TWS connection, NinjaTrader on the
+configured Windows bridge host, and systemd user services for unattended use.
 
 ```bash
-# All crew units
-systemctl --user list-units "judas-*" --all
+python3 -m venv .venv
+.venv/bin/pip install -e .
+cp .env.example .env
+# Fill credentials locally; .env is ignored by git.
 
-# One scan / one trader run now
-systemctl --user start judas-crew.service
-systemctl --user start judas-trader.service
+.venv/bin/pytest -q
 
-# Live guard snapshot (written every scan)
-cat data/lucid_guard_state.json
+cd dashboard && npm ci && npm run build && cd ..
 
-# Open DB trades vs NT truth
-sqlite3 judas_crew.db "SELECT symbol,direction,qty,entry_fill,opened_at FROM trades WHERE status='open'"
-.venv/bin/python -c "from src.research.agent_tools import get_nt_positions; print(get_nt_positions())"
-
-# Task queue / recent trades / active strategies
-sqlite3 judas_crew.db "SELECT status, COUNT(*) FROM agent_tasks GROUP BY status"
-sqlite3 judas_crew.db "SELECT id,symbol,direction,pnl_dollars,exit_reason,closed_at FROM trades ORDER BY id DESC LIMIT 10"
-sqlite3 judas_crew.db "SELECT symbol,strategy_family,version FROM active_strategies WHERE state='active'"
-
-# Reconciler health
-journalctl --user -u judas-crew-reconciler.service --since -30min --no-pager | grep reconciler
-
-# Halt controls
-touch kill.flag          # halt trading on next scanner tick
-touch autofix.disable    # halt coder autofix path only
+# Review config.yaml before enabling services.
+./systemd/install.sh
 ```
 
----
+Never commit `.env`, account credentials, the SQLite database, cache files, or
+runtime state.
 
-## Lessons Encoded (why the code looks like this)
+## Common operations
 
-- **2026-07-17** — orphaned OCO legs opened positions with no DB row; fills-derived sync
-  was blind. Orphan detection now reads NT's own position truth and queues the crew.
-- **2026-07-18** — 444 stale working orders made NT reject *everything* (worst-case
-  exposure vs MaxPositionSize) — `working_orders()` + stale-cancel tooling exist for this.
-- **2026-07-23** — `flatten_position` doubled an orphan by triggering its stale entry
-  stops → use `close_nt_position` for unprotected orphans.
-- **2026-07-29/30** — Lucid's **unannounced ~$1,200 eval daily loss limit** killed LFE..89.
-  Verify a firm's rules on every purchase; the daily-loss guards are sized under it.
-- **2026-08-12** — a dead account looks like `OIF[NOFILE]` + `account does not exist` in
-  the NT trace, and reads as equity $0 (⇒ bogus MLL breach). Stale-read detection skips
-  guards rather than acting on $0.
-- **2026-08-13** — NT sqlite doesn't hold live Lucid positions; position files do. Never
-  default an account name in code; resolve from config. Cancel entries that time out.
+```bash
+systemctl --user list-timers 'judas-*' --all
+systemctl --user status judas-dashboard.service judas-crew.timer
 
----
+cat data/lucid_guard_state.json
+.venv/bin/python -c \
+  "from src.research.agent_tools import get_nt_positions; print(get_nt_positions())"
 
-## Sister Repo
+sqlite3 judas_crew.db \
+  "SELECT id,symbol,strategy_family,version FROM active_strategies WHERE state='active'"
+sqlite3 judas_crew.db \
+  "SELECT id,symbol,direction,pnl_dollars,exit_reason,closed_at FROM trades ORDER BY id DESC LIMIT 20"
 
-`~/judas-futures-workshop` — pure-Python rule-based lab (separate DB, separate systemd
-prefix `judasfutures-*`). Read-only baseline for this repo; no cross-imports, copy logic
-instead. Its buffet scanner has been halted by its own sim MLL flag since 2026-07-24;
-`judasfutures-buffet-lfe76` was disabled 2026-08-12 (LFE..76 blew 2026-07-17).
+journalctl --user -u judas-crew.service --since -30min --no-pager
+journalctl --user -u judas-crew-reconciler.service --since -30min --no-pager
+
+touch kill.flag
+touch autofix.disable
+```
+
+## Repository map
+
+```text
+main.py                         scanner entry point
+config.yaml                     route, account, symbols, sessions, limits
+src/bar_cache.py                IBKR bars and active-contract resolution
+src/portfolio_runtime.py        deterministic strategy and order runtime
+src/broker/ninjatrader.py       NinjaTrader order/account/position bridge
+src/research/lucid_guard.py     account-level risk policy
+src/research/                   specialist agents, tools, and backtests
+src/strategy_registry.py        promotion/retirement audit trail
+scripts/position_reconciler.py  one-minute account and position guard
+dashboard/                      Flask API and React UI
+systemd/                        user service/timer definitions
+tests/                          automated regression suite
+docs/STRATEGY_SUMMARY.md        dated active-strategy evidence snapshot
+docs/BACKTEST_DATA_BACKUP.md    private backtest-data backup inventory
+```
+
+## Historical context
+
+The repository previously traded several Lucid evaluation accounts. Those eras
+exposed daily-loss, trailing-drawdown, stale-account, orphan-order, and ledger
+attribution failures. Their records remain in the local database for research,
+but the current era began on `SimJudasFutures` on 2026-09-02. Historical P&L
+must not be mixed with current sim performance.

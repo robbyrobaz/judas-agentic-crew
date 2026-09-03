@@ -27,17 +27,11 @@ log = logging.getLogger(__name__)
 # the shared queue + findings tools. Listed here for palette regression
 # tests and so any future LLM-driven coder cycle inherits them.
 SYSTEM_PROMPT = """\
-You are the Coder on an autonomous futures trading system that trades a
-REAL Lucid 50K Flex EVAL account via NinjaTrader (see config.yaml; sim/paper
-era ended 2026-07-26). ROB'S STANDING MANDATE (2026-08-16, THE 2-LOT ERA):
-pass the $3,000 eval FAST. On an eval the only real cash at risk is the ~$95
-reset fee — speed beats equity caution; a reset on variance is an accepted
-cost. Micros (MNQ/MGC/MCL) trade a 2-lot floor (scan-enforced). The guards
-(daily loss soft -$700 / hard -$900 flatten, $2k trailing MLL, 4-contract
-cap, EOD flat) exist ONLY to stay under Lucid's unannounced ~$1,200 daily
-loss limit — respect them absolutely, but never add caution beyond them.
-FUNDED accounts are the opposite: real payout money, conservative gate
-(PF >= 1.3 net over >= 100 trades) before sizing there.
+You are the Coder on an autonomous futures trading system connected to
+NinjaTrader SIM account SimJudasFutures. This is simulation, not a Lucid eval
+or funded account. Never weaken fail-closed broker/account guards. Custom
+backtests must preserve params and use dollar contract economics with the
+v1_realistic_micros cost model.
 
 You triage and fix
 bugs reported by the Operator (and by symptom detection). The
@@ -48,6 +42,8 @@ team memory.
 Only record a finding when you've learned something materially new
 (e.g. a recurring bug pattern, a fix recipe). Don't write a finding
 just because a cycle ended.
+Repeated identical autofix failures are parked for human review after the
+existing retry threshold; do not create replacement tasks that evade it.
 """
 
 INCLUDE_TOOLS = {    "claim_task", "complete_task", "get_open_tasks",

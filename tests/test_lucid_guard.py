@@ -200,14 +200,36 @@ def test_gate_enforces_aggregate_cap(tmp_path):
     assert str(r4).startswith("lucid_contract_cap")
 
 
-def test_lucid_guard_assess_fails_open_on_zero_cash_no_positions(monkeypatch):
-    """Defensive guard (2026-08-09): if the broker returns cash=$0 with no open
-    positions, treat as data unavailable (fail-open) instead of poisoning the
-    MLL check. Mirrors record_daily_close_rejects_zero_when_prior_nonzero
-    (write-path defense added 2026-08-06). Without this, peak_close_equity()
-    pins to a stale start_balance and the MLL breach becomes perpetual,
-    blocking every entry on the crew (376+ SKIPs/day seen in production).
-    """
+def test_profit_soft_cap_latches_for_the_trading_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from src.research import lucid_guard as lg
+
+    monkeypatch.setattr(lg, "_PROFIT_LOCK_PATH", tmp_path / "profit_lock.json")
+    now = datetime(2026, 9, 2, 16, 0, tzinfo=timezone.utc)
+    crossed = lg.GuardDecision(day_pnl=1200.0)
+    assert lg.apply_profit_latch(crossed, now).halt_entries is True
+
+    retreated = lg.GuardDecision(day_pnl=900.0)
+    latched = lg.apply_profit_latch(retreated, now)
+    assert latched.halt_entries is True
+    assert "LATCHED" in latched.reason
+
+
+def test_profit_hard_latch_keeps_force_flat_active(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from src.research import lucid_guard as lg
+
+    monkeypatch.setattr(lg, "_PROFIT_LOCK_PATH", tmp_path / "profit_lock.json")
+    now = datetime(2026, 9, 2, 16, 0, tzinfo=timezone.utc)
+    lg.apply_profit_latch(lg.GuardDecision(day_pnl=1500.0), now)
+
+    slipped = lg.apply_profit_latch(lg.GuardDecision(day_pnl=1100.0), now)
+    assert slipped.halt_entries is True
+    assert slipped.force_flat is True
+
+
+def test_lucid_guard_assess_fails_closed_on_zero_cash_no_positions(monkeypatch):
+    """An invalid zero snapshot must never authorize new trading risk."""
     from src.portfolio_runtime import _lucid_guard_assess
 
     class FakeBroker:
@@ -217,7 +239,9 @@ def test_lucid_guard_assess_fails_open_on_zero_cash_no_positions(monkeypatch):
             return []
 
     decision, nt_contracts = _lucid_guard_assess(FakeBroker(), {})
-    assert decision is None
+    assert decision is not None
+    assert decision.halt_entries is True
+    assert "fail-closed" in " ".join(decision.reasons)
     assert nt_contracts == 0
 
 

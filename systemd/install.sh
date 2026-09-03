@@ -8,18 +8,23 @@ SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
 echo "Installing judas-crew systemd files to ${SYSTEMD_USER_DIR} ..."
 mkdir -p "${SYSTEMD_USER_DIR}"
 
-cp "${SCRIPT_DIR}/judas-crew.service" "${SYSTEMD_USER_DIR}/"
-cp "${SCRIPT_DIR}/judas-crew.timer"   "${SYSTEMD_USER_DIR}/"
-cp "${SCRIPT_DIR}/judas-dashboard.service" "${SYSTEMD_USER_DIR}/"
-cp "${SCRIPT_DIR}/judas-operator.service" "${SYSTEMD_USER_DIR}/"
-cp "${SCRIPT_DIR}/judas-operator.timer"   "${SYSTEMD_USER_DIR}/"
-# Phase 10 specialists — replace the old judas-research.timer monolith.
-cp "${SCRIPT_DIR}/judas-researcher.service" "${SYSTEMD_USER_DIR}/"
-cp "${SCRIPT_DIR}/judas-researcher.timer"   "${SYSTEMD_USER_DIR}/"
-cp "${SCRIPT_DIR}/judas-trader.service"     "${SYSTEMD_USER_DIR}/"
-cp "${SCRIPT_DIR}/judas-trader.timer"       "${SYSTEMD_USER_DIR}/"
-cp "${SCRIPT_DIR}/judas-registrar.service"  "${SYSTEMD_USER_DIR}/"
-cp "${SCRIPT_DIR}/judas-registrar.timer"    "${SYSTEMD_USER_DIR}/"
+# Install the complete checked-in unit set, including safety/reconciliation
+# timers. Keeping this list centralized prevents a fresh host from silently
+# missing the one-minute account guard.
+for unit in \
+  judas-crew.service judas-crew.timer \
+  judas-dashboard.service \
+  judas-crew-reconciler.service judas-crew-reconciler.timer \
+  judas-crew-watchdog.service judas-crew-watchdog.timer \
+  judas-crew-ledger.service judas-crew-ledger.timer \
+  judas-operator.service judas-operator.timer \
+  judas-researcher.service judas-researcher.timer \
+  judas-trader.service judas-trader.timer \
+  judas-registrar.service judas-registrar.timer \
+  judas-reviewer.service judas-reviewer.timer \
+  judas-coder.service judas-coder.timer; do
+  cp "${SCRIPT_DIR}/${unit}" "${SYSTEMD_USER_DIR}/"
+done
 
 # Retire legacy research unit if previously installed.
 if [ -f "${SYSTEMD_USER_DIR}/judas-research.timer" ]; then
@@ -63,8 +68,11 @@ systemctl --user enable judas-operator.timer
 echo "Starting judas-operator.timer ..."
 systemctl --user start judas-operator.timer
 
-echo "Enabling specialist timers (Phase 10) ..."
-for unit in judas-researcher.timer judas-trader.timer judas-registrar.timer; do
+echo "Enabling specialist and safety timers ..."
+for unit in \
+  judas-researcher.timer judas-trader.timer judas-registrar.timer \
+  judas-reviewer.timer judas-coder.timer \
+  judas-crew-reconciler.timer judas-crew-watchdog.timer judas-crew-ledger.timer; do
   systemctl --user enable "${unit}"
   systemctl --user start  "${unit}"
 done
@@ -86,8 +94,11 @@ echo "Operator timer status:"
 systemctl --user status judas-operator.timer --no-pager || true
 
 echo ""
-echo "Specialist timers:"
-for unit in judas-researcher.timer judas-trader.timer judas-registrar.timer; do
+echo "Specialist and safety timers:"
+for unit in \
+  judas-researcher.timer judas-trader.timer judas-registrar.timer \
+  judas-reviewer.timer judas-coder.timer \
+  judas-crew-reconciler.timer judas-crew-watchdog.timer judas-crew-ledger.timer; do
   systemctl --user status "${unit}" --no-pager || true
   echo ""
 done

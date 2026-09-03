@@ -406,7 +406,7 @@ def make_flatten_position(*, db_path: str) -> Callable[..., dict]:
         if n <= 0:
             return {"ok": False, "error": "qty must be > 0"}
 
-        # NT route (execution.route=ninjatrader): SimJudasCrew is this crew's
+        # NT route (execution.route=ninjatrader): SimJudasFutures is this crew's
         # DEDICATED sim account — no other tenant exists there, so the shared-
         # account sleeve guard below does not apply. Instead, verify against the
         # BROKER'S OWN truth (get_nt_positions): the position must exist, side
@@ -443,12 +443,27 @@ def make_flatten_position(*, db_path: str) -> Callable[..., dict]:
                                   instrument_map=_resolve_nt_instrument_map(dict(nt.instrument_map)),
                                   host=nt.host, user=nt.user, python_exe=nt.python_exe,
                                   outgoing_dir=nt.outgoing_dir)
-                fill = broker.flatten(sym, direction="long" if want_dir == "LONG" else "short",
-                                      quantity=n)
-                ok = fill is not None
-                return {"ok": ok, "action": action, "qty": n, "symbol": sym,
-                        "fill_price": fill, "route": "ninjatrader",
-                        "error": None if ok else "NT flatten did not confirm a fill"}
+                # CLOSEPOSITION is atomic on the NT account: it cancels the
+                # instrument's working OCO children and flattens the position.
+                # A naked MARKET close can race those children and re-open or
+                # double the position (observed on SimJudasFutures 2026-09-02).
+                contract = str(pos.get("contract") or sym)
+                ok = broker.close_position_cmd(contract)
+                if not ok:
+                    return {"ok": False, "action": "CLOSEPOSITION", "qty": n,
+                            "symbol": sym, "route": "ninjatrader",
+                            "error": "NT CLOSEPOSITION command failed"}
+                remaining = broker.positions()
+                still_open = None if remaining is None else next(
+                    (p for p in remaining if str(p.get("symbol", "")).upper() == sym),
+                    None,
+                )
+                verified = remaining is not None and still_open is None
+                return {"ok": verified, "action": "CLOSEPOSITION", "qty": n,
+                        "symbol": sym, "contract": contract,
+                        "route": "ninjatrader", "verified_flat": verified,
+                        "error": None if verified else
+                        "CLOSEPOSITION sent but flat state was not verified"}
             except Exception as exc:  # noqa: BLE001
                 return {"ok": False, "error": f"NT flatten failed: {exc}"}
 
@@ -1343,8 +1358,8 @@ def get_nt_working_orders(*, account: str = "") -> dict:
     """LIVE list of WORKING orders on the NT account, with cancellable GUIDs.
 
     2026-07-18: 444 stale orphaned OCO legs had piled up. NT counts working
-    orders toward worst-case exposure vs the account's MaxPositionSize (=4 on
-    SimJudasCrew), so it rejected EVERY new order — even position-REDUCING
+    orders toward worst-case exposure vs the account's MaxPositionSize, so it
+    rejected EVERY new order — even position-REDUCING
     flattens ('Exceeds account's maximum position quantity'). Use this to see
     the full working book; cancel stale legs with cancel_nt_order(order_id=
     <guid>, symbol=<sym>). KEEP the newest protective stop for each open

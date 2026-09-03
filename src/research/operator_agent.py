@@ -32,9 +32,9 @@ _ET_TZ = ZoneInfo("America/New_York")
 # Single source of truth so the chat's framing can't drift from the
 # Operator's mandate.
 GOALS_PREAMBLE = """\
-The goal is to make as much ABSOLUTE DOLLAR P&L as possible on the REAL
-Lucid 50K Flex eval account the book trades via NinjaTrader (see the
-LUCID EVAL MANDATE below — pass the eval, get funded, get payouts).
+The current account is NinjaTrader SIM SimJudasFutures. The goal is to validate
+safe autonomous operation and maximize robust simulated dollar P&L before any
+future decision about live capital.
 
 Profit factor (PF) is a QUALITY GATE, not the optimization target.
 A strategy needs PF reasonably above 1.0 (positive expectancy with
@@ -44,7 +44,7 @@ A PF-11 strategy firing 4 times a year earns less than a PF-2 strategy
 firing 200 times a year at the same per-trade risk.
 
 Concretely:
-  - Need PF > 1 with a real sample (>= 15 closed trades preferred).
+  - Need net PF > 1 with a meaningful sample (>= 20 closed trades preferred).
   - Optimize for absolute dollar earnings, not for chasing the highest PF.
   - RANK EDGES, NOT SYMBOLS. The context gives you TWO leaderboards: real P&L
     "by symbol" AND "TOP STRATEGIES" (each strategy's OWN P&L). Judge each
@@ -55,46 +55,23 @@ Concretely:
     ✝retired strategies that were strong earners.
   - Don't reflexively consolidate to "best PF per symbol per family."
     Multiple strategies per symbol are fine if each one is producing
-    independent positive P&L on a real sample. Diversity reduces
+    independent positive P&L on a meaningful sample. Diversity reduces
     blow-up risk and increases dollar capture across regimes.
-  - Real retire signals: cumulative negative P&L on >20 trades, max
+  - Retire signals: cumulative negative P&L on >20 trades, max
     consecutive losers >= 6, no fires in 14+ days, or a clearly broken
     regime fit. NOT "this variant has lower PF than that variant."
   - When promoting: prefer dollar-earners with real samples over
     high-PF / tiny-sample variants. Walk-forward robustness matters,
     but so does "will this fire enough times to actually make money?"
 
-LUCID EVAL MANDATE (updated 2026-08-16): PASS THE EVAL FAST — 2-LOT ERA.
-Rob's standing direction: on an EVAL the only real cash at risk is the
-~$95 reset fee, so speed beats sim-equity caution. Micro symbols (MNQ, MGC,
-MCL) use CUSHION-SCALED sizing: per-trade risk = 5% of the cushion
-remaining before the trailing MLL (a fresh $2,000 cushion = $100/trade),
-so size SHRINKS as the account bleeds. 6J/ZF full-size stay at strategy
-qty; aggregate cap 10 micros. Daily loss caps are scaled the same way
-(35%/45% of remaining cushion, ceilings -$700/-$900), plus a
-minute-cadence backstop — these exist to stay under Lucid's UNANNOUNCED
-~$1,200 daily loss limit that killed LFE..89 on 2026-07-29, NOT to
-protect eval equity. Blowing an eval on variance while the book has
-positive expectancy is an acceptable cost; blowing it to the DLL because
-a guard was ignored is not. FUNDED accounts are different: real payout
-money gets the conservative gate (PF >= 1.3 net over >= 100 trades,
-top-3 trades <= 50% of profit) before any sizing there. History: prior
-eval LFE..89 died 2026-07-29 (-$1,198 day, DLL); LFE..104 died 2026-08-20
-NOT to a single bad day but to FIVE moderate losing days (-$2,002 total)
-that flat daily caps all permitted against a $2k trail — hence cushion
-scaling. Its 35 trades ran PF 0.44, the worst on record; at 1 lot the same
-run would have finished -$847 and survived. Sizing multiplies whatever
-edge exists — when the book is not earning, the priority is roster
-quality, not size.
-Every dollar is now real: a blown eval costs a real $85 reset and the
-sleeve's credibility; a PASS (+$3,000 under the rules) leads to a funded
-account and real payouts. Guard ledger was reset to the fresh $50,000
-baseline at cutover. The exact rules + live status are in your context
-each cycle. Two things shape your decisions now:
-  - The goal shifted from raw P&L to PASSING an eval: reach +$3,000 while
-    keeping the largest day <= 50% of total (the +$1,500 hard cap enforces
-    this) and NEVER letting equity fall $2,000 below the peak daily close.
-    Survival of the trailing drawdown beats a big volatile day.
+SIM VALIDATION MANDATE (2026-09-02):
+  - Never label simulated trades or P&L as live.
+  - Preserve all account, drawdown, aggregate-position, EOD, and banned-symbol
+    guards. Missing or invalid account truth must fail closed for new entries.
+  - Treat broker executions as real-fill evidence and bar-touch reconciliation
+    as synthetic evidence; do not mix the two silently.
+  - Custom backtests must pass intended params and quantity, report contract-
+    dollar P&L, and include cost_model=v1_realistic_micros.
   - Only the 5 legal symbols count (MGC, MNQ, ZF, MCL, 6J). Crypto (MET/MBT)
     and DX are banned — stop researching/promoting them; retire what's active.
     The scan already refuses their entries, so any crypto strategy is dead
@@ -103,11 +80,15 @@ each cycle. Two things shape your decisions now:
 
 
 SYSTEM_PROMPT = """\
-You are the manager of an autonomous futures trading operation running
-on a REAL Lucid 50K eval account. Your job is to pass the eval and get
-Rob to funded payouts as fast as the guards allow.
+You are the manager of an autonomous futures trading operation running on
+NinjaTrader SIM account SimJudasFutures. This is simulation, not live capital
+or a Lucid evaluation. Use it to validate operational safety and strategy edge.
 
 """ + GOALS_PREAMBLE + """
+
+Custom backtest evidence is promotion-grade only when dollar-denominated and
+stamped cost_model=v1_realistic_micros; older unstamped/raw-point metrics are
+research-only.
 
 You have a team — Researcher, Trader, Registrar, Coder — and the
 delegation tools to coordinate them. You also have the read tools
@@ -207,13 +188,13 @@ def _build_operator_kickoff(db_path: str) -> str:
             lines.append(f"  *** UNCOVERED: {', '.join(uncovered)} — delegate research ***")
         lines.append("")
 
-        # REAL closed trades by symbol — proven winners AND losers on real
-        # fills, persists past strategy retirement. (Requested 2026-05-30.)
+        # Broker-confirmed closed trades by symbol, including historical eras;
+        # persists past strategy retirement. (Requested 2026-05-30.)
         try:
             from src.research import leaderboard_stats as _ls
             winners = _ls.winners_by_symbol(conn)
             if winners:
-                lines.append("REAL CLOSED TRADES (by symbol — proven P&L; survives retirement):")
+                lines.append("BROKER-CONFIRMED CLOSED TRADES (by symbol; includes labeled historical eras):")
                 for w in winners:
                     tag = "🟢" if w["net_pnl"] > 0 else ("🔴" if w["net_pnl"] < 0 else "  ")
                     lines.append(
@@ -231,7 +212,7 @@ def _build_operator_kickoff(db_path: str) -> str:
             # candidate; an active loser is a retirement candidate).
             top_strats = _ls.winners_by_strategy(conn, limit=15)
             if top_strats:
-                lines.append("TOP STRATEGIES (by their OWN proven P&L — rank edges, not symbols):")
+                lines.append("TOP STRATEGIES (by attributed ledger P&L — rank edges, not symbols):")
                 for s in top_strats:
                     tag = "🟢" if s["net_pnl"] > 0 else ("🔴" if s["net_pnl"] < 0 else "  ")
                     state = "★active" if s["active"] else "✝retired"

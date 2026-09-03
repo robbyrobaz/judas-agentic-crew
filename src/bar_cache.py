@@ -150,6 +150,39 @@ def read_cache_multi(symbols: set[str], timeframe: str = DEFAULT_TF) -> dict[str
     return out
 
 
+def latest_cached_mark(symbol: str, *, max_age_minutes: float | None = None) -> dict[str, Any] | None:
+    """Return the newest cached close across every supported timeframe.
+
+    Comparing bar timestamps (rather than file mtimes) prevents an old 1h
+    ``last_bar_closes.json`` value from winning over a current 5m/15m bar.
+    """
+    newest: dict[str, Any] | None = None
+    newest_ts = None
+    for tf in _TF_SPECS:
+        try:
+            df = read_cache(symbol, tf)
+        except (FileNotFoundError, OSError, ValueError):
+            continue
+        if df.empty or "close" not in df.columns or "ts" not in df.columns:
+            continue
+        last = df.iloc[-1]
+        ts = pd.to_datetime(last["ts"], utc=True, errors="coerce")
+        if pd.isna(ts):
+            continue
+        if newest_ts is None or ts > newest_ts:
+            newest_ts = ts
+            newest = {
+                "close": float(last["close"]),
+                "ts": ts.isoformat(),
+                "timeframe": tf,
+            }
+    if newest is not None and max_age_minutes is not None:
+        age_minutes = (pd.Timestamp.now(tz="UTC") - newest_ts).total_seconds() / 60.0
+        if age_minutes > max_age_minutes:
+            return None
+    return newest
+
+
 def _write_price_cache(bars_by_sym: dict[str, pd.DataFrame]) -> None:
     """Write last close for each symbol to last_bar_closes.json."""
     closes: dict[str, Any] = {}

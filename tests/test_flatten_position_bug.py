@@ -34,7 +34,7 @@ def test_make_flatten_position_is_callable():
     assert params == {"symbol", "side", "qty"}, f"unexpected params: {params}"
 
 
-def test_flatten_position_sleeve_check_uses_db_path(tmp_path: Path):
+def test_flatten_position_sleeve_check_uses_db_path(tmp_path: Path, monkeypatch):
     """End-to-end: with no open MCL trade, sleeve guard fires (NOT NameError).
 
     Pre-fix this would raise NameError: name 'db_path' is not defined.
@@ -51,6 +51,11 @@ def test_flatten_position_sleeve_check_uses_db_path(tmp_path: Path):
         )
         conn.commit()
 
+    # This regression covers the legacy IBKR sleeve guard. The live repo route
+    # is NinjaTrader, whose truth-first orphan handling is intentionally different.
+    monkeypatch.setattr("src.config.load_config", lambda: type(
+        "Cfg", (), {"route": "ibkr"}
+    )())
     fn = agent_tools.make_flatten_position(db_path=db_path)
     result = fn(symbol="MCL", side="close_long", qty=1)
     assert result["ok"] is False
@@ -90,3 +95,46 @@ def test_flatten_position_rejects_bad_qty(tmp_path: Path):
     result = fn(symbol="MCL", side="close_long", qty=-1)
     assert result["ok"] is False
     assert "qty must be > 0" in result["error"]
+
+
+def test_nt_flatten_uses_atomic_closeposition(tmp_path: Path, monkeypatch):
+    """NT flatten must cancel OCO children atomically, not race a MARKET order."""
+    monkeypatch.setattr("src.config.load_config", lambda: type("Cfg", (), {
+        "route": "ninjatrader",
+        "ninjatrader": type("NT", (), {
+            "account": "SimJudasFutures", "instrument_map": {"MGC": "MGC 12-26"},
+            "host": "x", "user": "u", "python_exe": "python",
+            "outgoing_dir": "out",
+        })(),
+    })())
+    monkeypatch.setattr(agent_tools, "get_nt_positions", lambda: {
+        "ok": True, "open_positions": [{
+            "instrument": "MGC", "contract": "MGC 12-26",
+            "side": "LONG", "qty": 1,
+        }],
+    })
+
+    calls = []
+
+    class FakeBroker:
+        def __init__(self, **kwargs):
+            pass
+        def close_position_cmd(self, contract):
+            calls.append(contract)
+            return True
+        def positions(self):
+            return []
+        def flatten(self, *args, **kwargs):
+            raise AssertionError("MARKET flatten must not be used")
+
+    monkeypatch.setattr("src.broker.ninjatrader.NTBroker", FakeBroker)
+    monkeypatch.setattr("src.portfolio_runtime._resolve_nt_instrument_map",
+                        lambda mapping: mapping)
+
+    result = agent_tools.make_flatten_position(
+        db_path=str(tmp_path / "unused.db")
+    )(symbol="MGC", side="close_long", qty=1)
+    assert result["ok"] is True
+    assert result["action"] == "CLOSEPOSITION"
+    assert result["verified_flat"] is True
+    assert calls == ["MGC 12-26"]

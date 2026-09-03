@@ -120,48 +120,79 @@ def _cache_truth_snapshot(truth: dict) -> None:
 
 
 def _minute_loss_backstop(truth: dict) -> None:
-    """Minute-cadence daily-loss backstop for the 2-lot era (2026-08-16).
+    """Minute-cadence account backstop, including unrealized open P&L.
 
-    The 5-min scan owns the full guard; between scans a fast losing sequence
-    can overshoot toward Lucid's unannounced ~$1,200 eval DLL. Every minute:
-    read NT's day-realized P&L; at <= hard, flatten every open crew position
-    (CLOSEPOSITION also cancels that instrument's working orders) and drop
-    kill.flag so the next scan takes no entries until Rob clears it."""
+    Kept under the original function name for compatibility. Broker-native
+    brackets protect each trade; this independently enforces the shared daily
+    $1,200 halt / $1,500 flatten across the entire account. CLOSEPOSITION also
+    cancels the instrument's working TP/SL orders atomically.
+    """
     try:
         from src.research.agent_tools import _nt_live_broker, close_nt_position
-        from src.research.lucid_guard import RULES
+        from src import bar_cache
+        from src.research import lucid_guard
         broker = _nt_live_broker()
         summ = broker.account_summary()
-        if not summ:
+        if not summ or "cash" not in summ:
+            log.error("reconciler.account_backstop_unavailable — entries fail closed at next scan")
             return
-        realized = float(summ.get("realized_pnl") or 0.0)
-        # Cushion-scaled hard cap (2026-08-20) — same rule the 5-min scan uses,
-        # so the minute backstop tightens as the account bleeds instead of
-        # holding a flat -$900 that a slow multi-day bleed walks straight past.
-        from src.research.lucid_guard import daily_loss_caps, peak_close_equity
         cash = float(summ.get("cash") or 0.0)
-        cushion = None
-        if cash > 0:
-            floor = peak_close_equity(default=cash) - RULES["mll_trail"]
-            cushion = cash - floor
-        _, hard = daily_loss_caps(cushion if cushion is not None
-                                  else abs(RULES["daily_loss_hard"]) / 0.45)
-        if realized > hard:
+        positions = truth.get("open_positions") or []
+        unrealized = 0.0
+        missing_marks: list[str] = []
+        for p in positions:
+            sym = str(p.get("instrument") or "").upper()
+            # Market data comes from IBKR's bar cache only. Never subscribe to
+            # NinjaTrader market data; its ATI supports only one handler.
+            mark = bar_cache.latest_cached_mark(sym, max_age_minutes=20.0)
+            avg = float(p.get("avg_price") or 0.0)
+            qty = int(p.get("qty") or 0)
+            if not mark or avg <= 0 or qty <= 0:
+                missing_marks.append(sym or "unknown")
+                continue
+            sign = 1.0 if str(p.get("side")).upper() == "LONG" else -1.0
+            # Same canonical dollars/point calculation used by the scan guard.
+            from src.portfolio_runtime import _point_value
+            unrealized += (float(mark["close"]) - avg) * sign * qty * _point_value(sym)
+
+        nt_contracts = sum(int(p.get("qty") or 0) for p in positions)
+        if missing_marks:
+            reason = ("account backstop missing current mark for "
+                      f"{','.join(sorted(set(missing_marks)))}; entries halted fail-closed")
+            decision = lucid_guard.GuardDecision(halt_entries=True, cushion=0.0,
+                                                  reasons=[reason])
+            lucid_guard.write_state(decision, nt_contracts)
+            log.error("reconciler.%s", reason)
             return
-        log.critical("reconciler.DAILY_LOSS_BACKSTOP realized=$%.0f <= hard $%.0f "
-                     "(cushion=$%s) — flattening + kill.flag",
-                     realized, hard, f"{cushion:.0f}" if cushion is not None else "?")
-        for p in (truth.get("open_positions") or []):
+
+        cur_equity = cash + unrealized
+        day_start = lucid_guard.day_start_equity()
+        if day_start is None:
+            lucid_guard.record_daily_close(cur_equity)
+            day_start = cur_equity
+        peak_close = lucid_guard.peak_close_equity(default=cur_equity)
+        decision = lucid_guard.assess(cur_equity=cur_equity, day_start=day_start,
+                                      peak_close=peak_close,
+                                      nt_contracts=nt_contracts)
+        decision = lucid_guard.apply_profit_latch(decision)
+        lucid_guard.write_state(decision, nt_contracts)
+        log.info("reconciler.account_backstop equity=$%.2f unrealized=$%.2f "
+                 "day_pnl=$%.2f halt=%s flat=%s",
+                 cur_equity, unrealized, decision.day_pnl,
+                 decision.halt_entries, decision.force_flat)
+        if not decision.force_flat:
+            return
+
+        log.critical("reconciler.ACCOUNT_BACKSTOP %s — flattening all positions",
+                     decision.reason)
+        for p in positions:
             try:
                 res = close_nt_position(symbol=str(p.get("instrument")))
                 log.critical("reconciler.backstop_flatten %s -> %s", p.get("instrument"), res)
             except Exception:  # noqa: BLE001
                 log.exception("reconciler.backstop_flatten_failed %s", p)
-        (REPO / "kill.flag").write_text(
-            f"daily-loss backstop: realized ${realized:.0f} <= cushion-scaled hard "
-            f"cap ${hard:.0f} — remove this file to resume trading\n")
     except Exception:  # noqa: BLE001
-        log.exception("reconciler.loss_backstop_failed")
+        log.exception("reconciler.account_backstop_failed")
 
 
 def main() -> int:

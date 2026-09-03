@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -18,7 +19,21 @@ def main() -> int:
         "JUDAS_DB_PATH",
         str(Path(__file__).resolve().parents[1] / "judas_crew.db"),
     )
-    result = run_registrar_decision(db_path=db_path)
+    with sqlite3.connect(db_path) as conn:
+        candidates = conn.execute(
+            "SELECT COUNT(*) FROM strategy_candidates WHERE status='candidate'"
+        ).fetchone()[0]
+        tasks = conn.execute(
+            "SELECT COUNT(*) FROM agent_tasks WHERE team='registrar' AND status='open'"
+        ).fetchone()[0]
+    if candidates == 0 and tasks == 0:
+        print("registrar: no candidates or pending tasks — skipping")
+        return 0
+    result = run_registrar_decision(
+        db_path=db_path,
+        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "6")),
+        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "300")),
+    )
     print(
         f"registrar: success={result.success} actions={len(result.actions_taken)} "
         f"turns={result.turns_used} elapsed={result.elapsed_s:.1f}s "

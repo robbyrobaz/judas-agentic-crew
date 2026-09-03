@@ -286,6 +286,36 @@ def evaluate(bars, params):
     assert isinstance(res["max_drawdown"], float)
 
 
+def test_custom_backtest_passes_params_and_reports_net_contract_dollars():
+    code = """
+def evaluate(bars, params):
+    if not params.get('enabled') or len(bars) != 3:
+        return None
+    entry = float(bars['close'].iloc[-1])
+    return {'direction': 'long', 'entry': entry,
+            'stop': entry - 1.0, 'target': entry + 1.0}
+"""
+    bars = pd.DataFrame([
+        {"ts": pd.Timestamp(f"2026-01-01T00:0{i}:00Z"), "open": 100.0,
+         "high": 100.2 if i != 3 else 101.1, "low": 99.5,
+         "close": 100.0, "volume": 1}
+        for i in range(6)
+    ])
+
+    disabled = csr.run_custom_backtest_on_bars(
+        code=code, bars=bars, params={"enabled": False}, symbol="MGC", qty=2,
+    )
+    assert disabled["n_trades"] == 0
+
+    result = csr.run_custom_backtest_on_bars(
+        code=code, bars=bars, params={"enabled": True}, symbol="MGC", qty=2,
+    )
+    assert result["n_trades"] == 1
+    assert result["total_pnl"] == pytest.approx(15.4)
+    assert result["dollars_per_point"] == pytest.approx(10.0)
+    assert result["cost_model"] == "v1_realistic_micros"
+
+
 # ---------------------------------------------------------------------------
 # DB-side custom strategy tools
 # ---------------------------------------------------------------------------

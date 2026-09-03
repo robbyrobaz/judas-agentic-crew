@@ -25,8 +25,7 @@ excluded from every archive.
 
 ## Google Drive status
 
-The intended destination is a private folder named
-`Judas Crew Backtest Data — 2026-09-02`. The connected Drive account could be
-searched, but on 2026-09-02 Google rejected folder creation with
-`ACCESS_TOKEN_SCOPE_INSUFFICIENT`. Reconnect the Google Drive integration with
-file-creation/upload access, then upload these five checksum-verified files.
+Uploaded to the private Google Drive folder
+[`Judas Crew Backtest Data — 2026-09-02`](https://drive.google.com/drive/folders/1FEHpb1cnxKN9l37MzbySLXEI8y1xNTn5).
+Post-upload verification reported five matching files and zero differences
+from the local checksum-verified backup.

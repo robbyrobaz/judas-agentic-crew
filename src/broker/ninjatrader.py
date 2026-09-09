@@ -654,6 +654,179 @@ class NTBroker:
         })
         return False
 
+    # -- Bracket helpers (2026-09-09 hardening) ---------------------------
+
+    def _await_leg_live(self, order_id: str) -> Optional[bool]:
+        """Poll one protective leg until NT reports it live or dead.
+
+        True = live (Working/Accepted/Submitted), False = dead (Rejected/
+        Cancelled), None = could not tell within fill_timeout_s (WinRM failure
+        or NT still processing). Callers treat None as "carry on as before".
+
+        Why: NT rejects asynchronously. Placing the target on the SAME oco id
+        after the stop was rejected can only produce 'The OCO ID cannot be
+        reused' (the group died with the stop) — 8 times on 6J, 2026-09-02..09.
+        """
+        if not order_id:
+            return False
+        live = ("working", "accepted", "submitted", "presubmitted")
+        dead = ("rejected", "cancelled", "canceled")
+        t0 = time.time()
+        while time.time() - t0 < self.fill_timeout_s:
+            st = self.order_status(order_id).lower()
+            if any(d in st for d in dead):
+                return False
+            if any(l in st for l in live) or "filled" in st:
+                return True
+            time.sleep(self.fill_poll_s)
+        return None
+
+    def _read_position_file(self, instrument: str) -> Optional[tuple[str, int, float]]:
+        """Live position for ONE contract from NT's per-instrument position
+        file ('<contract> <exch>_<account>_position.txt', 'LONG;3;0.0062947'
+        or 'FLAT;0;0'). Returns (side, qty, avg) — side in LONG/SHORT/FLAT —
+        or None when the read failed or no file exists, so a caller can tell
+        "flat" from "don't know" (positions_from_files() cannot)."""
+        if self.dry_run:
+            return None
+        ps = (
+            f'$f = Get-ChildItem "{self.outgoing_dir}" -Filter "{instrument} *_{self.account}_position.txt" '
+            '-ErrorAction SilentlyContinue | Select-Object -First 1; '
+            'if ($f) { "POSF|" + (Get-Content $f.FullName -Raw) } else { "POSF|NOFILE" }'
+        )
+        try:
+            sess = winrm.Session(self.host, auth=(self.user, self.password),
+                                 operation_timeout_sec=60, read_timeout_sec=90)
+            r = sess.run_ps(ps)
+            for line in r.std_out.decode(errors="replace").splitlines():
+                if not line.startswith("POSF|"):
+                    continue
+                content = line[5:].strip()
+                if content == "NOFILE":
+                    return None
+                parts = content.split(";")
+                if len(parts) < 3:
+                    return None
+                side = parts[0].upper()
+                qty = int(float(parts[1] or 0))
+                if side not in ("LONG", "SHORT") or qty == 0:
+                    return ("FLAT", 0, 0.0)
+                return (side, qty, float(parts[2] or 0))
+            return None
+        except Exception:  # noqa: BLE001
+            log.exception("nt_broker.position_file_exception instrument=%s", instrument)
+            return None
+
+    def _flatten_unprotected(self, *, symbol: str, instrument: str, side: str,
+                             quantity: int, entry_oid: str, stop_oid: str,
+                             target_oid: str, entry_fill_price: float) -> None:
+        """Naked-position guard, book-aware.
+
+        Before 2026-09-09 this cancelled the legs and fired a MARKET order for
+        the ORIGINAL side/qty. If the target had already filled (6J target
+        rounded through the market, 2026-09-07 00:20 MST) the book was flat and
+        that MARKET order opened a naked REVERSE position (-$550). Now:
+          1. If either protective leg already FILLED, the book is closed by it —
+             cancel the survivor, no flatten.
+          2. Otherwise CLOSEPOSITION (engine-side: flattens whatever is actually
+             held on this account+instrument and cancels its working orders
+             atomically; a no-op on a flat book).
+          3. Verify with the live position file; if still holding, MARKET-
+             flatten the ACTUAL side/qty read from NT, not the assumed one.
+          4. If nothing can be verified, fall back to the old assumed-side
+             MARKET flatten (never leave a position we believe exists).
+        """
+        # 1) Did a leg already close the trade?
+        for name, oid in (("target", target_oid), ("stop", stop_oid)):
+            if not oid:
+                continue
+            try:
+                filled, price, raw = self.check_fill(oid)
+            except Exception:  # noqa: BLE001
+                filled, price, raw = False, 0.0, "check_fill raised"
+            if filled:
+                other = stop_oid if name == "target" else target_oid
+                log.warning("nt_broker.leg_filled_before_guard", extra={
+                    "symbol": symbol, "leg": name, "nt_order_id": oid,
+                    "fill_price": price, "entry_fill": entry_fill_price,
+                    "status": raw,
+                })
+                if other:
+                    try:
+                        self.cancel(other, symbol)
+                    except Exception:  # noqa: BLE001
+                        pass
+                pos = self._read_position_file(instrument)
+                if pos is None or pos[0] == "FLAT":
+                    log.warning("nt_broker.book_flat_after_leg_fill", extra={
+                        "symbol": symbol, "position": pos})
+                    return
+                log.critical("nt_broker.book_not_flat_after_leg_fill", extra={
+                    "symbol": symbol, "position": pos})
+                break  # fall through to CLOSEPOSITION with the real book
+
+        # 2) Cancel legs, then engine-side close of whatever is really held.
+        for oid in (stop_oid, target_oid):
+            if oid:
+                try:
+                    self.cancel(oid, symbol)
+                except Exception:  # noqa: BLE001
+                    pass
+        closed = False
+        try:
+            closed = self.close_position_cmd(instrument)
+        except Exception:  # noqa: BLE001
+            log.exception("nt_broker.close_position_cmd_raised instrument=%s", instrument)
+
+        # 3) Verify against NT's live position file.
+        pos = self._read_position_file(instrument)
+        if pos is not None and pos[0] == "FLAT":
+            log.warning("nt_broker.flattened_after_protection_failure", extra={
+                "symbol": symbol, "entry_fill": entry_fill_price,
+                "via": "CLOSEPOSITION" if closed else "already_flat",
+            })
+            return
+        if pos is not None:
+            real_side, real_qty, real_avg = pos
+            position_dir = "long" if real_side == "LONG" else "short"
+            log.critical("nt_broker.still_holding_after_close_cmd", extra={
+                "symbol": symbol, "instrument": instrument,
+                "position": pos, "closed_rc_ok": closed})
+        else:
+            position_dir = "long" if side == "BUY" else "short"
+            real_qty = quantity
+            if closed:
+                # CLOSEPOSITION accepted but the file could not be read —
+                # do NOT fire a blind MARKET (that is the reverse-position
+                # trap). Surface loudly; the 1-min reconciler owns the rest.
+                log.critical("nt_broker.FLATTEN_UNVERIFIED_CLOSEPOSITION_OK", extra={
+                    "symbol": symbol, "instrument": instrument,
+                    "entry_oid": entry_oid,
+                    "ACTION": "verify NT position; reconciler will re-queue if held",
+                })
+                return
+            log.critical("nt_broker.position_unreadable_assuming_held", extra={
+                "symbol": symbol, "instrument": instrument,
+                "assumed": (position_dir, real_qty)})
+
+        # 4) Last resort: MARKET flatten the real (or assumed) side/qty.
+        flat_price = self.flatten(symbol, direction=position_dir, quantity=real_qty)
+        if flat_price is None:
+            log.critical("nt_broker.FLATTEN_UNCONFIRMED_POSSIBLE_NAKED", extra={
+                "symbol": symbol, "instrument": instrument,
+                "position_dir": position_dir, "qty": real_qty,
+                "entry_oid": entry_oid,
+                "ACTION": "MANUAL CHECK NT POSITION NOW",
+            })
+            raise RuntimeError(
+                f"NT bracket unprotected AND flatten unconfirmed for {symbol} "
+                f"({position_dir} {real_qty}) — possible naked position, manual check"
+            )
+        log.warning("nt_broker.flattened_after_protection_failure", extra={
+            "symbol": symbol, "entry_fill": entry_fill_price,
+            "flat_price": flat_price, "via": "MARKET",
+        })
+
     # -- Bracket --------------------------------------------------------
 
     def place_bracket(self, *, symbol: str, side: str, quantity: int,
@@ -776,19 +949,31 @@ class NTBroker:
             limit_price=0.0, stop_price=stop_price, oco_id=oco_id,
             instrument=instrument,
         )
-        # 3) Target LIMIT (same OCO)
-        target_oid = self._place(
-            action=opp_action, qty=quantity, order_type="LIMIT",
-            limit_price=target_price, stop_price=0.0, oco_id=oco_id,
-            instrument=instrument,
-        )
+        # 2b) Gate the target on the stop actually being LIVE. NT rejects
+        # asynchronously; if the stop died the OCO group died with it and a
+        # target on the same id can only be rejected ('OCO ID cannot be
+        # reused'). Skip straight to the naked guard instead. (2026-09-09)
+        stop_alive: Optional[bool] = self._await_leg_live(stop_oid) if stop_oid else False
+        if stop_alive is False:
+            log.error("nt_broker.stop_leg_dead_skip_target", extra={
+                "symbol": symbol, "instrument": instrument, "stop_oid": stop_oid,
+                "oco_id": oco_id, "stop": stop_price, "entry_fill": entry_fill_price,
+            })
+            target_oid = ""
+        else:
+            # 3) Target LIMIT (same OCO)
+            target_oid = self._place(
+                action=opp_action, qty=quantity, order_type="LIMIT",
+                limit_price=target_price, stop_price=0.0, oco_id=oco_id,
+                instrument=instrument,
+            )
         # Fresh-OCO leg-2 retry (2026-07-15): NT rejects reused oco ids once
         # a group completes, so a same-oco retry would just re-reject and
         # we'd be stuck with a naked entry. If leg-1 (stop) landed but leg-2
         # (target) failed, mint a fresh oco pair and re-place leg-2 ONCE
         # before falling through to the flatten path. Root cause of the
         # orphan-entry cluster 2026-06/07.
-        if stop_oid and not target_oid:
+        if stop_oid and not target_oid and stop_alive is not False:
             fresh_oco = f"JC_{symbol}_{stamp}_{uuid.uuid4().hex[:6]}"
             log.warning("nt_broker.leg2_retry_fresh_oco symbol=%s oco=%s fresh_oco=%s",
                         symbol, oco_id, fresh_oco)
@@ -810,32 +995,11 @@ class NTBroker:
                 "entry_oid": entry_oid, "stop_oid": stop_oid,
                 "target_oid": target_oid, "entry_fill": entry_fill_price,
             })
-            # Cancel whatever legs exist, then market-flatten the entry.
-            for oid in (stop_oid, target_oid):
-                if oid:
-                    try:
-                        self.cancel(oid, symbol)
-                    except Exception:  # noqa: BLE001
-                        pass
-            position_dir = "long" if side == "BUY" else "short"
-            flat_price = self.flatten(symbol, direction=position_dir, quantity=quantity)
-            if flat_price is None:
-                # Could not confirm the flatten — we may STILL be naked. This is
-                # a loud abort state, not a silent no-trade.
-                log.critical("nt_broker.FLATTEN_UNCONFIRMED_POSSIBLE_NAKED", extra={
-                    "symbol": symbol, "instrument": instrument,
-                    "position_dir": position_dir, "qty": quantity,
-                    "entry_oid": entry_oid,
-                    "ACTION": "MANUAL CHECK NT POSITION NOW",
-                })
-                raise RuntimeError(
-                    f"NT bracket unprotected AND flatten unconfirmed for {symbol} "
-                    f"({position_dir} {quantity}) — possible naked position, manual check"
-                )
-            log.warning("nt_broker.flattened_after_protection_failure", extra={
-                "symbol": symbol, "entry_fill": entry_fill_price,
-                "flat_price": flat_price,
-            })
+            self._flatten_unprotected(
+                symbol=symbol, instrument=instrument, side=side,
+                quantity=quantity, entry_oid=entry_oid, stop_oid=stop_oid,
+                target_oid=target_oid, entry_fill_price=entry_fill_price,
+            )
             return None  # entry opened then immediately closed — no live trade
 
         return NTBracketResult(

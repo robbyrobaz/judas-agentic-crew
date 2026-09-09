@@ -173,6 +173,13 @@ def _build_nt_broker(monkeypatch, *, place_sequence, confirm_protected=True):
     monkeypatch.setattr(broker, "_place", fake_place)
     monkeypatch.setattr(broker, "_poll_fill", fake_poll_fill)
     monkeypatch.setattr(broker, "_confirm_protected", fake_confirm_protected)
+    # 2026-09-09 hardening seams: stop leg reports live; guard sees legs
+    # unfilled + book unreadable -> falls back to the MARKET flatten.
+    monkeypatch.setattr(broker, "_await_leg_live", lambda oid: True)
+    monkeypatch.setattr(broker, "check_fill", lambda oid: (False, 0.0, "NOFILE"))
+    monkeypatch.setattr(broker, "cancel", lambda oid, sym: True)
+    monkeypatch.setattr(broker, "close_position_cmd", lambda inst: False)
+    monkeypatch.setattr(broker, "_read_position_file", lambda inst: None)
     return broker, place_calls
 def test_place_bracket_retries_leg2_with_fresh_oco_on_rejection(monkeypatch):
     """leg-2 retry uses a fresh oco_id (NT rejects reused ids)."""

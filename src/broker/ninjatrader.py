@@ -407,6 +407,20 @@ class NTBroker:
             return float(price)
         return round(round(price / tick) * tick, 8)
 
+    @staticmethod
+    def _fmt_price(price: float) -> str:
+        """Render a price for the ATI PLACE string at full tick precision.
+
+        2026-09-09: this used to be ``:.4f``. 6J trades ~0.0065 with a
+        0.0000005 tick (7 decimals), so every 6J stop/target was sent as
+        0.0065/0.0064 — through the market → stop rejected → OCO group dead
+        → target 'OCO ID cannot be reused' → naked flatten. 7/7 6J brackets
+        since 2026-09-02 died that way (one left a naked reverse short, −$550).
+        7 decimals covers every crew instrument (ZF tick 1/128 = 0.0078125).
+        """
+        txt = f"{float(price):.7f}".rstrip("0").rstrip(".")
+        return txt if txt not in ("", "-0") else "0"
+
     def _place(self, *, action: str, qty: int, order_type: str,
                limit_price: float, stop_price: float, oco_id: str,
                instrument: str) -> str:
@@ -419,7 +433,7 @@ class NTBroker:
             # survives resets. A re-arm guard in the scan is the backstop in case
             # NT still drops one. (Entries are MARKET so TIF is moot for them.)
             f'r = nt.Command("PLACE", "{self.account}", "{instrument}", '
-            f'"{action}", {qty}, "{order_type}", {limit_price:.4f}, {stop_price:.4f}, '
+            f'"{action}", {qty}, "{order_type}", {self._fmt_price(limit_price)}, {self._fmt_price(stop_price)}, '
             f'"GTC", "{oco_id}", oid, "", "")\n'
             'print(f"PLACE_RC:{r}")\n'
             'print(f"OID:{oid}")\n'

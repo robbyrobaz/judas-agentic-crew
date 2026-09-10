@@ -117,6 +117,11 @@ class NTBroker:
         """
         if self.dry_run:
             return []
+        # NT sqlite MarketPosition enum: 0 = Long, 1 = Short (2 = Flat).
+        # Verified 2026-09-10 against NT's own Executions rows (buy fills 0,
+        # sell fills 1). Before this fix the query dropped LONG rows
+        # (MarketPosition!=0) and labelled SHORT rows LONG: on 2026-09-07 the
+        # crew held a naked 6J SHORT for 3.4h believing it was LONG (-$550).
         body = (
             "import sqlite3, json\n"
             "from datetime import datetime, timedelta\n"
@@ -127,7 +132,7 @@ class NTBroker:
             "FROM Positions p JOIN Accounts a ON a.Id=p.Account "
             "LEFT JOIN Instruments i ON i.Id=p.Instrument "
             "LEFT JOIN MasterInstruments m ON m.Id=i.MasterInstrument "
-            f"WHERE a.Name='{self.account}' AND p.Quantity!=0 AND p.MarketPosition!=0''').fetchall()\n"
+            f"WHERE a.Name='{self.account}' AND p.Quantity!=0 AND p.MarketPosition IN (0,1)''').fetchall()\n"
             "out=[]\n"
             "for r in rows:\n"
             "    master=r['master'] or '?'\n"
@@ -137,7 +142,7 @@ class NTBroker:
             "    except Exception:\n"
             "        contract=master\n"
             "    out.append({'symbol':master,'contract':contract,"
-            "'side':'LONG' if r['mp']==1 else 'SHORT','qty':int(r['qty'] or 0),"
+            "'side':'LONG' if r['mp']==0 else 'SHORT','qty':int(r['qty'] or 0),"
             "'avg_price':float(r['avg'] or 0)})\n"
             "print('POSJSON'+json.dumps(out)+'ENDPOS')\n"
         )

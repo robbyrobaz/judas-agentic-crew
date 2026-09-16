@@ -348,6 +348,51 @@ def _prior_day_levels(bars: pd.DataFrame) -> tuple[float, float] | None:
     return float(day["high"].max()), float(day["low"].min())
 
 
+_FALSE_STRINGS = {"false", "0", "no", "off", "paused", "disabled", ""}
+
+
+def strategy_is_enabled(params: dict[str, Any]) -> bool:
+    """Honour ``enabled`` in an active row's params_json.
+
+    Agents spent Aug-Sep 2026 setting ``enabled=false`` to pause strategies
+    and the scan ignored it (findings 15622bcd / d3ae7f65) — every pause was
+    silently a no-op, so they retired instead. Missing key → enabled."""
+    v = params.get("enabled", True)
+    if isinstance(v, str):
+        return v.strip().lower() not in _FALSE_STRINGS
+    return bool(v)
+
+
+def side_filter_of(params: dict[str, Any]) -> str | None:
+    """Normalise ``side_filter`` → 'long' | 'short' | None (no filter)."""
+    v = params.get("side_filter")
+    if v is None:
+        return None
+    v = str(v).strip().lower()
+    if v in ("long", "long_only", "longs", "buy"):
+        return "long"
+    if v in ("short", "short_only", "shorts", "sell"):
+        return "short"
+    return None  # 'both', '', unknown → no filter
+
+
+def apply_side_filter(params: dict[str, Any], fires: list["ActiveFire"]) -> list["ActiveFire"]:
+    """Drop fires on the wrong side when params carry a side_filter.
+
+    Pair engines (two opposite legs) are never filtered. Before 2026-09-16
+    ``side_filter`` was forwarded to custom code and otherwise ignored — the
+    reviewer set long_only on #4610 and 3 of its next 4 trades were shorts."""
+    side = side_filter_of(params)
+    if side is None or str(params.get("execution_engine", "")) == "buffet_pair":
+        return fires
+    kept = [f for f in fires if f.direction == side]
+    for f in fires:
+        if f.direction != side:
+            log.info("side_filter_drop strategy_id=%s %s %s (filter=%s_only)",
+                     f.strategy_id, f.symbol, f.direction, side)
+    return kept
+
+
 def evaluate_active_strategy(active: dict[str, Any], bars_by_sym: dict[str, pd.DataFrame]) -> list[ActiveFire]:
     params = active["params"]
     engine = str(params.get("execution_engine", "judas_native"))
@@ -1986,6 +2031,10 @@ def run_portfolio_scan(
                 row.get("symbol"), row.get("id"), row["params"].get("custom_strategy_id"),
             )
             continue
+        if not strategy_is_enabled(row["params"]):
+            log.info("paused_skip symbol=%s id=%s enabled=false",
+                     row.get("symbol"), row.get("id"))
+            continue
         tf = _strategy_timeframe(row)
         # Feed the strategy bars at ITS timeframe (only those symbols/tf).
         tf_bars = {s: df for (s, t), df in bars_by_pair.items() if t == tf}
@@ -1995,7 +2044,7 @@ def run_portfolio_scan(
         pdf = tf_bars.get(syms[0]) if syms else None
         if pdf is not None and len(pdf) and not _strategy_new_bar(db_path, row.get("id"), str(pdf.iloc[-1]["ts"])):
             continue
-        fires = evaluate_active_strategy(row, tf_bars)
+        fires = apply_side_filter(row["params"], evaluate_active_strategy(row, tf_bars))
         is_pair = engine == "buffet_pair" and len(fires) == 2
         # Per-strategy override: eval_only_no_orders in params forces
         # place_orders=False for THIS strategy even when the scan-level flag

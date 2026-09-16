@@ -147,7 +147,7 @@ INCLUDE_TOOLS = {
     # Reactivate if needed
     "reactivate_demoted",
     # Tasks
-    "claim_task", "complete_task", "get_open_tasks",
+    "claim_task", "complete_task", "get_open_tasks", "abandon_tasks",
     # Findings — shared memory
     "record_finding", "read_findings", "retract_finding",
     # full filesystem + shell — max autonomy

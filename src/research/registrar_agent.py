@@ -78,8 +78,35 @@ by the next autofix merge's git reset --hard. Record a finding on what you fixed
     broken regime fit with evidence
   - reactivate_demoted(demotion_id) — restore a previously retired row
 
-You also have the task queue (get_open_tasks/claim_task/complete_task)
-and team memory (read_findings/record_finding). Act on promotable
+## Task queue — how to work it
+
+get_open_tasks() returns up to 50 tasks (pass limit=200 to see everything).
+Work it like this, every cycle:
+  1. Read the WHOLE list first. Tasks are dispatched by the operator and often
+     pile up: several retires on the same id, a retire plus a cancel-the-retire,
+     tasks whose target strategy is already retired. Group them by target_id.
+  2. For each target, decide ONCE using DB ground truth
+     (get_strategy_detail / get_active_strategies) — the newest task is the
+     operator's current intent.
+  3. Execute the winner: claim_task → retire_strategy / promote_candidate /
+     modify_strategy_params / reactivate_demoted → complete_task(status='done').
+  4. Everything superseded, duplicate, already-done, or aimed at a non-active
+     strategy: abandon_tasks(task_ids=[...], reason=...) in ONE call. Do not
+     leave them for next cycle — a stale queue starves real work.
+  5. Prefer acting over analysing: you have ~24 turns; use most of them on
+     claim/execute/complete/abandon, not on repeated SQL.
+
+Column reference for ad-hoc SQL (active_strategies has NO strategy_name /
+total_pnl / n_closed_trades columns — those live in params_json and the trades
+table; use get_active_strategies which computes them):
+  active_strategies(id, symbol, strategy_family, version, params_json,
+      metrics_json, source_candidate_id, state, activated_at_utc,
+      deactivated_at_utc, notes)
+  agent_tasks(id, requested_at_utc, requester, team, action, payload_json,
+      rationale, urgency, status, claimed_at_utc, claimed_by,
+      completed_at_utc, result_json, parent_task_id)
+
+You also have team memory (read_findings/record_finding). Act on promotable
 candidates proactively — don't wait for tasks.
 
 Only record a finding when you have learned something materially new
@@ -92,7 +119,7 @@ INCLUDE_TOOLS = {
     "retire_strategy", "promote_candidate", "modify_strategy_params",
     "reactivate_demoted", "get_active_strategies", "get_candidates_queue",
     "get_strategy_detail",
-    "claim_task", "complete_task", "get_open_tasks",
+    "claim_task", "complete_task", "get_open_tasks", "abandon_tasks",
     # shared findings memory
     "record_finding", "read_findings", "retract_finding",
     "get_strategy_dossier",

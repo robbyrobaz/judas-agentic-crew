@@ -120,6 +120,8 @@ INCLUDE_TOOLS = {    # delegations
     # reads
     "get_active_strategies", "get_recent_pnl", "get_recent_briefs",
     "get_outstanding_delegations", "get_recent_trades",
+    # queue hygiene (2026-09-16): prune superseded/duplicate tasks directly
+    "abandon_tasks",
     "get_candidates_queue", "get_workshop_leaderboard", "query_db",
     "get_strategy_detail", "get_recent_experiments", "get_open_positions",
     "get_regime_tag",
@@ -290,16 +292,24 @@ def _build_operator_kickoff(db_path: str) -> str:
 
         # Open tasks from all teams
         task_rows = conn.execute("""
-            SELECT team, action, urgency, substr(rationale, 1, 80) AS r
-            FROM agent_tasks WHERE status='open'
+            SELECT id, team, action, urgency, status,
+                   json_extract(payload_json, '$.target_id') AS tid,
+                   substr(rationale, 1, 80) AS r
+            FROM agent_tasks WHERE status IN ('open','claimed')
             ORDER BY CASE urgency WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
                      requested_at_utc ASC
             LIMIT 100
         """).fetchall()
         if task_rows:
-            lines.append(f"OPEN TEAM TASKS ({len(task_rows)}):")
+            lines.append(f"OPEN/CLAIMED TEAM TASKS ({len(task_rows)}) — task #id, target strategy id:")
             for t in task_rows:
-                lines.append(f"  [{t['team']}] {t['action']} [{t['urgency']}]: {t['r']}")
+                tid = f" target={t['tid']}" if t["tid"] not in (None, "", 0) else ""
+                lines.append(
+                    f"  #{t['id']} [{t['team']}] {t['action']} [{t['urgency']}/{t['status']}]"
+                    f"{tid}: {t['r']}")
+            lines.append("  Already-queued work is listed above — do NOT re-delegate it "
+                         "(identical delegations are deduped anyway). Superseded or "
+                         "duplicate tasks: abandon_tasks(task_ids=[...], reason=...).")
             lines.append("")
 
         # Last brief

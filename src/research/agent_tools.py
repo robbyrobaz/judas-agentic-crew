@@ -215,7 +215,36 @@ def make_enqueue_task(*, db_path: str, requester: str = "operator") -> Callable[
             urgency = "normal"
         from src.db.models import init_db
         init_db(db_path)
+        payload_json = json.dumps(payload or {}, default=str)
+        target_id = (payload or {}).get("target_id") if isinstance(payload, dict) else None
         with _connect(db_path) as conn:
+            # Dedupe (2026-09-16): the operator re-dispatched the same retire /
+            # modify on the same strategy dozens of times because it could not
+            # see what was already queued — 85 open registrar tasks, 24 on two
+            # already-retired ids. Same team+action on the same target_id (or
+            # byte-identical payload when there is no target_id) while a prior
+            # row is still open/claimed → return that row instead of a new one.
+            if target_id is not None:
+                dup = conn.execute(
+                    """
+                    SELECT id, status FROM agent_tasks
+                    WHERE team = ? AND action = ? AND status IN ('open','claimed')
+                      AND json_extract(payload_json, '$.target_id') = ?
+                    ORDER BY id DESC LIMIT 1
+                    """, (team, action, target_id)).fetchone()
+            else:
+                dup = conn.execute(
+                    """
+                    SELECT id, status FROM agent_tasks
+                    WHERE team = ? AND action = ? AND status IN ('open','claimed')
+                      AND payload_json = ?
+                    ORDER BY id DESC LIMIT 1
+                    """, (team, action, payload_json)).fetchone()
+            if dup is not None:
+                return {"ok": True, "task_id": int(dup["id"]), "deduped": True,
+                        "note": (f"identical {action} already queued as task "
+                                 f"#{int(dup['id'])} (status={dup['status']}); "
+                                 "no new row inserted")}
             cur = conn.execute(
                 """
                 INSERT INTO agent_tasks
@@ -223,8 +252,7 @@ def make_enqueue_task(*, db_path: str, requester: str = "operator") -> Callable[
                    rationale, urgency, status, parent_task_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?)
                 """,
-                (_utc_now(), requester, team, action,
-                 json.dumps(payload or {}, default=str),
+                (_utc_now(), requester, team, action, payload_json,
                  rationale, urgency, parent_task_id),
             )
             tid = int(cur.lastrowid)
@@ -234,12 +262,14 @@ def make_enqueue_task(*, db_path: str, requester: str = "operator") -> Callable[
 
 
 def make_get_open_tasks(*, db_path: str, team: str) -> Callable[..., list[dict]]:
-    def get_open_tasks(*, limit: int = 10) -> list[dict]:
+    def get_open_tasks(*, limit: int = 50) -> list[dict]:
+        # Default raised 10→50 (2026-09-16): with 85 queued the registrar only
+        # ever saw the 10 oldest — a frozen, self-contradictory window.
         try:
             n = int(limit)
         except (TypeError, ValueError):
-            n = 10
-        n = max(1, min(n, 100))
+            n = 50
+        n = max(1, min(n, 200))
         from src.db.models import init_db
         init_db(db_path)
         urgency_order = "CASE urgency WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END"
@@ -358,6 +388,50 @@ def make_complete_task(*, db_path: str) -> Callable[..., dict]:
             conn.commit()
         return {"ok": True, "task_id": tid, "status": status}
     return complete_task
+
+
+def make_abandon_tasks(*, db_path: str, actor: str = "agent") -> Callable[..., dict]:
+    """Bulk queue hygiene: mark many open/claimed tasks 'abandoned' in one call.
+
+    Added 2026-09-16 after the registrar spent a week unable to drain 85
+    superseded tasks one complete_task() at a time inside a 6-turn budget.
+    Terminal rows (done/failed/abandoned) are left untouched and reported.
+    """
+    def abandon_tasks(*, task_ids: list[int], reason: str) -> dict:
+        try:
+            ids = sorted({int(t) for t in (task_ids or [])})
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "task_ids must be a list of ints"}
+        if not ids:
+            return {"ok": False, "error": "task_ids empty"}
+        if not isinstance(reason, str) or not reason.strip():
+            return {"ok": False, "error": "reason required"}
+        from src.db.models import init_db
+        init_db(db_path)
+        abandoned: list[int] = []
+        skipped: dict[int, str] = {}
+        with _connect(db_path) as conn:
+            for tid in ids:
+                row = conn.execute(
+                    "SELECT status FROM agent_tasks WHERE id = ?", (tid,)).fetchone()
+                if row is None:
+                    skipped[tid] = "not found"
+                    continue
+                if str(row["status"]) not in ("open", "claimed"):
+                    skipped[tid] = f"already {row['status']}"
+                    continue
+                conn.execute(
+                    "UPDATE agent_tasks SET status='abandoned', completed_at_utc=?, "
+                    "result_json=? WHERE id=?",
+                    (_utc_now(),
+                     json.dumps({"abandoned_by": actor, "reason": reason}, default=str),
+                     tid),
+                )
+                abandoned.append(tid)
+            conn.commit()
+        return {"ok": True, "abandoned": abandoned, "skipped": skipped,
+                "n_abandoned": len(abandoned)}
+    return abandon_tasks
 
 
 # ---------------------------------------------------------------------------
@@ -861,7 +935,7 @@ _ACTION_TOOL_NAMES = {
     "delegate_to_researcher", "delegate_to_trader",
     "delegate_to_registrar", "delegate_to_coder",
     # queue mutators
-    "claim_task", "complete_task",
+    "claim_task", "complete_task", "abandon_tasks",
 }
 
 
@@ -997,10 +1071,29 @@ def _new_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "get_open_tasks",
-                "description": "List open agent_tasks rows assigned to this team.",
+                "description": "List open agent_tasks rows assigned to this team (default 50, max 200).",
                 "parameters": {
                     "type": "object",
-                    "properties": {"limit": {"type": "integer", "default": 10}},
+                    "properties": {"limit": {"type": "integer", "default": 50}},
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "abandon_tasks",
+                "description": (
+                    "Bulk queue hygiene: mark many open/claimed agent_tasks rows "
+                    "'abandoned' in ONE call (superseded, duplicate, already-done, "
+                    "or targeting a strategy that is no longer active). Terminal "
+                    "rows are skipped and reported."),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_ids": {"type": "array", "items": {"type": "integer"}},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["task_ids", "reason"],
                 },
             },
         },
@@ -1044,7 +1137,12 @@ def _new_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "delegate_to_registrar",
-                "description": "Queue a registry mutation (retire/promote/modify/reactivate) for the Registrar.",
+                "description": (
+                    "Queue a registry mutation (retire/promote/modify/reactivate) for "
+                    "the Registrar. target_id is the strategy/candidate/demotion id. "
+                    "To cancel or prune queued TASKS do NOT use this — call "
+                    "abandon_tasks(task_ids=[...]) yourself. Identical open "
+                    "delegations are deduped (you get the existing task_id back)."),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -1619,6 +1717,9 @@ def make_tools(*, db_path: str, include: set[str] | None = None,
         extras["claim_task"] = _safe_tool(make_claim_task(db_path=db_path, team=team, claimed_by=cb))
         extras["complete_task"] = _safe_tool(make_complete_task(db_path=db_path))
         extras["get_open_tasks"] = _safe_tool(make_get_open_tasks(db_path=db_path, team=team))
+    # Bulk prune — any agent that includes it (registrar/reviewer/operator).
+    extras["abandon_tasks"] = _safe_tool(make_abandon_tasks(
+        db_path=db_path, actor=(claimed_by or team or ("operator" if operator_mode else "agent"))))
 
     # Findings — shared across all agents. Author defaults to team if omitted,
     # else 'operator' when operator_mode, else 'human' as a sensible fallback.

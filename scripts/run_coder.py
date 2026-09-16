@@ -26,7 +26,9 @@ def main() -> int:
     if pending == 0:
         print("coder: no pending tasks — skipping")
         return 0
-    result = run_coder_decision(db_path=db_path, turn_budget=1)
+    # turn_budget doubles as the get_open_tasks limit inside the coder —
+    # 1 meant one task per hourly cycle (2026-09-16).
+    result = run_coder_decision(db_path=db_path, turn_budget=10)
     print(
         f"coder: success={result.success} tasks_processed={len(result.actions_taken)} "
         f"elapsed={result.elapsed_s:.1f}s fallback={result.fallback_used}"

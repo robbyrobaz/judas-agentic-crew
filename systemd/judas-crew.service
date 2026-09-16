@@ -9,3 +9,11 @@ ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python main.py --symbol MGC
 EnvironmentFile=/home/rob/judas-agentic-crew/.env
 StandardOutput=journal
 StandardError=journal
+# Hard timeout: a healthy scan finishes in <60s. 10 min catches any
+# IBKR reconnect-loop hang (the May 25 14-hour hang would have been
+# killed at minute 10 with this set).
+TimeoutStartSec=10min
+KillMode=control-group
+KillSignal=SIGTERM
+# Hard cap on resident memory — kill if leak grows above 400MB.
+MemoryMax=400M

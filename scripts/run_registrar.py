@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Registrar specialist runner — invoked by judas-registrar.timer (5-min poll)."""
+"""Registrar specialist runner — invoked by judas-registrar.timer (every 8h)."""
 from __future__ import annotations
 
 import os
@@ -31,8 +31,12 @@ def main() -> int:
         return 0
     result = run_registrar_decision(
         db_path=db_path,
-        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "6")),
-        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "300")),
+        # 6 turns / 300 s was enough to read the queue and nothing else
+        # (0 actions per run, Sep 9-16 2026). Raised so one cycle can read,
+        # decide per target, execute, and prune. Token use runs 5-8M/day
+        # against a 20M daily budget, so there is room.
+        turn_budget=int(os.environ.get("JUDAS_TURN_BUDGET", "24")),
+        time_budget_s=int(os.environ.get("JUDAS_TIME_BUDGET_S", "900")),
     )
     print(
         f"registrar: success={result.success} actions={len(result.actions_taken)} "

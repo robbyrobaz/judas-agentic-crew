@@ -1024,9 +1024,21 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
                 old_params = json.loads(old_params_json)
             except (TypeError, json.JSONDecodeError):
                 old_params = {}
-            for alt in ("strategy_name", "strategy_family"):
+            for alt in ("strategy_name", "strategy_family",
+                        "execution_engine", "custom_strategy_id"):
                 if alt not in merged and alt in old_params:
                     merged[alt] = old_params[alt]
+
+            # Same gates promote_candidate / insert_active_strategy run
+            # (2026-09-16): this path used to bypass both, so a modify could
+            # birth a banned-symbol row or a custom row with no loadable code.
+            try:
+                from src import strategy_registry as _sr
+                _sr._validate_lucid_ban(symbol)
+                _sr._validate_custom_link(conn, merged)
+            except ValueError as exc:
+                conn.rollback()
+                return {"ok": False, "error": f"modify rejected: {exc}"}
 
             # 1) Audit: write candidate row showing the modify intent.
             cur = conn.execute(

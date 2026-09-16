@@ -687,14 +687,25 @@ def insert_custom_strategy(
     params_json: str, source_candidate_id: int | None = None,
 ) -> dict:
     """Insert a new strategy into active_strategies. Use this when promoting a candidate to active paper trading."""
+    # Fixed 2026-09-16: this called insert_active_strategy(params_json=...,
+    # source_candidate_id=...) — neither kwarg exists — so every call raised
+    # TypeError while the tool stayed advertised to the registrar.
     try:
         from src import strategy_registry as sr
-        new_id = sr.insert_active_strategy(
-            symbol=symbol,
-            strategy_family=strategy_family,
-            params_json=params_json,
-            source_candidate_id=source_candidate_id,
+        try:
+            params = json.loads(params_json) if isinstance(params_json, str) else dict(params_json or {})
+        except (TypeError, json.JSONDecodeError) as exc:
+            return {"ok": False, "error": f"params_json is not valid JSON: {exc}"}
+        if not isinstance(params, dict):
+            return {"ok": False, "error": "params_json must decode to an object"}
+        params.setdefault("strategy_name", strategy_name)
+        note = "Inserted by registrar."
+        if source_candidate_id is not None:
+            note += f" source_candidate_id={int(source_candidate_id)}"
+        row = sr.insert_active_strategy(
+            symbol=symbol, strategy_family=strategy_family, params=params, notes=note,
         )
+        new_id = getattr(row, "id", row)
         return {"ok": True, "strategy_id": int(new_id)}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}

@@ -177,7 +177,8 @@ def _build_operator_kickoff(db_path: str) -> str:
             FROM active_strategies WHERE state='active'
             ORDER BY symbol, strategy_family
         """).fetchall()
-        all_syms = {"MGC", "MNQ", "MCL", "MBT", "MET", "DX", "ZF", "6J"}
+        from src.research.lucid_guard import tradeable_symbols as _ts
+        all_syms = _ts()  # legal symbols only (banned MET/MBT/DX excluded)
         active_syms: set[str] = set()
         lines.append(f"ACTIVE STRATEGIES ({len(rows)}):")
         for r in rows:

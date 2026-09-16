@@ -1687,6 +1687,60 @@ def reap_stale_claims(*, db_path: str, max_age_hours: float = 24.0) -> int:
         return 0
 
 
+_MAX_REQUEUES = 3
+
+
+def release_unfinished_claims(*, db_path: str, team: str, claimed_by: str) -> dict:
+    """Put tasks this agent claimed-but-never-completed back to 'open'.
+
+    Called at the end of every agent cycle. Each release bumps a `requeues`
+    counter in result_json; after _MAX_REQUEUES the task is abandoned instead
+    (something about it is un-doable; the operator can re-dispatch a better
+    brief). Never raises."""
+    reopened: list[int] = []
+    abandoned: list[int] = []
+    try:
+        with _connect(db_path) as conn:
+            rows = conn.execute(
+                "SELECT id, result_json FROM agent_tasks "
+                "WHERE team = ? AND status = 'claimed' AND claimed_by = ?",
+                (team, claimed_by),
+            ).fetchall()
+            for r in rows:
+                try:
+                    prev = json.loads(r["result_json"] or "{}")
+                    if not isinstance(prev, dict):
+                        prev = {}
+                except (TypeError, json.JSONDecodeError):
+                    prev = {}
+                n = int(prev.get("requeues", 0) or 0) + 1
+                prev["requeues"] = n
+                if n > _MAX_REQUEUES:
+                    prev["abandoned_by"] = "release_unfinished_claims"
+                    prev["reason"] = (f"claimed and left unfinished {n} times by "
+                                      f"{claimed_by}")
+                    conn.execute(
+                        "UPDATE agent_tasks SET status='abandoned', completed_at_utc=?, "
+                        "result_json=? WHERE id=?",
+                        (_utc_now(), json.dumps(prev, default=str), int(r["id"])),
+                    )
+                    abandoned.append(int(r["id"]))
+                else:
+                    conn.execute(
+                        "UPDATE agent_tasks SET status='open', claimed_at_utc=NULL, "
+                        "claimed_by=NULL, result_json=? WHERE id=?",
+                        (json.dumps(prev, default=str), int(r["id"])),
+                    )
+                    reopened.append(int(r["id"]))
+            conn.commit()
+        if reopened or abandoned:
+            log.warning("agent_tasks.released_unfinished team=%s reopened=%s abandoned=%s",
+                        team, reopened, abandoned)
+    except Exception:  # noqa: BLE001
+        log.exception("release_unfinished_claims failed")
+    return {"reopened": reopened, "abandoned": abandoned}
+
+
 def make_tools(*, db_path: str, include: set[str] | None = None,
                team: str | None = None,
                claimed_by: str | None = None,

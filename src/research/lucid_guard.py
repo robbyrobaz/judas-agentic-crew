@@ -50,6 +50,18 @@ _LEDGER_PATH = _DATA_DIR / "lucid_guard_ledger.json"
 _STATE_PATH = _DATA_DIR / "lucid_guard_state.json"
 _PROFIT_LOCK_PATH = _DATA_DIR / "lucid_guard_profit_lock.json"
 
+# Every symbol the data/execution layer knows about. Research and coverage
+# reports must use tradeable_symbols() (this minus banned_symbols) — the
+# researcher spent Aug-Sep 2026 chasing MBT/MET/DX "coverage gaps" that the
+# registry hard-rejects at promote time.
+ALL_SYMBOLS = frozenset({"MGC", "MNQ", "MCL", "MBT", "MET", "DX", "ZF", "6J"})
+
+
+def tradeable_symbols() -> set[str]:
+    """Symbols a strategy can actually be promoted and traded on."""
+    return set(ALL_SYMBOLS) - set(RULES["banned_symbols"])
+
+
 # Single active venue. If more are added later, key this off config.
 RULES = {
     "venue": "lucidflex_50k_eval",

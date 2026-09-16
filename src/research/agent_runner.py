@@ -153,9 +153,11 @@ def run_agent_loop(
     time_budget_s: int,
     minimax_model: str = "minimax/MiniMax-M3",
     team: str | None = None,
+    claimed_by: str | None = None,
 ) -> AgentDecisionResult:
     """Run the standard ReAct-ish loop. Pure-deterministic when LLM is mocked."""
     started = time.time()
+    _claimed_by = claimed_by or (f"{team}_agent" if team else None)
 
     if not os.environ.get("MINIMAX_API_KEY"):
         log.warning("agent_runner.no_api_key.fallback_noop")
@@ -324,6 +326,22 @@ def run_agent_loop(
                     tool_result=result if isinstance(result, dict)
                                 else {"value": result},
                 ))
+        # The time budget used to be checked only before the LLM call, so a
+        # single long tool call (a multi-symbol backtest) could run the cycle
+        # to 2,472 s against a 900 s budget (2026-09-15). Check again here.
+        if not unlimited_time and (time.time() - started) >= time_budget_s:
+            error = f"time budget exhausted after {time.time() - started:.1f}s"
+            break
+
+    # Release anything this agent claimed but did not finish, so the work is
+    # retried next cycle instead of sitting 'claimed' for 24 h and then being
+    # reaped to 'abandoned' (every researcher task Sep 3-16 2026 died this way).
+    if team and _claimed_by:
+        try:
+            from src.research.agent_tools import release_unfinished_claims
+            release_unfinished_claims(db_path=db_path, team=team, claimed_by=_claimed_by)
+        except Exception:  # noqa: BLE001
+            log.exception("agent_runner.release_claims_failed")
 
     elapsed_s = time.time() - started
     if not final_text:

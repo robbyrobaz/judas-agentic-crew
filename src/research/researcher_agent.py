@@ -38,6 +38,26 @@ backtest them, and propose the winners. Bias proposals toward 15m-family
 variants (the only family with live PF > 2). Treat a backtest PF > 3 with
 ~90% winrate as an OVERFITTING RED FLAG, not a selling point.
 
+WHAT ACTUALLY PRODUCES LIVE WINNERS HERE (read this before choosing tools):
+every strategy that has made money in sim is a `custom` engine strategy on
+5m/15m bars — ATR/displacement continuation, rolling PDH/PDL retest
+("silver bullet"), iFVG midpoint reversion — authored as code via
+propose_custom_strategy() and verified with run_custom_backtest(). The 1h
+`judas_native` sweeps (run_judas_threshold_sweep / run_walk_forward) have
+produced ZERO promotable candidates in the last 30 days and every one was
+rejected at the gate. Spend your backtest budget on the custom path:
+  1. pick a family that is proving out live (see ACTIVE STRATEGIES + broker
+     evidence in your briefing) or a concrete rule from ingested content;
+  2. propose_custom_strategy(code=...) if it needs new code, else reuse an
+     existing custom_strategy_id (query custom_strategies);
+  3. run_custom_backtest(custom_strategy_id=..., symbol=..., timeframe="5m"|"15m")
+     on EVERY legal symbol (loop it — tool calls are cheap);
+  4. propose_candidate() with params.execution_engine="custom" and
+     params.custom_strategy_id set — a custom candidate without a loadable
+     custom_strategy_id can never fire and will be rejected.
+Aim to leave at least one new candidate in the queue every cycle unless the
+evidence genuinely is not there.
+
 Your full briefing (active strategies, open tasks, recent findings, last
 brief) is injected at the top of the first user message — read it before
 acting. Do NOT call get_active_strategies, get_open_tasks, or read_findings;
@@ -48,6 +68,11 @@ that data is already in front of you.
 ### 1. WORK OPEN TASKS FIRST
 Your briefing lists open tasks by priority. Claim and complete them before
 doing any YouTube ingest. Use claim_task(task_id=...) then complete_task().
+Claim ONE task at a time and finish it (complete_task with your result)
+before claiming the next — a task you claim and do not complete is released
+back to the queue when your cycle ends, and after 3 such releases it is
+abandoned. If a task is impossible or already moot, complete_task(...,
+status='abandoned') with the reason so the operator stops re-dispatching it.
 
 ### 2. YOUTUBE INGEST (main driver — do this every session)
 Search for fresh ICT and Smart Money content:
@@ -103,8 +128,10 @@ variants of families already proving out live over novel lottery tickets.
 
 ### 5. MULTI-SYMBOL SWEEP
 When any parameter set clears the threshold on one symbol, immediately
-sweep it across ALL 8 symbols in the same session:
-  Symbols: MGC, MNQ, MCL, MBT, MET, DX, ZF, 6J
+sweep it across ALL legal symbols in the same session:
+  Symbols: MGC, MNQ, MCL, ZF, 6J
+  (MBT, MET and DX are BANNED on this venue — the registry refuses to promote
+  them, so backtesting them is wasted budget. Do not propose them.)
 One backtest call per symbol — Python loops inside the tool are free.
 
 ### 6. PROPOSE OR DISCARD
@@ -115,8 +142,8 @@ One backtest call per symbol — Python loops inside the tool are free.
 
 ## Symbols by priority (highest gap = top priority)
 Symbols with NO active strategy are the highest research priority.
-MGC (gold micro) > MNQ (Nasdaq micro) > MCL (crude micro) > MBT (bitcoin micro)
-MET (ether micro), DX (dollar index), ZF (5yr treasury), 6J (yen)
+MGC (gold micro) > MNQ (Nasdaq micro) > MCL (crude micro) > ZF (5yr treasury) > 6J (yen)
+Banned, never propose: MBT, MET, DX.
 
 ## Exact runtime param keys (DO NOT invent alternatives)
 
@@ -187,7 +214,8 @@ def _build_kickoff(db_path: str) -> str:
             FROM active_strategies WHERE state='active'
             ORDER BY symbol, strategy_family
         """).fetchall()
-        all_syms = {"MGC", "MNQ", "MCL", "MBT", "MET", "DX", "ZF", "6J"}
+        from src.research.lucid_guard import tradeable_symbols as _ts
+        all_syms = _ts()  # legal symbols only (banned MET/MBT/DX excluded)
         active_syms: set[str] = set()
         lines.append(f"ACTIVE STRATEGIES ({len(rows)}):")
         for r in rows:

@@ -136,3 +136,40 @@ def test_get_open_tasks_default_window_is_50(tmp_path):
     get = agent_tools.make_get_open_tasks(db_path=db, team="registrar")
     assert len(get()) == 50
     assert len(get(limit=200)) == 60
+
+
+def test_release_unfinished_claims_reopens_then_abandons(tmp_path):
+    """Claimed-but-unfinished work goes back to 'open' at cycle end (was: sat
+    'claimed' 24h then reaped to 'abandoned' — every researcher task Sep 3-16)."""
+    db = _setup(tmp_path)
+    enq = agent_tools.make_enqueue_task(db_path=db, requester="operator")
+    tid = enq(team="researcher", action="research_topic",
+              payload={"topic": "x"}, rationale="r")["task_id"]
+    claim = agent_tools.make_claim_task(db_path=db, team="researcher",
+                                        claimed_by="researcher_agent")
+    for n in range(1, 4):
+        assert claim(task_id=tid)["ok"] is True
+        out = agent_tools.release_unfinished_claims(
+            db_path=db, team="researcher", claimed_by="researcher_agent")
+        assert out["reopened"] == [tid], n
+        with sqlite3.connect(db) as c:
+            st, cb, rj = c.execute(
+                "SELECT status, claimed_by, result_json FROM agent_tasks WHERE id=?",
+                (tid,)).fetchone()
+        assert st == "open" and cb is None and f'"requeues": {n}' in rj
+    # 4th unfinished claim → abandoned
+    assert claim(task_id=tid)["ok"] is True
+    out = agent_tools.release_unfinished_claims(
+        db_path=db, team="researcher", claimed_by="researcher_agent")
+    assert out["abandoned"] == [tid]
+    # another agent's claims are untouched
+    tid2 = enq(team="researcher", action="research_topic",
+               payload={"topic": "y"}, rationale="r")["task_id"]
+    claim2 = agent_tools.make_claim_task(db_path=db, team="researcher",
+                                         claimed_by="someone_else")
+    claim2(task_id=tid2)
+    agent_tools.release_unfinished_claims(
+        db_path=db, team="researcher", claimed_by="researcher_agent")
+    with sqlite3.connect(db) as c:
+        assert c.execute("SELECT status FROM agent_tasks WHERE id=?",
+                         (tid2,)).fetchone()[0] == "claimed"

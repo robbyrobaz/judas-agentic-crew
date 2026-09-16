@@ -421,7 +421,8 @@ def all_active_stats(conn: sqlite3.Connection, *, limit: int = 50) -> list[dict]
 
 def coverage_summary(conn: sqlite3.Connection) -> dict:
     """Symbols covered vs uncovered."""
-    all_syms = {"MGC", "MNQ", "MCL", "MBT", "MET", "DX", "ZF", "6J"}
+    from src.research.lucid_guard import tradeable_symbols as _ts
+    all_syms = _ts()  # legal symbols only (banned MET/MBT/DX excluded)
     covered_rows = conn.execute(
         "SELECT DISTINCT symbol FROM active_strategies WHERE state='active'"
     ).fetchall()

@@ -276,7 +276,8 @@ def _build_leaderboard_block_legacy(db_path: str) -> str:
                 )
 
         # Coverage
-        all_syms = {"MGC", "MNQ", "MCL", "MBT", "MET", "DX", "ZF", "6J"}
+        from src.research.lucid_guard import tradeable_symbols as _ts
+        all_syms = _ts()  # legal symbols only (banned MET/MBT/DX excluded)
         covered = {r["symbol"] for r in active_data}
         uncovered = sorted(all_syms - covered)
         out.append("")

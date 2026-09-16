@@ -90,14 +90,24 @@ Do NOT retire a brand-new strategy because:
 
 The correct action for a new strategy with questionable BT provenance: record_finding()
 with the concern and move on. Let it run. Retire only if forward metrics confirm the edge
-is absent after broker-confirmed sim trades (n >= 10, pf_net < 0.8).
+is absent after broker-confirmed sim trades (n >= 10, pf_20 < 0.8).
 
 ## REVIEWER HEURISTICS (for strategies with forward sim data)
 
+Your briefing's LIVE REVIEW block is the source of truth for actives: it is
+computed from broker-confirmed sim fills every cycle (pf_20, expectancy_20,
+total_realized_pnl, max_consec_losers, days_since_last_fire) with a
+deterministic rule verdict per strategy. The `metrics` blob on an active row
+(get_strategy_detail → metrics / metrics_json) is the ORIGINAL BACKTEST and
+never changes — do not judge a live strategy on it. Live P&L is gross of
+commission (~$2-6 per round trip on micros): shade marginal PFs down.
+
 These apply ONLY when n_closed_trades >= 10:
-  - Cost-adjusted (*_net) metrics are the source of truth.
-  - pf_20_net < 0.9 on >= 20 closed trades → retire candidate.
+  - pf_20 < 0.9 on >= 20 closed trades → retire candidate.
+  - max_consec_losers >= 6 → retire candidate.
   - Stale: no fires in 14+ days, active > 14 days → retire candidate.
+The rule verdict is advisory. Overrule it when you have a reason (regime,
+duplicate-fire pair, a config bug you can fix instead) — and say why.
 
 For candidate promotion, these are signs of a strong candidate — NOT hard
 gates. Use your judgment:
@@ -242,35 +252,16 @@ def _build_reviewer_kickoff(db_path: str) -> str:
             "ORDER BY symbol, strategy_family, id"
         ).fetchall()
 
-        actives_with_metrics: list[tuple] = []
-        for r in active_rows:
-            m = _safe_get_live_metrics(db_path, int(r["id"])) or {}
-            pf_net = m.get("pf_20_net")
-            pf_gross = m.get("pf_20")
-            sort_pf = pf_net if pf_net is not None else (pf_gross if pf_gross is not None else 999.0)
-            actives_with_metrics.append((sort_pf, r, m))
-
-        actives_with_metrics.sort(key=lambda t: t[0])
-
-        lines.append(f"ACTIVE STRATEGIES BY NET PF (lowest first) — {len(active_rows)} total:")
-        for sort_pf, r, m in actives_with_metrics:
-            pf_net = m.get("pf_20_net")
-            pf_gross = m.get("pf_20")
-            pf_str = (
-                f"pf_net={pf_net:.2f}" if isinstance(pf_net, (int, float))
-                else f"pf_gross={pf_gross:.2f}" if isinstance(pf_gross, (int, float))
-                else "pf=?"
-            )
-            n_tr = m.get("n_closed_trades", "?")
-            days = m.get("days_since_last_fire", "?")
-            pnl_net = m.get("total_realized_pnl_net")
-            pnl_gross = m.get("total_realized_pnl")
-            pnl = pnl_net if pnl_net is not None else pnl_gross
-            pnl_str = f"${pnl:+.2f}" if isinstance(pnl, (int, float)) else "$?"
-            lines.append(
-                f"  #{r['id']} {r['symbol']} {r['strategy_family']} v{r['version']} "
-                f"— {pf_str} n={n_tr} stale={days}d pnl={pnl_str}"
-            )
+        # Live metrics + deterministic rule verdict per active (2026-09-16:
+        # replaces the *_net fields that StrategyMetrics never had, which
+        # left every row printed as "pf=?" and the reviewer judging on the
+        # frozen backtest blob).
+        try:
+            from src.research.live_review import format_live_review_block
+            lines.append(f"ACTIVE STRATEGIES — {len(active_rows)} total")
+            lines.append(format_live_review_block(db_path))
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"[live review unavailable: {exc}]")
         lines.append("")
 
         # --- Top candidates by walk-forward PF (highest first) ------------
@@ -381,9 +372,9 @@ def _build_reviewer_kickoff(db_path: str) -> str:
 
     lines.append(
         "REVIEWER PRINCIPLES:\n"
-        "- Cost-adjusted (*_net) metrics are the source of truth — use them "
-        "when present.\n"
-        "- Active strategies with pf_20_net < 0.9 on a real sample are retire "
+        "- The LIVE REVIEW block (sim fills) is the source of truth for actives; "
+        "metrics_json on an active row is the frozen original backtest.\n"
+        "- Active strategies with pf_20 < 0.9 on a real sample are retire "
         "candidates.\n"
         "- Candidate promotion requires ALL: net PF >= 1.3, E[R] > 0, "
         "total_test_trades >= 20. No exception for uncovered symbols — "

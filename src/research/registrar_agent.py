@@ -32,7 +32,9 @@ Never promote a strategy just to fill a gap.
 
 ## Before calling promote_candidate(id), verify ALL four gates
 
-  1. PF >= 1.3  (check metrics_json.profit_factor or pf_20)
+  1. PF >= 1.3  (candidate: metrics_json.profit_factor / avg_test_profit_factor.
+     For an ACTIVE row use get_strategy_detail(id).live / get_active_strategies —
+     the row's metrics_json is the frozen original backtest, never live results.)
   2. n >= 20 trades
   3. E[R] = (WR × avg_win) - ((1-WR) × avg_loss) > 0
   4. Custom-engine evidence is dollar-denominated and stamped

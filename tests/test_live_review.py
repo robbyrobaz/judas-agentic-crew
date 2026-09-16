@@ -286,3 +286,31 @@ def test_morning_review_routes_to_noop_when_clean(tmp_path, monkeypatch):
     flow.kickoff(inputs={"id": module.OPERATOR_FLOW_ID})
 
     assert flow.state.decision == "noop"
+
+
+def test_format_live_review_block_lists_every_active(tmp_path):
+    """2026-09-16: the deterministic engine had zero callers; it now feeds the
+    reviewer briefing as an advisory block, worst-first."""
+    import sqlite3
+    from src.db.models import init_db
+    from src.research.live_review import format_live_review_block, review_all_active_deterministic
+    db = str(tmp_path / "lr.db")
+    init_db(db)
+    with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO active_strategies (id, symbol, strategy_family, version, params_json, state, activated_at_utc) "
+                  "VALUES (1,'MGC','custom_15m',1,'{\"strategy_name\":\"good\"}','active','2026-08-01T00:00:00Z')")
+        c.execute("INSERT INTO active_strategies (id, symbol, strategy_family, version, params_json, state, activated_at_utc) "
+                  "VALUES (2,'MNQ','custom_5m',1,'{\"strategy_name\":\"bad\"}','active','2026-08-01T00:00:00Z')")
+        for i in range(6):
+            c.execute("INSERT INTO trades (strategy_id, symbol, direction, qty, entry_fill, status, pnl_dollars, opened_at, closed_at) "
+                      "VALUES (1,'MGC','long',1,1.0,'closed',50,'2026-09-15T00:00:00Z','2026-09-15T01:00:00Z')")
+            c.execute("INSERT INTO trades (strategy_id, symbol, direction, qty, entry_fill, status, pnl_dollars, opened_at, closed_at) "
+                      "VALUES (2,'MNQ','long',1,1.0,'closed',-50,'2026-09-15T00:00:00Z','2026-09-15T01:00:00Z')")
+    res = review_all_active_deterministic(db_path=db)
+    verdicts = {m.strategy_id: d.action for m, d, _ in res}
+    assert verdicts == {1: "keep", 2: "retire"}
+    block = format_live_review_block(db)
+    assert "LIVE REVIEW" in block
+    # worst first
+    assert block.index("#2 bad") < block.index("#1 good")
+    assert "RETIRE" in block and "KEEP" in block

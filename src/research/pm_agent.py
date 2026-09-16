@@ -340,6 +340,25 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
             d["metrics"] = json.loads(d.get("metrics_json") or "{}")
         except (TypeError, json.JSONDecodeError):
             d["metrics"] = {}
+        # metrics_json is written once at promotion and never refreshed — it
+        # is the ORIGINAL BACKTEST. Live sim-fill numbers go in `live` so no
+        # agent judges a running strategy on the backtest blob (2026-09-16).
+        d["backtest_metrics"] = d["metrics"]
+        d["metrics_note"] = ("`metrics`/`backtest_metrics` = original backtest at "
+                             "promotion (never updated). Use `live` for current "
+                             "sim-fill performance.")
+        try:
+            from src.research.live_review import (
+                compute_live_metrics, metrics_to_dict, _deterministic_decide)
+            m = compute_live_metrics(db_path=db_path, strategy_id=sid)
+            live = metrics_to_dict(m)
+            dec = _deterministic_decide(m)
+            live["rule_verdict"] = dec.action
+            live["rule_reason"] = dec.reason
+            live["note"] = "pnl gross of commission (sim fills); rolling-20 window"
+            d["live"] = live
+        except Exception as exc:  # noqa: BLE001
+            d["live"] = {"error": str(exc)}
         return {"ok": True, "strategy": d}
 
     def get_workshop_leaderboard(*, limit: int = 20) -> list[dict]:

@@ -396,6 +396,92 @@ def decide_action(
 # ---------------------------------------------------------------------------
 
 
+def metrics_to_dict(m: StrategyMetrics) -> dict:
+    """JSON-safe view of StrategyMetrics (NaN/inf → None)."""
+    def _f(v):
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            return v
+        return None if (math.isnan(fv) or math.isinf(fv)) else round(fv, 4)
+    return {
+        "strategy_id": m.strategy_id,
+        "strategy_name": m.strategy_name,
+        "n_closed_trades": m.n_closed_trades,
+        "pf_20": _f(m.pf_20),
+        "expectancy_20": _f(m.expectancy_20),
+        "max_consec_losers": m.max_consec_losers,
+        "days_since_last_fire": m.days_since_last_fire,
+        "total_realized_pnl": _f(m.total_realized_pnl),
+    }
+
+
+def review_all_active_deterministic(
+    *, db_path: str
+) -> list[tuple[StrategyMetrics, Decision, int]]:
+    """Live metrics + the deterministic rule verdict for every active row.
+
+    No LLM calls. Returns (metrics, decision, activated_days_ago). This is the
+    advisory input for the reviewer's briefing (2026-09-16): until then the
+    rules in _deterministic_decide had zero callers and the reviewer judged
+    strategies on the backtest blob frozen in metrics_json."""
+    with get_conn(db_path) as conn:
+        rows = conn.execute(
+            "SELECT id, activated_at_utc FROM active_strategies "
+            "WHERE state = 'active' ORDER BY id"
+        ).fetchall()
+    out: list[tuple[StrategyMetrics, Decision, int]] = []
+    now = datetime.now(timezone.utc)
+    for row in rows:
+        sid = int(row["id"])
+        try:
+            metrics = compute_live_metrics(db_path=db_path, strategy_id=sid)
+            decision = _deterministic_decide(metrics)
+            act = _parse_iso_utc(str(row["activated_at_utc"] or ""))
+            age = (now - act).days if act else 0
+            out.append((metrics, decision, age))
+        except Exception as exc:  # noqa: BLE001
+            log.exception("live_review.deterministic.failed",
+                          extra={"strategy_id": sid, "error": str(exc)})
+    return out
+
+
+def format_live_review_block(db_path: str) -> str:
+    """Text block for agent briefings: live numbers + rule verdict per active.
+
+    Advisory only — the agent decides. Young strategies (< 14 d) get the
+    grace note so the stale/inactive rule is not applied prematurely."""
+    lines = ["LIVE REVIEW (sim fills, rolling-20; rule verdict is ADVISORY — you decide):"]
+    try:
+        results = review_all_active_deterministic(db_path=db_path)
+    except Exception as exc:  # noqa: BLE001
+        return f"LIVE REVIEW: unavailable ({exc})"
+    if not results:
+        lines.append("  (no active strategies)")
+        return "\n".join(lines)
+    # worst first
+    def _key(t):
+        pf = t[0].pf_20
+        return (0 if t[1].action == "retire" else 1 if t[1].action == "retune" else 2,
+                pf if (pf is not None and not math.isnan(pf)) else 9e9)
+    for m, d, age in sorted(results, key=_key):
+        pf = "n/a" if (m.pf_20 is None or math.isnan(m.pf_20)) else (
+            "inf" if math.isinf(m.pf_20) else f"{m.pf_20:.2f}")
+        er = "n/a" if (m.expectancy_20 is None or math.isnan(m.expectancy_20)) else (
+            "inf" if math.isinf(m.expectancy_20) else f"{m.expectancy_20:+.2f}")
+        verdict = d.action.upper()
+        if age < 14 and d.action != "keep" and m.n_closed_trades < 10:
+            verdict += f" (but only {age}d old, n={m.n_closed_trades} — grace period applies)"
+        lines.append(
+            f"  #{m.strategy_id} {m.strategy_name}: n={m.n_closed_trades} pf_20={pf} "
+            f"E[R]={er} pnl=${m.total_realized_pnl:+.2f} consec_L={m.max_consec_losers} "
+            f"stale={m.days_since_last_fire}d age={age}d → {verdict}: {d.reason}"
+        )
+    lines.append("  pnl/pf here are sim-fill P&L in dollars, gross of commission "
+                 "(~$2-6 per round trip on micros) — shade marginal PFs down.")
+    return "\n".join(lines)
+
+
 def review_all_active_strategies(
     *, db_path: str
 ) -> list[tuple[StrategyMetrics, Decision]]:

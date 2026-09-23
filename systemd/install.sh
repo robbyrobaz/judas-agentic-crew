@@ -22,7 +22,8 @@ for unit in \
   judas-trader.service judas-trader.timer \
   judas-registrar.service judas-registrar.timer \
   judas-reviewer.service judas-reviewer.timer \
-  judas-coder.service judas-coder.timer; do
+  judas-coder.service judas-coder.timer \
+  judas-roster-watchdog.service judas-roster-watchdog.timer; do
   cp "${SCRIPT_DIR}/${unit}" "${SYSTEMD_USER_DIR}/"
 done
 
@@ -63,6 +64,7 @@ echo "Starting judas-dashboard.service ..."
 systemctl --user restart judas-dashboard.service
 
 echo "Enabling judas-operator.timer ..."
+systemctl --user enable --now judas-roster-watchdog.timer
 systemctl --user enable judas-operator.timer
 
 echo "Starting judas-operator.timer ..."

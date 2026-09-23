@@ -36,3 +36,15 @@ def pytest_configure(config):
     os.environ.setdefault("JUDAS_TRADER_AGENT_INHIBIT", "1")
     os.environ.setdefault("JUDAS_REGISTRAR_AGENT_INHIBIT", "1")
     os.environ.setdefault("JUDAS_CODER_AGENT_INHIBIT", "1")
+
+
+import pytest as _pytest
+
+
+@_pytest.fixture(autouse=True)
+def _roster_floor_off_by_default(monkeypatch):
+    """ROSTER FLOOR (2026-09-22) is a production guard; legacy tests seed 1-3
+    strategies and retire them. Disable the floor by default — tests that
+    exercise it (tests/test_roster_floor.py) set JUDAS_ROSTER_FLOOR explicitly."""
+    if "JUDAS_ROSTER_FLOOR" not in __import__("os").environ:
+        monkeypatch.setenv("JUDAS_ROSTER_FLOOR", "0")

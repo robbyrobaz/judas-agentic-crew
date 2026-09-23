@@ -1,0 +1,12 @@
+[Unit]
+Description=Judas Crew roster watchdog — alarms + queues refill when the active roster is below floor / uncovered / inflow stalled (2026-09-22)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rob/judas-agentic-crew
+EnvironmentFile=/home/rob/judas-agentic-crew/.env
+ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python /home/rob/judas-agentic-crew/scripts/roster_watchdog.py
+TimeoutStartSec=5min
+MemoryMax=512M
+StandardOutput=journal
+StandardError=journal

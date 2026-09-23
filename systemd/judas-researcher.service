@@ -7,6 +7,14 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/home/rob/judas-agentic-crew
 EnvironmentFile=/home/rob/judas-agentic-crew/.env
+# 2026-09-22 ROSTER COLLAPSE FIX: the 2026-09-02 caps (12 turns / 900s / 750k tokens)
+# made the researcher hit its token cap by turn ~7 every run, before it ever
+# proposed a candidate — 61 of 70 tasks abandoned, zero candidates after Sep 16,
+# roster 25→4. These bounds give a full refill cycle (library re-backtests on
+# 3-5 symbols + proposals) while staying bounded. TimeoutStartSec is the hard wall.
+Environment=JUDAS_TURN_BUDGET=40
+Environment=JUDAS_TIME_BUDGET_S=2400
+Environment=JUDAS_RUN_TOKEN_CAP=4000000
 ExecStart=/home/rob/judas-agentic-crew/.venv/bin/python /home/rob/judas-agentic-crew/scripts/run_researcher.py
 TimeoutStartSec=50min
 KillMode=control-group

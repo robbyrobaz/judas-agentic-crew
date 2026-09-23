@@ -200,3 +200,6 @@ exposed daily-loss, trailing-drawdown, stale-account, orphan-order, and ledger
 attribution failures. Their records remain in the local database for research,
 but the current era began on `SimJudasFutures` on 2026-09-02. Historical P&L
 must not be mixed with current sim performance.
+
+## Roster floor (2026-09-22)
+The active roster must stay above `JUDAS_ROSTER_FLOOR` (default 10). `retire_strategy()` refuses soft retirements below it; a twice-daily roster watchdog queues refill tasks. Root cause and rules: `knowledge_base/roster_collapse_2026-09-22.md`.

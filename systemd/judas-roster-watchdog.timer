@@ -1,0 +1,11 @@
+[Unit]
+Description=Roster watchdog — twice daily (before London research cycle and after NY close)
+
+[Timer]
+OnCalendar=*-*-* 05:00:00 UTC
+OnCalendar=*-*-* 21:00:00 UTC
+Persistent=true
+Unit=judas-roster-watchdog.service
+
+[Install]
+WantedBy=timers.target

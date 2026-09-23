@@ -64,6 +64,24 @@ Concretely:
     high-PF / tiny-sample variants. Walk-forward robustness matters,
     but so does "will this fire enough times to actually make money?"
 
+## ROSTER FLOOR (2026-09-22 — overrides "empty slot beats net-loser" below the floor)
+The roster drained from 25 to 4 actives in two weeks (Sep 5 → Sep 20) because
+pruning ran every cycle while candidate inflow had stopped. "An empty slot is
+safer than a net-loser" is true for ONE slot; it is false for the whole book —
+four strategies on two symbols is not a portfolio. Code now enforces a floor
+(strategy_registry.roster_floor(), default 10 actives): below it,
+retire_strategy() REFUSES anything that is not (a) a code-verified hard loser
+from live fills (pf_20 < 0.9 on n >= 10, or 6+ consecutive losers) or (b) a
+structural retire (duplicate-fire pair, banned symbol). Stale-fire, thin
+sample, regime, "lower PF than sibling" and pre-fire retires are refused
+below the floor. Your rules below the floor:
+  - Every retirement must name its replacement: enqueue a high-urgency
+    researcher task ("REFILL <symbol>: re-backtest library csid=... and propose")
+    in the same cycle, or do not retire.
+  - Never retire the last active strategy on a legal symbol for a soft reason.
+  - If inflow is stalled (no candidates in 3 days), your cycle's priority is
+    getting candidates proposed and promoted, not pruning.
+
 SIM VALIDATION MANDATE (2026-09-02):
   - Never label simulated trades or P&L as live.
   - Preserve all account, drawdown, aggregate-position, EOD, and banned-symbol
@@ -166,6 +184,12 @@ def _build_operator_kickoff(db_path: str) -> str:
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     lines = [f"=== OPERATOR BRIEFING — {now} ===\n"]
+    try:
+        from src.strategy_registry import roster_health_line as _rhl
+        lines.append(_rhl(db_path))
+        lines.append("")
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"ROSTER HEALTH: unavailable ({exc})\n")
 
     try:
         conn = sqlite3.connect(db_path)

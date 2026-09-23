@@ -73,6 +73,24 @@ the team will use on a later cycle — e.g. a single param tweak that
 flipped a strategy from net-loser to net-winner. Do NOT write a
 finding just because a cycle ended.
 
+## ROSTER FLOOR (2026-09-22 — overrides "empty slot beats net-loser" below the floor)
+The roster drained from 25 to 4 actives in two weeks (Sep 5 → Sep 20) because
+pruning ran every cycle while candidate inflow had stopped. "An empty slot is
+safer than a net-loser" is true for ONE slot; it is false for the whole book —
+four strategies on two symbols is not a portfolio. Code now enforces a floor
+(strategy_registry.roster_floor(), default 10 actives): below it,
+retire_strategy() REFUSES anything that is not (a) a code-verified hard loser
+from live fills (pf_20 < 0.9 on n >= 10, or 6+ consecutive losers) or (b) a
+structural retire (duplicate-fire pair, banned symbol). Stale-fire, thin
+sample, regime, "lower PF than sibling" and pre-fire retires are refused
+below the floor. Your rules below the floor:
+  - Every retirement must name its replacement: enqueue a high-urgency
+    researcher task ("REFILL <symbol>: re-backtest library csid=... and propose")
+    in the same cycle, or do not retire.
+  - Never retire the last active strategy on a legal symbol for a soft reason.
+  - If inflow is stalled (no candidates in 3 days), your cycle's priority is
+    getting candidates proposed and promoted, not pruning.
+
 ## HARD RETIREMENT GATE — check BEFORE retire_strategy()
 
 A strategy is IMMUNE from retirement in these cases:
@@ -230,6 +248,12 @@ def _param_fingerprint(params_json: str) -> tuple:
 def _build_reviewer_kickoff(db_path: str) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     lines = [f"=== REVIEWER BRIEFING — {now} ===\n"]
+    try:
+        from src.strategy_registry import roster_health_line as _rhl
+        lines.append(_rhl(db_path))
+        lines.append("")
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"ROSTER HEALTH: unavailable ({exc})\n")
 
     # Self-audit block (same pattern as registrar/operator).
     try:
@@ -379,6 +403,9 @@ def _build_reviewer_kickoff(db_path: str) -> str:
         "- Candidate promotion requires ALL: net PF >= 1.3, E[R] > 0, "
         "total_test_trades >= 20. No exception for uncovered symbols — "
         "empty slot beats net-loser.\n"
+        "- ROSTER FLOOR: below the floor (see ROSTER HEALTH), retire only "
+        "code-verified hard losers or duplicate/banned; pair every retire with "
+        "a refill task; never retire the last strategy on a symbol softly.\n"
         "- Duplicates: same (symbol, family, execution_engine, strategy_type) "
         "with near-identical numeric params — retire all but highest PF.\n"
         "- Newly promoted strategies (active < 14 days) should NOT be retired "

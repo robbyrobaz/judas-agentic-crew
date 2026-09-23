@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -368,6 +370,136 @@ _BUFFET_ZOO_TYPES = ("rsi", "ma_cross", "bollinger")
 # fabricated these (2026-05-30: "empty params" and "carries bollinger params"
 # on strategies that had neither). Genuine breakage still retires because the
 # guard only refuses when _params_look_zombie() says the params ARE valid.
+
+# ---------------------------------------------------------------------------
+# ROSTER FLOOR (2026-09-22). The active roster drained from 25 (Sep 5) to 4
+# (Sep 20): the reviewer/operator kept retiring ~3 strategies every other day
+# under "an empty slot is safer than a net-loser" while the researcher — capped
+# on 2026-09-02 to 12 turns / 750k tokens per run and told to YouTube-ingest
+# before proposing — produced ZERO candidates after Sep 16. Nothing in code
+# noticed the roster shrinking. This floor is the code-of-record that stops a
+# prune-only regime: below the floor, only HARD-LOSER retirements (verified
+# from live fills in code, not from the LLM's reason text) or structural
+# retirements (duplicate-fire pair, banned symbol) are allowed. Soft reasons
+# ("stale", "thin sample", "regime", "lower PF than sibling") are refused
+# until the roster is refilled. Override via JUDAS_ROSTER_FLOOR (0 disables).
+# ---------------------------------------------------------------------------
+_DEFAULT_ROSTER_FLOOR = 10
+_STRUCTURAL_RETIRE_MARKERS = ("duplicate", "banned", "lucid_guard banned")
+
+
+def roster_floor() -> int:
+    try:
+        return int(os.environ.get("JUDAS_ROSTER_FLOOR", _DEFAULT_ROSTER_FLOOR))
+    except ValueError:
+        return _DEFAULT_ROSTER_FLOOR
+
+
+def roster_health(db_path: str | None = None) -> dict[str, Any]:
+    """Snapshot used by kickoff briefings, the roster watchdog and the retire guard.
+
+    Returns active count, per-symbol coverage, candidates proposed in the last
+    3/7 days, retirements in the last 7 days and whether the roster is below
+    the floor.
+    """
+    path = db_path or _ensure_db()
+    with get_conn(path) as conn:
+        active_rows = conn.execute(
+            "SELECT symbol, COUNT(*) AS n FROM active_strategies WHERE state='active' GROUP BY symbol"
+        ).fetchall()
+        per_symbol = {str(r["symbol"]): int(r["n"]) for r in active_rows}
+        n_active = sum(per_symbol.values())
+        cand_3d = conn.execute(
+            "SELECT COUNT(*) FROM strategy_candidates WHERE ts_utc >= datetime('now','-3 days')"
+        ).fetchone()[0]
+        cand_7d = conn.execute(
+            "SELECT COUNT(*) FROM strategy_candidates WHERE ts_utc >= datetime('now','-7 days')"
+        ).fetchone()[0]
+        retired_7d = conn.execute(
+            "SELECT COUNT(*) FROM active_strategies WHERE state='retired' "
+            "AND deactivated_at_utc >= datetime('now','-7 days')"
+        ).fetchone()[0]
+    try:
+        from src.research.lucid_guard import tradeable_symbols
+        legal = sorted(tradeable_symbols())
+    except Exception:  # noqa: BLE001
+        legal = sorted(per_symbol)
+    uncovered = [s for s in legal if per_symbol.get(s, 0) == 0]
+    floor = roster_floor()
+    return {
+        "n_active": n_active,
+        "roster_floor": floor,
+        "below_floor": floor > 0 and n_active < floor,
+        "per_symbol": per_symbol,
+        "uncovered_symbols": uncovered,
+        "candidates_3d": int(cand_3d),
+        "candidates_7d": int(cand_7d),
+        "retired_7d": int(retired_7d),
+        "inflow_stalled": int(cand_3d) == 0,
+    }
+
+
+def roster_health_line(db_path: str | None = None) -> str:
+    """One-paragraph ROSTER HEALTH block for agent briefings."""
+    try:
+        h = roster_health(db_path)
+    except Exception as exc:  # noqa: BLE001
+        return f"ROSTER HEALTH: unavailable ({exc})"
+    flag = "BELOW FLOOR — REFILL BEFORE PRUNING" if h["below_floor"] else "ok"
+    unc = ", ".join(h["uncovered_symbols"]) or "none"
+    line = (f"ROSTER HEALTH: n_active={h['n_active']} floor={h['roster_floor']} [{flag}] "
+            f"uncovered={unc} candidates_3d={h['candidates_3d']} "
+            f"candidates_7d={h['candidates_7d']} retired_7d={h['retired_7d']}")
+    if h["inflow_stalled"]:
+        line += "\n  *** INFLOW STALLED: zero candidates in 3 days — retire_strategy() will refuse soft retires; get candidates proposed/promoted ***"
+    return line
+
+
+def _hard_loser_by_live_fills(db_path: str, strategy_id: int) -> tuple[bool, str]:
+    """Code-verified hard-loser test from the trades table (never from reason text)."""
+    try:
+        from src.research.live_review import compute_live_metrics
+        m = compute_live_metrics(db_path=db_path, strategy_id=int(strategy_id))
+    except Exception as exc:  # noqa: BLE001
+        return False, f"live metrics unavailable ({exc})"
+    pf = m.pf_20
+    pf_ok = pf is not None and not (isinstance(pf, float) and math.isnan(pf))
+    if pf_ok and m.n_closed_trades >= 10 and pf < 0.9:
+        return True, f"pf_20={pf:.2f} on n={m.n_closed_trades} (< 0.9, n>=10)"
+    if m.max_consec_losers >= 6:
+        return True, f"max_consec_losers={m.max_consec_losers} (>= 6)"
+    return False, (f"pf_20={pf if pf_ok else 'n/a'} n={m.n_closed_trades} "
+                   f"consec_L={m.max_consec_losers} — not a hard loser")
+
+
+def _check_roster_floor_for_retire(conn, strategy_id: int, reason: str, force: bool) -> None:
+    """Raise ValueError when this retirement would leave the roster below the floor
+    and the strategy is neither a code-verified hard loser nor a structural retire."""
+    floor = roster_floor()
+    if force or floor <= 0:
+        return
+    n_active = conn.execute(
+        "SELECT COUNT(*) FROM active_strategies WHERE state='active'"
+    ).fetchone()[0]
+    if n_active - 1 >= floor:
+        return
+    low = (reason or "").lower()
+    if any(mk in low for mk in _STRUCTURAL_RETIRE_MARKERS):
+        return
+    is_hard, detail = _hard_loser_by_live_fills(_ensure_db(), strategy_id)
+    if is_hard:
+        return
+    raise ValueError(
+        f"retire REFUSED for strategy {strategy_id}: ROSTER FLOOR. Active roster is "
+        f"{n_active} (floor {floor}); this retirement would leave {n_active - 1}. "
+        f"Below the floor only code-verified hard losers (pf_20 < 0.9 on n>=10 or "
+        f"6+ consecutive losers from live fills) or structural retires (duplicate-fire "
+        f"pair, banned symbol) are allowed. Live check: {detail}. Refill the roster "
+        f"first (researcher: propose from the custom_strategies library / retired "
+        f"strategies with n>=20 backtests), then prune."
+    )
+
+
 _ZOMBIE_REASON_MARKERS = (
     "zombie", "empty params", "params_json is empty", "params are empty",
     "no runtime", "lack any runtime", "lack runtime", "no judas keys",
@@ -553,10 +685,14 @@ def retire_strategy(
     strategy_id: int,
     reason: str,
     metrics_snapshot: dict[str, Any],
+    force: bool = False,
 ) -> int:
     """Atomically retire an active_strategies row and insert an auto_demotions row.
 
-    Returns the auto_demotions.id created. Raises ValueError if not found or already retired.
+    Returns the auto_demotions.id created. Raises ValueError if not found or already
+    retired, or if the ROSTER FLOOR guard refuses (see _check_roster_floor_for_retire).
+    ``force`` bypasses the floor guard — for humans/scripts only, never exposed to
+    LLM tools.
     """
     with get_conn(_ensure_db()) as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -586,6 +722,8 @@ def retire_strategy(
                         f"engine={_params.get('execution_engine')!r} "
                         f"(keys={sorted(_params.keys())}). Reason was: {reason!r}"
                     )
+            # ROSTER FLOOR guard (2026-09-22) — see _check_roster_floor_for_retire.
+            _check_roster_floor_for_retire(conn, int(strategy_id), reason, force)
             now = _utc_now()
             conn.execute(
                 """

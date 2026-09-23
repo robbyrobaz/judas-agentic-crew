@@ -87,7 +87,10 @@ def daily_tokens_used(*, db_path: str) -> int:
 _BUDGET_EXEMPT_TEAMS = {"trader"}
 # Conservative shared ceiling for non-trader reasoning. The trader remains
 # exempt because position protection must not stop for a research budget.
-_DEFAULT_DAILY_TOKEN_BUDGET = 20_000_000
+# 2026-09-22: 20M starved the researcher (roster collapse); observed use was 3-8M/day
+# under the 12-turn cap. 60M leaves room for ~8 full refill cycles/day and is still
+# < 15% of the MiniMax weekly quota. Trader stays exempt.
+_DEFAULT_DAILY_TOKEN_BUDGET = 60_000_000
 
 # Per-RUN token ceiling. 2026-07-17 lesson: with unlimited turns the ONLY stop
 # condition was MiniMax's 429 — the operator ran 47 min / 1,056 calls and ate

@@ -135,6 +135,9 @@ def insert_active_strategy(
     with get_conn(_ensure_db()) as conn:
         _validate_lucid_ban(sym)  # refuse banned symbols at insert time too
         _validate_custom_link(conn, use_params)
+        # Same cross-timeframe same-csid guard as promote_candidate (see the
+        # call site there). Wired here too so a direct insert cannot bypass it.
+        _guard_cross_timeframe_slot_swap(conn, sym, fam, use_params)
         # BEGIN IMMEDIATE so the MAX(version) read and the INSERT are atomic —
         # otherwise two concurrent inserts read the same max and create duplicate
         # active rows (db version race).
@@ -278,6 +281,13 @@ def promote_candidate(candidate_id: int, notes: str | None = None) -> ActiveStra
             _validate_params_json(_fixed_params)
             _validate_lucid_ban(symbol)  # gate BEFORE custom_link so banned symbols fail first
             _validate_custom_link(conn, _pre_params)
+            # Refuse a promotion that would silently kill a live same-csid sibling
+            # at a DIFFERENT timeframe. The custom supersede slot key is the csid
+            # ALONE, so without this the "just promote the 5m port" reflex eats
+            # the promoted 15m row (2026-10-20 #4990 -> #4991 MNQ csid 434,
+            # #4989 -> #4993 MGC csid 433). Wired in 2026-10-21; the helper
+            # shipped un-called until then (dead code -- see finding 9115).
+            _guard_cross_timeframe_slot_swap(conn, symbol, family, _pre_params)
             current = conn.execute(
                 """
                 SELECT *

@@ -283,6 +283,7 @@ def _fetch_synthetic_or_live_bars(symbol: str, days: int, timeframe: str = "1h")
     # researcher backtest doesn't collide with the every-5-min scan on the same
     # IBKR connection. bar_cache's connect-retry covers the rare same-id race.
     research_client_id = int(ibkr.data_client_id) + 9
+
     # Use bar_cache (tf-aware history duration + caching) rather than the fixed
     # 60-day fetch_bars path — 60 days of 5m exceeds IBKR's limit and times out.
     try:
@@ -291,7 +292,11 @@ def _fetch_synthetic_or_live_bars(symbol: str, days: int, timeframe: str = "1h")
             client_id=research_client_id, timeframe=tf,
         )
     except Exception:  # noqa: BLE001
-        return None
+        df = None
+
+    # Union the deep paginated archive with the live cache (research path only).
+    df = _merge_deep_archive(symbol.upper(), tf, df)
+
     if df is None or len(df) == 0:
         return None
     # Trim to ``days`` using the timeframe's bars-per-day (the old code assumed
@@ -300,6 +305,49 @@ def _fetch_synthetic_or_live_bars(symbol: str, days: int, timeframe: str = "1h")
     if days and len(df) > per_day * days:
         df = df.tail(per_day * days).reset_index(drop=True)
     return df
+
+
+def _read_archive(symbol: str, tf: str):
+    """Thin seam over ``bar_archive.read_archive`` (patchable in tests)."""
+    from src import bar_archive
+    return bar_archive.read_archive(symbol, tf)
+
+
+def _merge_deep_archive(symbol: str, tf: str, live_df):
+    """Union the deep paginated archive with the live cache (research path only).
+
+    ``bar_cache`` caps a single IBKR request at 10 D of 5m / 20 D of 15m; a
+    larger request is silently killed by IBKR's internal ~60s timer and returns
+    an EMPTY frame rather than a cap error. So the cache alone gives ~13-27 days
+    even when the caller asks for 90 -- see findings 9105 / 9109.
+
+    ``src/bar_archive.py`` reaches the same history by paginating backwards with
+    an explicit ``endDateTime``. We take the UNION so depth comes from the
+    archive and freshness from the live cache (the archive is only rebuilt when
+    an operator runs research/build_deep_archive.py).
+
+    Additive + research-only: the live scanner reads ``bar_cache`` untouched, so
+    no live signal behavior changes. If the archive is missing/empty for this
+    symbol/timeframe we return the cache unchanged.
+    """
+    try:
+        import pandas as pd
+        arch = _read_archive(symbol, tf)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("bar_archive.unavailable symbol=%s tf=%s: %s", symbol, tf, exc)
+        return live_df
+    if arch is None or len(arch) == 0:
+        return live_df
+    if live_df is None or len(live_df) == 0:
+        return arch.reset_index(drop=True)
+    try:
+        merged = pd.concat([arch, live_df], ignore_index=True)
+        merged = merged.drop_duplicates(subset=["ts"], keep="last")
+        merged = merged.sort_values("ts").reset_index(drop=True)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("bar_archive.merge_failed symbol=%s tf=%s: %s", symbol, tf, exc)
+        return live_df
+    return merged
 
 
 def run_custom_backtest_on_bars(
@@ -466,7 +514,40 @@ def run_custom_backtest_on_bars(
         "dollars_per_point": dollars_per_point,
         "cost_model": COST_MODEL_VERSION,
         "error": error,
+        **_bar_span_fields(bars),
     }
+
+
+def _bar_span_fields(bars) -> dict:
+    """The HONEST window actually replayed.
+
+    `metrics_json.days` is the *requested* window, not the realised one. For
+    5m/15m the realised span is far shorter than requested unless the deep
+    paginated archive (`src/bar_archive.py`) has been built -- see findings
+    9105 / 9109 / 9108. PF/WR/E[R] are computed correctly either way; what the
+    old stamp hid was the *width* of the fit, so these fields are stamped on
+    every envelope and a reader can tell a 13-day fit from a 120-day one.
+    """
+    out: dict = {"n_bars": 0, "bars_span_days": 0, "first_bar": None, "last_bar": None}
+    try:
+        if bars is None or len(bars) == 0:
+            return out
+        out["n_bars"] = int(len(bars))
+        if "ts" not in bars.columns:
+            return out
+        ts = bars["ts"]
+        first, last = ts.iloc[0], ts.iloc[-1]
+        out["first_bar"] = str(first)
+        out["last_bar"] = str(last)
+        span = (last - first)
+        # Timedelta -> days, tolerant of both datetime and integer indices.
+        try:
+            out["bars_span_days"] = int(span.total_seconds() // 86400)
+        except AttributeError:
+            out["bars_span_days"] = int(span // 86400)
+    except Exception as exc:  # noqa: BLE001
+        log.debug("bar span unavailable: %s", exc)
+    return out
 
 
 def run_custom_backtest(

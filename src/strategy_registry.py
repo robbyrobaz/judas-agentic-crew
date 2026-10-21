@@ -556,6 +556,87 @@ def _slot_key_for(params: dict[str, Any]) -> str:
     return f"family:{params.get('strategy_family', '')}"
 
 
+def _tf_of(params: dict[str, Any]) -> str:
+    """Canonical timeframe key for a params blob (never raises)."""
+    try:
+        from src.bar_cache import normalize_tf
+
+        return normalize_tf(params.get("timeframe"))
+    except Exception:  # noqa: BLE001 - defensive: never block a promotion on a tf parse
+        return str(params.get("timeframe") or "").strip().lower()
+
+
+def _guard_cross_timeframe_slot_swap(
+    conn, symbol: str, family: str, params: dict[str, Any]
+) -> None:
+    """Refuse a promotion that would SILENTLY kill a live custom slot by
+    swapping its timeframe.
+
+    The `custom` supersede slot key is the custom_strategy_id ALONE
+    (``_slot_key_for``) — timeframe is not part of it. So promoting a second
+    "port" of one csid under a different ``params.timeframe`` silently
+    supersedes the already-active row. That happened on 2026-10-20 in five
+    seconds:
+
+      * #4990 (MNQ, csid 434, 15m, BT PF 2.018 n=80 +$1,253.66) was promoted at
+        12:01:23 and superseded at 12:01:28 by #4991 (same csid 434, 5m).
+      * #4989 (MGC, csid 433, 15m, BT PF 1.992 n=72 +$931.46) was promoted at
+        12:01:18 and superseded at 15:02:47 by #4993 (same csid 433, 5m).
+
+    Both promoting rationales asserted "different TF, no duplicate-fire" /
+    "no same-TF slot collision". That claim is FALSE: the architecture is
+    bar-count-parameterised (these csids slice ``hour_start_idx - 4`` bars as
+    "the prior hour"), so a timeframe flip is NOT a new architecture — it is
+    the same setup on the same symbol reading the same wall-clock hour at a
+    different sampling rate, and the two rows CAN co-fire on the same bar.
+    Deduping them is correct; silently discarding a promoted, higher-dollar
+    edge without telling anyone is not.
+
+    This guard does NOT loosen dedup (that would re-open the 2026-06-17
+    double-fire money bug). It forces the swap to be explicit: retire the
+    incumbent first, or mint a real new code row (new csid) whose bar-count
+    constants actually match the new timeframe. A same-timeframe v+1 bump of
+    the same csid — the legitimate re-promotion path — is untouched.
+    """
+    if str(params.get("execution_engine", "")).lower() != "custom":
+        return
+    try:
+        csid = int(params.get("custom_strategy_id") or 0)
+    except (TypeError, ValueError):
+        csid = 0
+    if csid <= 0:
+        return
+    new_tf = _tf_of(params)
+    rows = conn.execute(
+        "SELECT id, params_json, notes FROM active_strategies "
+        "WHERE symbol = ? AND strategy_family = ? AND state = 'active' "
+        "AND CAST(JSON_EXTRACT(params_json, '$.custom_strategy_id') AS INTEGER) = ?",
+        (symbol, family, csid),
+    ).fetchall()
+    for row in rows:
+        try:
+            live_params = json.loads(row["params_json"] or "{}")
+        except (TypeError, ValueError):
+            live_params = {}
+        live_tf = _tf_of(live_params)
+        if live_tf == new_tf:
+            continue  # same slot, same timeframe -> legitimate v+1 re-promotion
+        raise ValueError(
+            f"promotion REFUSED: {symbol} csid={csid} is ALREADY LIVE at "
+            f"timeframe={live_tf!r} (active #{row['id']}), and this candidate is "
+            f"{new_tf!r}. The custom supersede slot key is the csid ALONE, so "
+            f"promoting this would SILENTLY supersede active #{int(row['id'])} "
+            f"and discard a promoted edge — exactly what happened 2026-10-20 to "
+            f"(15m PF 2.018 +$1,254) and MGC csid 433 (15m PF 1.992 +$931). "
+            f"A timeframe flip is NOT a new architecture for this code (its "
+            f"'hour' is a hardcoded 4-bar slice), so the two would co-fire. "
+            f"Pick one: (a) retire #{row['id']} first, then promote; or "
+            f"(b) mint a NEW custom_strategies code row (new csid) whose "
+            f"bar-count constants match {new_tf!r} and promote that for genuine "
+            f"multi-timeframe coexistence."
+        )
+
+
 def _supersede_where_clause(
     symbol: str, family: str, slot_key: str, new_id: int
 ) -> tuple[str, tuple]:

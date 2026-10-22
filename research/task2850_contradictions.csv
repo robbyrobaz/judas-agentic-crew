@@ -1,0 +1,2 @@
+strategy_id,symbol,tf,csid,family,strategy_name,slot_key,state,n,w,l,open,pf,shadow_$,avgR,risk$,bt_pf,bt_n,bt_pnl
+4844,MNQ,5m,310,ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1,ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1_mnq_auto,,active,55,13,42,0,0.5090443681019968,-720.0642857144001,-0.15536225626363634,29.789090909096362,1.4328,159.0,966.68

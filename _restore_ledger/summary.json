@@ -1,0 +1,25 @@
+{
+  "n_deactivated": 85,
+  "verdicts": {
+    "RESTORE": 66,
+    "LEAVE-DEAD-NO-PF": 10,
+    "LEAVE-DEAD-NO-COST-STAMP": 5,
+    "SUPERSEDED-BY-BETTER": 3,
+    "BLOCKED-SLOT-TAKEN-NOT-DOMINATED": 1
+  },
+  "restore_n": 66,
+  "restore_dollars": 245409.39,
+  "stamped_n_ge20_dollars": 269749.42,
+  "batches": {
+    "2026-10-16T10:02": 53,
+    "2026-10-19T14:03": 13,
+    "2026-10-14T07:06": 6,
+    "2026-10-17T22:02": 5,
+    "2026-10-21T13:02": 4,
+    "2026-10-16T05:02": 1,
+    "2026-10-20T12:01": 1,
+    "2026-10-20T15:02": 1,
+    "2026-10-21T08:43": 1
+  },
+  "illegal_symbol_rows": []
+}

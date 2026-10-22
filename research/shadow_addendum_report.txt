@@ -1,0 +1,585 @@
+====================================================================================================
+PART 1 -- RETIREMENT CANNIBALISATION: strategies retired DURING the halt window
+====================================================================================================
+signals from strategies that were RETIRED mid-window : n= 1622 net=$    53,771  PF=2.971
+signals from strategies still ACTIVE at window end   : n= 6023 net=$   162,862  PF=2.863
+
+-> The stale-retirer removed 82 strategies that were shadow-positive over the same window.
+
+Retired mid-window, ranked by shadow $ (n_closed>=10):
+ strategy_id act_symbol                                          act_family  n_sig  n_closed       wr        pf         usd  usd_per_sig  days  usd_per_cday
+        4634        MNQ                                           custom_1h   23.0      23.0 0.956522 55.371429 8563.500000   372.326087   5.0   1712.700000
+        4779        MGC              silver_bullet_pdh_pdl_retest_5m_nogate   98.0      98.0 0.714286  3.605703 5300.000000    54.081633   6.0    883.333333
+        4788        MNQ       silver_bullet_pdh_pdl_retest_15m_50pct_filter   24.0      24.0 0.791667  9.262128 5279.500000   219.979167   4.0   1319.875000
+        4764        MNQ                   custom_5m_ict_mitigation_block_v1   91.0      91.0 0.714286  5.726243 4140.786654    45.503150   6.0    690.131109
+        4675        MGC silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset   38.0      38.0 0.842105  7.278481 3968.000000   104.421053   8.0    496.000000
+        4859        MGC                     silver_bullet_pdh_pdl_retest_1h   13.0      13.0 1.000000       NaN 3959.000000   304.538462   5.0    791.800000
+        4787        MGC       silver_bullet_pdh_pdl_retest_15m_50pct_filter   27.0      27.0 0.888889  8.390244 2727.000000   101.000000   6.0    454.500000
+        4778        MNQ              silver_bullet_pdh_pdl_retest_5m_nogate   16.0      16.0 0.750000  8.096823 2345.500000   146.593750   5.0    469.100000
+        4693        MNQ                                           custom_5m   82.0      82.0 0.609756  2.689736 2283.948748    27.853034   7.0    326.278393
+        4809        MNQ                        ict_ifvg_vshape_continuation   70.0      70.0 0.385714  1.507856 1807.686447    25.824092   6.0    301.281074
+        4663        MGC                    silver_bullet_pdh_pdl_retest_15m   15.0      15.0 0.933333 18.229885 1499.000000    99.933333   3.0    499.666667
+        4766        MGC                  custom_15m_ict_mitigation_block_v1   11.0      11.0 1.000000       NaN 1464.590002   133.144546   3.0    488.196667
+        4730         6J                           ob_midpoint_reversion_15m   77.0      77.0 0.571429  2.115252 1360.950000    17.674675   8.0    170.118750
+        4789        MNQ silver_bullet_pdh_pdl_retest_5m_nogate_50pct_filter   14.0      14.0 0.642857  2.323396 1021.000000    72.928571   5.0    204.200000
+        4810        MNQ                                          custom_15m   13.0      13.0 0.615385  3.107575  784.247321    60.326717   4.0    196.061830
+        4802        MGC                                           custom_5m   31.0      31.0 0.580645  1.662882  759.000000    24.483871   4.0    189.750000
+        4738        MNQ                                  judas_continuation   10.0      10.0 0.700000  3.549747  706.013190    70.601319   6.0    117.668865
+        4798        MGC                        ict_inside_bar_disp_breakout   65.0      65.0 0.569231  1.513454  604.642857     9.302198   5.0    120.928571
+        4826        MNQ                      propulsion_block_15m_octant_v1   29.0      29.0 0.482759  1.642344  543.010533    18.724501   5.0    108.602107
+        4638        MGC                                           custom_5m   31.0      31.0 0.580645  1.855814  505.443281    16.304622   6.0     84.240547
+        4773         6J                  ict_mitigation_block_5m_v2_disp1.5   92.0      92.0 0.641304  1.876703  326.304966     3.546793   5.0     65.260993
+        4811        MGC                                           custom_5m   10.0      10.0 0.500000  1.655623  161.414286    16.141429   5.0     32.282857
+        4759        MGC                         bsl_run_judas_eq_cluster_5m   14.0      14.0 0.500000  1.510851  138.787740     9.913410   6.0     23.131290
+        4825        MGC                                           custom_5m   22.0      22.0 0.500000  1.842777  105.600000     4.800000   4.0     26.400000
+        4790        MCL       silver_bullet_pdh_pdl_retest_15m_50pct_filter   21.0      21.0 0.857143  7.261146   98.300000     4.680952   5.0     19.660000
+        4742        MNQ                                ict_mitigation_block   12.0      12.0 0.500000  1.480994   92.114983     7.676249   2.0     46.057491
+        4771        MGC                  ict_mitigation_block_5m_v2_disp1.5   15.0      15.0 0.533333  1.229088   64.985887     4.332392   3.0     21.661962
+        4814        MGC                                          custom_15m   13.0      13.0 0.384615  1.061955   42.723214     3.286401   6.0      7.120536
+        4795        MGC                         bsl_run_judas_eq_cluster_5m   12.0      12.0 0.416667  1.145639   39.567102     3.297259   5.0      7.913420
+        4824        MNQ                                           custom_5m   32.0      32.0 0.406250  1.044441   19.775000     0.617969   5.0      3.955000
+        4769        MCL                  custom_15m_ict_mitigation_block_v1   11.0      11.0 0.727273  1.766595    9.567973     0.869816   4.0      2.391993
+        4737        MCL              silver_bullet_pdh_pdl_retest_5m_nogate  115.0     115.0 0.643478  1.004525    1.100000     0.009565   8.0      0.137500
+        4821        MNQ                     ict_mitigation_block_15m_mnq_v1   23.0      23.0 0.391304  0.994258   -5.280244    -0.229576   4.0     -1.320061
+        4817        MCL                                          custom_15m   18.0      18.0 0.555556  0.628794  -16.051607    -0.891756   4.0     -4.012902
+        4772        MCL                  ict_mitigation_block_5m_v2_disp1.5   14.0      14.0 0.785714 -0.907310  -16.314877    -1.165348   3.0     -5.438292
+        4812        MCL                                           custom_5m   14.0      14.0 0.500000  0.263675  -22.787143    -1.627653   6.0     -3.797857
+        4643        MCL                                           custom_5m   13.0      13.0 0.384615  0.139829  -30.276639    -2.328972   3.0    -10.092213
+        4765        MCL                   custom_5m_ict_mitigation_block_v1   81.0      81.0 0.432099  0.243920 -104.368490    -1.288500   6.0    -17.394748
+        4694        MCL                                           custom_5m   74.0      74.0 0.445946  0.205760 -107.191444    -1.448533   7.0    -15.313063
+        4807         ZF                         bsl_run_judas_eq_cluster_5m   11.0      11.0 0.454545  0.147384 -184.121452   -16.738314   5.0    -36.824290
+        4746        MNQ                                ict_mitigation_block   15.0      15.0 0.266667  0.509987 -374.360522   -24.957368   2.0   -187.180261
+        4808        MNQ                 unicorn_model_fvg_inside_breaker_5m   14.0      14.0 0.000000  0.000000 -514.914286   -36.779592   2.0   -257.457143
+        4768        MNQ                  custom_15m_ict_mitigation_block_v1   24.0      24.0 0.250000  0.465967 -676.225423   -28.176059   3.0   -225.408474
+
+  retired-cohort total shadow $ = $48,671 over 43 strategies
+
+====================================================================================================
+PART 2 -- FAMILY ROLLUP (symbol x family, adverse, closed only)
+====================================================================================================
+symbol                                      strategy_family  n_sig  n_closed       wr        pf          usd  usd_per_sig  days  usd_per_cday
+   MNQ                                           custom_15m   95.0      95.0 0.726316  6.487953 11106.642510   116.912026   7.0   1586.663216
+   MNQ           silver_bullet_pdh_pdl_retest_15m_roll24_v1   52.0      52.0 0.692308  5.218571 11040.000000   212.307692   8.0   1380.000000
+   MGC                                            custom_5m  390.0     390.0 0.589744  2.243375 10791.939770    27.671640   9.0   1199.104419
+   MNQ              silver_bullet_pdh_pdl_retest_15m_nogate   66.0      66.0 0.636364  3.786757  9069.500000   137.416667   8.0   1133.687500
+   MNQ                                            custom_1h   23.0      23.0 0.956522 55.371429  8563.500000   372.326087   5.0   1712.700000
+   MGC               silver_bullet_pdh_pdl_retest_5m_roll24  151.0     151.0 0.735099  3.898515  8197.000000    54.284768   9.0    910.777778
+   MNQ               silver_bullet_pdh_pdl_retest_5m_nogate   91.0      91.0 0.659341  3.519611  7259.000000    79.769231   9.0    806.555556
+   MGC      asian_range_sweep_mitigation_block_15m_opposite   54.0      54.0 0.648148  5.435874  6450.014286   119.444709   6.0   1075.002381
+   MGC        silver_bullet_pdh_pdl_retest_5m_nogate_roll48  105.0     105.0 0.714286  3.641419  6033.000000    57.457143   8.0    754.125000
+   MNQ            silver_bullet_pdh_pdl_retest_5m_nogate_4R   69.0      69.0 0.463768  2.678175  5444.000000    78.898551   9.0    604.888889
+   MGC               silver_bullet_pdh_pdl_retest_5m_nogate   98.0      98.0 0.714286  3.605703  5300.000000    54.081633   6.0    883.333333
+   MNQ        silver_bullet_pdh_pdl_retest_15m_50pct_filter   24.0      24.0 0.791667  9.262128  5279.500000   219.979167   4.0   1319.875000
+   MNQ        silver_bullet_pdh_pdl_retest_5m_nogate_roll24   40.0      40.0 0.775000  5.544230  5060.000000   126.500000   8.0    632.500000
+    6J                                 ict_mitigation_block  291.0     291.0 0.670103  4.208960  5011.039783    17.220068   9.0    556.782198
+   MGC           silver_bullet_pdh_pdl_retest_15m_v4_roll24   46.0      46.0 0.869565  8.772152  4912.000000   106.782609   9.0    545.777778
+   MNQ                       ny_am_pdh_pdl_silver_bullet_5m   46.0      46.0 0.673913  6.647803  4314.396938    93.791238   6.0    719.066156
+    6J                      ict_mitigation_block_5m_csid333  195.0     195.0 0.707692  6.012086  4229.681478    21.690674   8.0    528.710185
+   MNQ                    custom_5m_ict_mitigation_block_v1   91.0      91.0 0.714286  5.726243  4140.786654    45.503150   6.0    690.131109
+   MGC  silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset   38.0      38.0 0.842105  7.278481  3968.000000   104.421053   8.0    496.000000
+   MGC                      silver_bullet_pdh_pdl_retest_1h   13.0      13.0 1.000000       NaN  3959.000000   304.538462   5.0    791.800000
+   MGC             asian_range_sweep_mitigation_block_5m_rr   57.0      57.0 0.719298  5.091381  3527.792857    61.891103   6.0    587.965476
+   MNQ        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mnq   37.0      37.0 0.729730  4.159338  3341.000000    90.297297   4.0    835.250000
+   MNQ                 unicorn_model_fvg_inside_breaker_15m   59.0      59.0 0.627119  2.468474  3269.692857    55.418523   4.0    817.423214
+   MGC        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mgc   74.0      74.0 0.716216  3.747039  3247.000000    43.878378   4.0    811.750000
+   MNQ                             ict_mitigation_block_15m   14.0      14.0 1.000000       NaN  3174.814151   226.772439   3.0   1058.271384
+   MGC                        propulsion_block_5m_octant_v1   69.0      69.0 0.550725  4.187583  3145.910561    45.592907   7.0    449.415794
+   MGC                asian_range_sweep_mitigation_block_5m   57.0      57.0 0.561404  3.427215  2876.857143    50.471178   6.0    479.476190
+   MNQ             asian_range_sweep_mitigation_block_5m_rr   58.0      58.0 0.551724  2.223861  2842.282143    49.004865   8.0    355.285268
+   MGC silver_bullet_pdh_pdl_retest_15m_50pct_filter_roll48   27.0      27.0 0.888889  8.328912  2763.000000   102.333333   8.0    345.375000
+   MGC        silver_bullet_pdh_pdl_retest_15m_50pct_filter   27.0      27.0 0.888889  8.390244  2727.000000   101.000000   6.0    454.500000
+   MNQ                     ict_inside_bar_disp_breakout_15m   28.0      28.0 0.785714  5.666066  2543.289286    90.831760   9.0    282.587698
+   MNQ                                            custom_5m  116.0     116.0 0.551724  2.264128  2527.309640    21.787152   7.0    361.044234
+   MGC               asian_range_sweep_mitigation_block_15m   32.0      32.0 0.781250  6.642878  2507.614286    78.362946   6.0    417.935714
+   MNQ                              ict_mitigation_block_5m   94.0      94.0 0.563830  2.195133  2202.814334    23.434195   9.0    244.757148
+   MGC  silver_bullet_pdh_pdl_retest_5m_nogate_roll24_tight   44.0      44.0 0.727273  3.586819  2041.000000    46.386364   3.0    680.333333
+   MNQ                 ifvg_midpoint_reversion_htf_bias_15m   48.0      48.0 0.708333  4.452969  1996.075000    41.584896   5.0    399.215000
+   MGC                          htf_1h_disp_5m_fvg_pullback  200.0     200.0 0.520000  2.033737  1930.400000     9.652000   9.0    214.488889
+   MNQ                          htf_1h_disp_5m_fvg_pullback  184.0     184.0 0.434783  1.651063  1813.600000     9.856522   9.0    201.511111
+   MNQ                         ict_ifvg_vshape_continuation   70.0      70.0 0.385714  1.507856  1807.686447    25.824092   6.0    301.281074
+    6J                             ict_mitigation_block_15m   47.0      47.0 0.595745  2.711865  1587.541902    33.777487   5.0    317.508380
+   MNQ               silver_bullet_pdh_pdl_retest_5m_roll24   45.0      45.0 0.533333  1.588542  1582.000000    35.155556   8.0    197.750000
+   MGC     silver_bullet_pdh_pdl_retest_5m_roll12_timegated   50.0      50.0 0.660000  2.123660  1572.000000    31.440000   7.0    224.571429
+   MGC                     silver_bullet_pdh_pdl_retest_15m   15.0      15.0 0.933333 18.229885  1499.000000    99.933333   3.0    499.666667
+   MGC                      ict_inside_bar_disp_breakout_5m   94.0      94.0 0.617021  2.072079  1486.100000    15.809574   8.0    185.762500
+   MGC                   custom_15m_ict_mitigation_block_v1   11.0      11.0 1.000000       NaN  1464.590002   133.144546   3.0    488.196667
+    6J             asian_range_sweep_mitigation_block_5m_rr   32.0      32.0 0.593750  3.586950  1393.682143    43.552567   6.0    232.280357
+    6J                            ob_midpoint_reversion_15m   77.0      77.0 0.571429  2.115252  1360.950000    17.674675   8.0    170.118750
+   MGC                     ict_inside_bar_disp_breakout_15m   28.0      28.0 0.678571  3.757824  1340.007143    47.857398   9.0    148.889683
+    6J                                            custom_5m   54.0      54.0 0.555556  2.373413  1119.144366    20.724896   8.0    139.893046
+   MNQ                   atr_disp_continuation_15m_loosened   10.0      10.0 0.700000  4.953391  1095.392857   109.539286   3.0    365.130952
+    ZF        silver_bullet_pdh_pdl_retest_5m_roll12_nogate   13.0      13.0 0.769231  5.507020  1083.375000    83.336538   4.0    270.843750
+    ZF                      silver_bullet_pdh_pdl_retest_5m   13.0      13.0 0.769231  5.507020  1083.375000    83.336538   4.0    270.843750
+   MNQ                                   judas_continuation   14.0      14.0 0.642857  3.777365  1042.576278    74.469734   6.0    173.762713
+   MNQ  silver_bullet_pdh_pdl_retest_5m_nogate_50pct_filter   14.0      14.0 0.642857  2.323396  1021.000000    72.928571   5.0    204.200000
+    6J      asian_range_sweep_mitigation_block_15m_opposite   43.0      43.0 0.418605  2.145767  1003.416071    23.335257   6.0    167.236012
+   MNQ                  ifvg_midpoint_reversion_htf_bias_1h   18.0      18.0 0.666667  4.136396   993.375000    55.187500   4.0    248.343750
+   MGC                                 ny_am_intra_judas_5m   10.0      10.0 0.900000 19.572821   918.625000    91.862500   3.0    306.208333
+   MNQ                               judas_continuation_15m   11.0      11.0 0.727273  4.255443   901.417179    81.947016   7.0    128.773883
+   MGC              silver_bullet_pdh_pdl_retest_15m_roll96   15.0      15.0 0.733333  3.429730   899.000000    59.933333   5.0    179.800000
+    6J                           ict_mitigation_block_5m_6j   70.0      70.0 0.571429  2.472608   791.563032    11.308043   4.0    197.890758
+   MNQ                    ob_midpoint_reversion_htf_bias_5m   27.0      27.0 0.518519  2.404399   747.050000    27.668519   7.0    106.721429
+   MGC                  ifvg_midpoint_reversion_htf_bias_5m   94.0      94.0 0.553191  1.960605   724.200000     7.704255   8.0     90.525000
+   MNQ                   ob_midpoint_reversion_htf_bias_15m   18.0      18.0 0.500000  2.221316   612.150000    34.008333   7.0     87.450000
+   MGC                         ict_inside_bar_disp_breakout   65.0      65.0 0.569231  1.513454   604.642857     9.302198   5.0    120.928571
+   MNQ                  ifvg_midpoint_reversion_htf_bias_5m   52.0      52.0 0.500000  1.957895   561.925000    10.806250   8.0     70.240625
+   MNQ                       propulsion_block_15m_octant_v1   29.0      29.0 0.482759  1.642344   543.010533    18.724501   5.0    108.602107
+   MNQ                    propulsion_block_15m_halfrange_v2   14.0      14.0 0.571429  1.905808   542.496130    38.749724   2.0    271.248065
+   MGC                                           custom_15m   24.0      24.0 0.458333  1.405630   469.363070    19.556795   7.0     67.051867
+    6J                     ict_inside_bar_disp_breakout_15m   19.0      19.0 0.631579  2.338950   444.873214    23.414380   7.0     63.553316
+    ZF      asian_range_sweep_mitigation_block_15m_opposite   35.0      35.0 0.428571  1.447151   417.053571    11.915816   6.0     69.508929
+   MGC                           sweep_first_ob_midpoint_5m   13.0      13.0 0.692308  4.252059   411.757143    31.673626   6.0     68.626190
+    ZF                             ict_mitigation_block_15m   26.0      26.0 0.730769  2.168183   388.889008    14.957270   3.0    129.629669
+   MGC            turtle_soup_session_sweep_5m_sweep_filter   11.0      11.0 0.727273  5.336372   353.414286    32.128571   4.0     88.353571
+   MCL      asian_range_sweep_mitigation_block_15m_opposite   45.0      45.0 0.777778  8.099579   337.382143     7.497381   6.0     56.230357
+    6J                   ict_mitigation_block_5m_v2_disp1.5   92.0      92.0 0.641304  1.876703   326.304966     3.546793   5.0     65.260993
+   MGC                 ifvg_midpoint_reversion_htf_bias_15m   46.0      46.0 0.543478  1.620054   296.200000     6.439130   9.0     32.911111
+   MNQ      asian_range_sweep_mitigation_block_15m_opposite   51.0      51.0 0.254902  1.066069   274.207143     5.376611   7.0     39.172449
+   MGC                    ict_mitigation_block_5m_mgc_fresh   24.0      24.0 0.541667  1.594376   268.067593    11.169483   3.0     89.355864
+   MCL                     silver_bullet_pdh_pdl_retest_15m   40.0      40.0 0.900000 12.492754   237.900000     5.947500   7.0     33.985714
+    ZF                     ict_inside_bar_disp_breakout_15m   16.0      16.0 0.750000  2.264037   227.933036    14.245815   8.0     28.491629
+   MCL  silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset   51.0      51.0 0.803922  4.015048   220.400000     4.321569   9.0     24.488889
+   MCL               silver_bullet_pdh_pdl_retest_15m_50pct   39.0      39.0 0.897436 11.710784   218.500000     5.602564   9.0     24.277778
+   MGC                       ob_midpoint_reversion_5m_loose   11.0      11.0 0.636364  2.584149   198.742857    18.067532   4.0     49.685714
+   MGC                          bsl_run_judas_eq_cluster_5m   26.0      26.0 0.461538  1.328245   178.354842     6.859802   6.0     29.725807
+   MCL        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mcl   59.0      59.0 0.779661  3.284483   159.000000     2.694915   4.0     39.750000
+   MCL        silver_bullet_pdh_pdl_retest_5m_nogate_roll24  116.0     116.0 0.715517  1.778713   157.300000     1.356034   9.0     17.477778
+   MCL               silver_bullet_pdh_pdl_retest_5m_roll24  116.0     116.0 0.715517  1.778713   157.300000     1.356034   9.0     17.477778
+   MGC                                     bsl_run_judas_5m   13.0      13.0 0.615385  1.588005   148.208861    11.400682   6.0     24.701477
+   MCL        silver_bullet_pdh_pdl_retest_5m_nogate_roll12  145.0     145.0 0.682759  1.524006   139.700000     0.963448   9.0     15.522222
+   MCL               silver_bullet_pdh_pdl_retest_5m_roll12  145.0     145.0 0.682759  1.524006   139.700000     0.963448   9.0     15.522222
+    6J                   ict_inside_bar_disp_breakout_tight   10.0      10.0 0.800000  7.558417   126.401786    12.640179   6.0     21.066964
+   MCL        silver_bullet_pdh_pdl_retest_15m_50pct_filter   21.0      21.0 0.857143  7.261146    98.300000     4.680952   5.0     19.660000
+   MGC                             bsl_run_judas_eq_cluster   16.0      16.0 0.500000  1.168822    79.916457     4.994779   5.0     15.983291
+   MGC                          sweep_first_ob_midpoint_15m   10.0      10.0 0.400000  1.244883    76.228571     7.622857   5.0     15.245714
+    6J                      ict_inside_bar_disp_breakout_5m   15.0      15.0 0.600000  1.575584    72.928571     4.861905   6.0     12.154762
+    6J                         ict_inside_bar_disp_breakout   15.0      15.0 0.600000  1.575584    72.928571     4.861905   6.0     12.154762
+   MGC                   ict_mitigation_block_5m_v2_disp1.5   15.0      15.0 0.533333  1.229088    64.985887     4.332392   3.0     21.661962
+    ZF                session_disp_fvg_pullback_5m_ny_sb_v1   11.0      11.0 0.545455  1.126077    42.531250     3.866477   2.0     21.265625
+   MCL                   atr_disp_continuation_15m_loosened   14.0      14.0 0.857143  4.609625    42.070179     3.005013   3.0     14.023393
+   MCL                               judas_continuation_15m   10.0      10.0 0.800000  4.879367    37.188219     3.718822   5.0      7.437644
+   MCL                                 propulsion_block_15m   27.0      27.0 0.592593  1.397589    18.859301     0.698493   6.0      3.143217
+   MCL                   custom_15m_ict_mitigation_block_v1   11.0      11.0 0.727273  1.766595     9.567973     0.869816   4.0      2.391993
+   MCL            turtle_soup_session_sweep_5m_sweep_filter   14.0      14.0 0.857143  1.489579     3.288571     0.234898   5.0      0.657714
+   MCL               silver_bullet_pdh_pdl_retest_5m_nogate  115.0     115.0 0.643478  1.004525     1.100000     0.009565   8.0      0.137500
+   MCL                         turtle_soup_session_sweep_5m   10.0      10.0 0.700000  0.510088    -4.466071    -0.446607   6.0     -0.744345
+   MNQ                      ict_mitigation_block_15m_mnq_v1   23.0      23.0 0.391304  0.994258    -5.280244    -0.229576   4.0     -1.320061
+   MCL                                           custom_15m   18.0      18.0 0.555556  0.628794   -16.051607    -0.891756   4.0     -4.012902
+   MCL       ifvg_midpoint_reversion_htf_bias_ny_only_5m_v3   16.0      16.0 0.750000 -0.407855   -16.310000    -1.019375   4.0     -4.077500
+   MCL                   ict_mitigation_block_5m_v2_disp1.5   14.0      14.0 0.785714 -0.907310   -16.314877    -1.165348   3.0     -5.438292
+   MCL                 ifvg_midpoint_reversion_htf_bias_15m   13.0      13.0 0.615385  0.098514   -16.380000    -1.260000   4.0     -4.095000
+   MCL                             ict_mitigation_block_15m   37.0      37.0 0.567568  0.638697   -37.274574    -1.007421   4.0     -9.318643
+   MCL                   ob_midpoint_reversion_htf_bias_15m   14.0      14.0 0.142857  0.184710   -41.591429    -2.970816   5.0     -8.318286
+   MCL                       ny_am_pdh_pdl_silver_bullet_5m   33.0      33.0 0.515152  0.198453   -41.879144    -1.269065   5.0     -8.375829
+   MCL                          ict_mitigation_block_5m_mcl   24.0      24.0 0.458333  0.231272   -45.426509    -1.892771   3.0    -15.142170
+   MCL                      ict_mitigation_block_5m_csid252   24.0      24.0 0.458333  0.231272   -45.426509    -1.892771   3.0    -15.142170
+   MCL                    ob_midpoint_reversion_htf_bias_5m   41.0      41.0 0.536585 -0.006181   -55.351429    -1.350035   8.0     -6.918929
+   MCL                   ict_inside_bar_disp_breakout_tight   51.0      51.0 0.568627  0.262214   -57.869286    -1.134692   8.0     -7.233661
+   MGC                   ob_midpoint_reversion_htf_bias_15m   19.0      19.0 0.368421  0.919240   -60.328571    -3.175188   7.0     -8.618367
+   MCL                    custom_5m_ict_mitigation_block_v1   81.0      81.0 0.432099  0.243920  -104.368490    -1.288500   6.0    -17.394748
+   MCL                            ob_midpoint_reversion_15m  125.0     125.0 0.464000  0.615423  -116.568571    -0.932549   9.0    -12.952063
+   MCL                         ict_inside_bar_disp_breakout  103.0     103.0 0.563107  0.213536  -123.887143    -1.202788   9.0    -13.765238
+   MCL                      ict_inside_bar_disp_breakout_5m  103.0     103.0 0.563107  0.213536  -123.887143    -1.202788   9.0    -13.765238
+   MCL     ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1  132.0     132.0 0.507576  0.291544  -133.735714    -1.013149   7.0    -19.105102
+    ZF                         bsl_run_judas_eq_cluster_15m   11.0      11.0 0.454545  0.537120  -161.324058   -14.665823   6.0    -26.887343
+    ZF                          bsl_run_judas_eq_cluster_5m   11.0      11.0 0.454545  0.147384  -184.121452   -16.738314   5.0    -36.824290
+    ZF       ifvg_midpoint_reversion_htf_bias_ny_only_5m_v2   16.0      16.0 0.500000 -0.202770  -248.992188   -15.562012   5.0    -49.798438
+   MNQ                                 ict_mitigation_block   27.0      27.0 0.370370  0.704607  -282.245540   -10.453539   2.0   -141.122770
+   MCL                                            custom_5m  201.0     201.0 0.462687  0.229648  -295.114158    -1.468230   8.0    -36.889270
+    ZF                                           custom_15m   14.0      14.0 0.357143  0.475142  -390.062822   -27.861630   5.0    -78.012564
+   MCL                          htf_1h_disp_5m_fvg_pullback  284.0     284.0 0.450704 -0.079357  -486.110000    -1.711655   9.0    -54.012222
+   MNQ                  unicorn_model_fvg_inside_breaker_5m   14.0      14.0 0.000000  0.000000  -514.914286   -36.779592   2.0   -257.457143
+   MNQ                   custom_15m_ict_mitigation_block_v1   24.0      24.0 0.250000  0.465967  -676.225423   -28.176059   3.0   -225.408474
+   MNQ     ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1   68.0      68.0 0.250000  0.493421 -1000.507143   -14.713340   7.0   -142.929592
+   MGC                       propulsion_block_15m_octant_v1   40.0      40.0 0.075000  0.118161 -2210.379810   -55.259495   6.0   -368.396635
+
+====================================================================================================
+PART 3 -- FAMILY ROLLUP, SYMBOL AGGREGATED (where should the 10 contracts go?)
+====================================================================================================
+act_symbol                                           act_family  n_sig  n_closed       wr        pf          usd  usd_per_sig  days  usd_per_cday
+       MNQ                                           custom_15m   95.0      95.0 0.726316  6.487953 11106.642510   116.912026   7.0   1586.663216
+       MNQ           silver_bullet_pdh_pdl_retest_15m_roll24_v1   52.0      52.0 0.692308  5.218571 11040.000000   212.307692   8.0   1380.000000
+       MGC                                            custom_5m  390.0     390.0 0.589744  2.243375 10791.939770    27.671640   9.0   1199.104419
+       MNQ              silver_bullet_pdh_pdl_retest_15m_nogate   66.0      66.0 0.636364  3.786757  9069.500000   137.416667   8.0   1133.687500
+       MNQ                                            custom_1h   23.0      23.0 0.956522 55.371429  8563.500000   372.326087   5.0   1712.700000
+       MGC               silver_bullet_pdh_pdl_retest_5m_roll24  151.0     151.0 0.735099  3.898515  8197.000000    54.284768   9.0    910.777778
+       MNQ               silver_bullet_pdh_pdl_retest_5m_nogate   91.0      91.0 0.659341  3.519611  7259.000000    79.769231   9.0    806.555556
+       MGC      asian_range_sweep_mitigation_block_15m_opposite   54.0      54.0 0.648148  5.435874  6450.014286   119.444709   6.0   1075.002381
+       MGC        silver_bullet_pdh_pdl_retest_5m_nogate_roll48  105.0     105.0 0.714286  3.641419  6033.000000    57.457143   8.0    754.125000
+       MNQ            silver_bullet_pdh_pdl_retest_5m_nogate_4R   69.0      69.0 0.463768  2.678175  5444.000000    78.898551   9.0    604.888889
+       MGC               silver_bullet_pdh_pdl_retest_5m_nogate   98.0      98.0 0.714286  3.605703  5300.000000    54.081633   6.0    883.333333
+       MNQ        silver_bullet_pdh_pdl_retest_15m_50pct_filter   24.0      24.0 0.791667  9.262128  5279.500000   219.979167   4.0   1319.875000
+       MNQ        silver_bullet_pdh_pdl_retest_5m_nogate_roll24   40.0      40.0 0.775000  5.544230  5060.000000   126.500000   8.0    632.500000
+        6J                                 ict_mitigation_block  291.0     291.0 0.670103  4.208960  5011.039783    17.220068   9.0    556.782198
+       MGC           silver_bullet_pdh_pdl_retest_15m_v4_roll24   46.0      46.0 0.869565  8.772152  4912.000000   106.782609   9.0    545.777778
+       MNQ                       ny_am_pdh_pdl_silver_bullet_5m   46.0      46.0 0.673913  6.647803  4314.396938    93.791238   6.0    719.066156
+        6J                      ict_mitigation_block_5m_csid333  195.0     195.0 0.707692  6.012086  4229.681478    21.690674   8.0    528.710185
+       MNQ                    custom_5m_ict_mitigation_block_v1   91.0      91.0 0.714286  5.726243  4140.786654    45.503150   6.0    690.131109
+       MGC  silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset   38.0      38.0 0.842105  7.278481  3968.000000   104.421053   8.0    496.000000
+       MGC             asian_range_sweep_mitigation_block_5m_rr   57.0      57.0 0.719298  5.091381  3527.792857    61.891103   6.0    587.965476
+       MNQ        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mnq   37.0      37.0 0.729730  4.159338  3341.000000    90.297297   4.0    835.250000
+       MNQ                 unicorn_model_fvg_inside_breaker_15m   59.0      59.0 0.627119  2.468474  3269.692857    55.418523   4.0    817.423214
+       MGC        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mgc   74.0      74.0 0.716216  3.747039  3247.000000    43.878378   4.0    811.750000
+       MGC                        propulsion_block_5m_octant_v1   69.0      69.0 0.550725  4.187583  3145.910561    45.592907   7.0    449.415794
+       MGC                asian_range_sweep_mitigation_block_5m   57.0      57.0 0.561404  3.427215  2876.857143    50.471178   6.0    479.476190
+       MNQ             asian_range_sweep_mitigation_block_5m_rr   58.0      58.0 0.551724  2.223861  2842.282143    49.004865   8.0    355.285268
+       MGC silver_bullet_pdh_pdl_retest_15m_50pct_filter_roll48   27.0      27.0 0.888889  8.328912  2763.000000   102.333333   8.0    345.375000
+       MGC        silver_bullet_pdh_pdl_retest_15m_50pct_filter   27.0      27.0 0.888889  8.390244  2727.000000   101.000000   6.0    454.500000
+       MNQ                     ict_inside_bar_disp_breakout_15m   28.0      28.0 0.785714  5.666066  2543.289286    90.831760   9.0    282.587698
+       MNQ                                            custom_5m  116.0     116.0 0.551724  2.264128  2527.309640    21.787152   7.0    361.044234
+       MGC               asian_range_sweep_mitigation_block_15m   32.0      32.0 0.781250  6.642878  2507.614286    78.362946   6.0    417.935714
+       MNQ                              ict_mitigation_block_5m   94.0      94.0 0.563830  2.195133  2202.814334    23.434195   9.0    244.757148
+       MGC  silver_bullet_pdh_pdl_retest_5m_nogate_roll24_tight   44.0      44.0 0.727273  3.586819  2041.000000    46.386364   3.0    680.333333
+       MNQ                 ifvg_midpoint_reversion_htf_bias_15m   48.0      48.0 0.708333  4.452969  1996.075000    41.584896   5.0    399.215000
+       MGC                          htf_1h_disp_5m_fvg_pullback  200.0     200.0 0.520000  2.033737  1930.400000     9.652000   9.0    214.488889
+       MNQ                          htf_1h_disp_5m_fvg_pullback  184.0     184.0 0.434783  1.651063  1813.600000     9.856522   9.0    201.511111
+       MNQ                         ict_ifvg_vshape_continuation   70.0      70.0 0.385714  1.507856  1807.686447    25.824092   6.0    301.281074
+        6J                             ict_mitigation_block_15m   47.0      47.0 0.595745  2.711865  1587.541902    33.777487   5.0    317.508380
+       MNQ               silver_bullet_pdh_pdl_retest_5m_roll24   45.0      45.0 0.533333  1.588542  1582.000000    35.155556   8.0    197.750000
+       MGC     silver_bullet_pdh_pdl_retest_5m_roll12_timegated   50.0      50.0 0.660000  2.123660  1572.000000    31.440000   7.0    224.571429
+       MGC                     silver_bullet_pdh_pdl_retest_15m   15.0      15.0 0.933333 18.229885  1499.000000    99.933333   3.0    499.666667
+       MGC                      ict_inside_bar_disp_breakout_5m   94.0      94.0 0.617021  2.072079  1486.100000    15.809574   8.0    185.762500
+        6J             asian_range_sweep_mitigation_block_5m_rr   32.0      32.0 0.593750  3.586950  1393.682143    43.552567   6.0    232.280357
+        6J                            ob_midpoint_reversion_15m   77.0      77.0 0.571429  2.115252  1360.950000    17.674675   8.0    170.118750
+       MGC                     ict_inside_bar_disp_breakout_15m   28.0      28.0 0.678571  3.757824  1340.007143    47.857398   9.0    148.889683
+        6J                                            custom_5m   54.0      54.0 0.555556  2.373413  1119.144366    20.724896   8.0    139.893046
+        6J      asian_range_sweep_mitigation_block_15m_opposite   43.0      43.0 0.418605  2.145767  1003.416071    23.335257   6.0    167.236012
+       MNQ                  ifvg_midpoint_reversion_htf_bias_1h   18.0      18.0 0.666667  4.136396   993.375000    55.187500   4.0    248.343750
+       MGC              silver_bullet_pdh_pdl_retest_15m_roll96   15.0      15.0 0.733333  3.429730   899.000000    59.933333   5.0    179.800000
+        6J                           ict_mitigation_block_5m_6j   70.0      70.0 0.571429  2.472608   791.563032    11.308043   4.0    197.890758
+       MNQ                    ob_midpoint_reversion_htf_bias_5m   27.0      27.0 0.518519  2.404399   747.050000    27.668519   7.0    106.721429
+       MGC                  ifvg_midpoint_reversion_htf_bias_5m   94.0      94.0 0.553191  1.960605   724.200000     7.704255   8.0     90.525000
+       MNQ                   ob_midpoint_reversion_htf_bias_15m   18.0      18.0 0.500000  2.221316   612.150000    34.008333   7.0     87.450000
+       MGC                         ict_inside_bar_disp_breakout   65.0      65.0 0.569231  1.513454   604.642857     9.302198   5.0    120.928571
+       MNQ                  ifvg_midpoint_reversion_htf_bias_5m   52.0      52.0 0.500000  1.957895   561.925000    10.806250   8.0     70.240625
+       MNQ                       propulsion_block_15m_octant_v1   29.0      29.0 0.482759  1.642344   543.010533    18.724501   5.0    108.602107
+       MGC                                           custom_15m   24.0      24.0 0.458333  1.405630   469.363070    19.556795   7.0     67.051867
+        6J                     ict_inside_bar_disp_breakout_15m   19.0      19.0 0.631579  2.338950   444.873214    23.414380   7.0     63.553316
+        ZF      asian_range_sweep_mitigation_block_15m_opposite   35.0      35.0 0.428571  1.447151   417.053571    11.915816   6.0     69.508929
+        ZF                             ict_mitigation_block_15m   26.0      26.0 0.730769  2.168183   388.889008    14.957270   3.0    129.629669
+       MCL      asian_range_sweep_mitigation_block_15m_opposite   45.0      45.0 0.777778  8.099579   337.382143     7.497381   6.0     56.230357
+        6J                   ict_mitigation_block_5m_v2_disp1.5   92.0      92.0 0.641304  1.876703   326.304966     3.546793   5.0     65.260993
+       MGC                 ifvg_midpoint_reversion_htf_bias_15m   46.0      46.0 0.543478  1.620054   296.200000     6.439130   9.0     32.911111
+       MNQ      asian_range_sweep_mitigation_block_15m_opposite   51.0      51.0 0.254902  1.066069   274.207143     5.376611   7.0     39.172449
+       MGC                    ict_mitigation_block_5m_mgc_fresh   24.0      24.0 0.541667  1.594376   268.067593    11.169483   3.0     89.355864
+       MCL                     silver_bullet_pdh_pdl_retest_15m   40.0      40.0 0.900000 12.492754   237.900000     5.947500   7.0     33.985714
+        ZF                     ict_inside_bar_disp_breakout_15m   16.0      16.0 0.750000  2.264037   227.933036    14.245815   8.0     28.491629
+       MCL  silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset   51.0      51.0 0.803922  4.015048   220.400000     4.321569   9.0     24.488889
+       MCL               silver_bullet_pdh_pdl_retest_15m_50pct   39.0      39.0 0.897436 11.710784   218.500000     5.602564   9.0     24.277778
+       MGC                          bsl_run_judas_eq_cluster_5m   26.0      26.0 0.461538  1.328245   178.354842     6.859802   6.0     29.725807
+       MCL        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mcl   59.0      59.0 0.779661  3.284483   159.000000     2.694915   4.0     39.750000
+       MCL        silver_bullet_pdh_pdl_retest_5m_nogate_roll24  116.0     116.0 0.715517  1.778713   157.300000     1.356034   9.0     17.477778
+       MCL               silver_bullet_pdh_pdl_retest_5m_roll24  116.0     116.0 0.715517  1.778713   157.300000     1.356034   9.0     17.477778
+       MCL        silver_bullet_pdh_pdl_retest_5m_nogate_roll12  145.0     145.0 0.682759  1.524006   139.700000     0.963448   9.0     15.522222
+       MCL               silver_bullet_pdh_pdl_retest_5m_roll12  145.0     145.0 0.682759  1.524006   139.700000     0.963448   9.0     15.522222
+       MCL        silver_bullet_pdh_pdl_retest_15m_50pct_filter   21.0      21.0 0.857143  7.261146    98.300000     4.680952   5.0     19.660000
+       MGC                             bsl_run_judas_eq_cluster   16.0      16.0 0.500000  1.168822    79.916457     4.994779   5.0     15.983291
+        6J                         ict_inside_bar_disp_breakout   15.0      15.0 0.600000  1.575584    72.928571     4.861905   6.0     12.154762
+        6J                      ict_inside_bar_disp_breakout_5m   15.0      15.0 0.600000  1.575584    72.928571     4.861905   6.0     12.154762
+       MGC                   ict_mitigation_block_5m_v2_disp1.5   15.0      15.0 0.533333  1.229088    64.985887     4.332392   3.0     21.661962
+       MCL                                 propulsion_block_15m   27.0      27.0 0.592593  1.397589    18.859301     0.698493   6.0      3.143217
+       MCL               silver_bullet_pdh_pdl_retest_5m_nogate  115.0     115.0 0.643478  1.004525     1.100000     0.009565   8.0      0.137500
+       MNQ                      ict_mitigation_block_15m_mnq_v1   23.0      23.0 0.391304  0.994258    -5.280244    -0.229576   4.0     -1.320061
+       MCL                                           custom_15m   18.0      18.0 0.555556  0.628794   -16.051607    -0.891756   4.0     -4.012902
+       MCL       ifvg_midpoint_reversion_htf_bias_ny_only_5m_v3   16.0      16.0 0.750000 -0.407855   -16.310000    -1.019375   4.0     -4.077500
+       MCL                             ict_mitigation_block_15m   37.0      37.0 0.567568  0.638697   -37.274574    -1.007421   4.0     -9.318643
+       MCL                       ny_am_pdh_pdl_silver_bullet_5m   33.0      33.0 0.515152  0.198453   -41.879144    -1.269065   5.0     -8.375829
+       MCL                      ict_mitigation_block_5m_csid252   24.0      24.0 0.458333  0.231272   -45.426509    -1.892771   3.0    -15.142170
+       MCL                          ict_mitigation_block_5m_mcl   24.0      24.0 0.458333  0.231272   -45.426509    -1.892771   3.0    -15.142170
+       MCL                    ob_midpoint_reversion_htf_bias_5m   41.0      41.0 0.536585 -0.006181   -55.351429    -1.350035   8.0     -6.918929
+       MCL                   ict_inside_bar_disp_breakout_tight   51.0      51.0 0.568627  0.262214   -57.869286    -1.134692   8.0     -7.233661
+       MGC                   ob_midpoint_reversion_htf_bias_15m   19.0      19.0 0.368421  0.919240   -60.328571    -3.175188   7.0     -8.618367
+       MCL                    custom_5m_ict_mitigation_block_v1   81.0      81.0 0.432099  0.243920  -104.368490    -1.288500   6.0    -17.394748
+       MCL                            ob_midpoint_reversion_15m  125.0     125.0 0.464000  0.615423  -116.568571    -0.932549   9.0    -12.952063
+       MCL                         ict_inside_bar_disp_breakout  103.0     103.0 0.563107  0.213536  -123.887143    -1.202788   9.0    -13.765238
+       MCL                      ict_inside_bar_disp_breakout_5m  103.0     103.0 0.563107  0.213536  -123.887143    -1.202788   9.0    -13.765238
+       MCL     ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1  132.0     132.0 0.507576  0.291544  -133.735714    -1.013149   7.0    -19.105102
+        ZF       ifvg_midpoint_reversion_htf_bias_ny_only_5m_v2   16.0      16.0 0.500000 -0.202770  -248.992188   -15.562012   5.0    -49.798438
+       MNQ                                 ict_mitigation_block   27.0      27.0 0.370370  0.704607  -282.245540   -10.453539   2.0   -141.122770
+       MCL                                            custom_5m  201.0     201.0 0.462687  0.229648  -295.114158    -1.468230   8.0    -36.889270
+       MCL                          htf_1h_disp_5m_fvg_pullback  284.0     284.0 0.450704 -0.079357  -486.110000    -1.711655   9.0    -54.012222
+       MNQ                   custom_15m_ict_mitigation_block_v1   24.0      24.0 0.250000  0.465967  -676.225423   -28.176059   3.0   -225.408474
+       MNQ     ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1   68.0      68.0 0.250000  0.493421 -1000.507143   -14.713340   7.0   -142.929592
+       MGC                       propulsion_block_15m_octant_v1   40.0      40.0 0.075000  0.118161 -2210.379810   -55.259495   6.0   -368.396635
+
+====================================================================================================
+PART 4 -- POST-RESET CAP ALLOCATION (10 contracts). Rank = shadow $ / contract-day
+====================================================================================================
+ slot  strategy_id act_symbol                                           act_family  n_sig  n_closed       wr       pf    pf_ub          usd  usd_per_sig  usd_per_contract_day     bt_pf  bt_n
+    1         4831        MNQ           silver_bullet_pdh_pdl_retest_15m_roll24_v1   63.0      52.0 0.692308 5.218571 5.218571 11040.000000   212.307692           1380.000000  5.360000  83.0
+    2         4846        MNQ              silver_bullet_pdh_pdl_retest_15m_nogate   85.0      66.0 0.636364 3.786757 3.929731  9069.500000   137.416667           1133.687500       NaN   NaN
+    3         4901        MGC      asian_range_sweep_mitigation_block_15m_opposite   73.0      54.0 0.648148 5.435874 5.435874  6450.014286   119.444709           1075.002381  2.030000  33.0
+    4         4599        MNQ                                           custom_15m   33.0      24.0 0.791667 9.320205 9.320205  7288.500000   303.687500           1041.214286  1.820000   NaN
+    5         4857        MGC               silver_bullet_pdh_pdl_retest_5m_roll24  157.0     151.0 0.735099 3.898515 3.909961  8197.000000    54.284768            910.777778  5.660000 119.0
+    6         4697        MGC                                            custom_5m  210.0     203.0 0.650246 2.572186 2.582532  7710.000000    37.980296            856.666667  4.264000 105.0
+    7         4949        MNQ        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mnq   37.0      37.0 0.729730 4.159338 4.159338  3341.000000    90.297297            835.250000       NaN   NaN
+    8         4932        MNQ                 unicorn_model_fvg_inside_breaker_15m   59.0      59.0 0.627119 2.468474 2.468474  3269.692857    55.418523            817.423214       NaN   NaN
+    9         4950        MGC        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mgc   74.0      74.0 0.716216 3.747039 3.747039  3247.000000    43.878378            811.750000       NaN   NaN
+   10         4827        MGC        silver_bullet_pdh_pdl_retest_5m_nogate_roll48  112.0     105.0 0.714286 3.641419 3.641419  6033.000000    57.457143            754.125000       NaN  85.0
+   11         4896        MNQ                       ny_am_pdh_pdl_silver_bullet_5m   46.0      46.0 0.673913 6.647803 7.227860  4314.396938    93.791238            719.066156 31.970000  25.0
+   12         4966        MGC  silver_bullet_pdh_pdl_retest_5m_nogate_roll24_tight   44.0      44.0 0.727273 3.586819 3.586819  2041.000000    46.386364            680.333333  4.355631 137.0
+   13         4875        MNQ        silver_bullet_pdh_pdl_retest_5m_nogate_roll24   42.0      40.0 0.775000 5.544230 5.544230  5060.000000   126.500000            632.500000  7.110000 115.0
+   14         4745        MNQ            silver_bullet_pdh_pdl_retest_5m_nogate_4R   78.0      69.0 0.463768 2.678175 2.678175  5444.000000    78.898551            604.888889       NaN   NaN
+   15         4902        MGC             asian_range_sweep_mitigation_block_5m_rr   57.0      57.0 0.719298 5.091381 5.189154  3527.792857    61.891103            587.965476  4.070000  27.0
+   16         4749         6J                                 ict_mitigation_block  291.0     291.0 0.670103 4.208960 4.345875  5011.039783    17.220068            556.782198       NaN   NaN
+   17         4678        MNQ               silver_bullet_pdh_pdl_retest_5m_nogate   78.0      75.0 0.640000 2.926485 2.926485  4913.500000    65.513333            545.944444  5.587000   NaN
+   18         4832        MGC           silver_bullet_pdh_pdl_retest_15m_v4_roll24   55.0      46.0 0.869565 8.772152 8.772152  4912.000000   106.782609            545.777778  3.350000  60.0
+   19         4888         6J                      ict_mitigation_block_5m_csid333  195.0     195.0 0.707692 6.012086 6.354754  4229.681478    21.690674            528.710185  1.945200 192.0
+   20         4894        MGC                asian_range_sweep_mitigation_block_5m   57.0      57.0 0.561404 3.427215 3.427215  2876.857143    50.471178            479.476190  4.253600  31.0
+   21         4830        MGC                        propulsion_block_5m_octant_v1   72.0      69.0 0.550725 4.187583 4.434535  3145.910561    45.592907            449.415794  1.787000  29.0
+   22         4895        MGC               asian_range_sweep_mitigation_block_15m   35.0      32.0 0.781250 6.642878 6.642878  2507.614286    78.362946            417.935714  4.155400  59.0
+   23         4701        MNQ                                           custom_15m   48.0      48.0 0.708333 4.452969 5.123193  1996.075000    41.584896            399.215000  3.326000 108.0
+   24         4884        MNQ                 ifvg_midpoint_reversion_htf_bias_15m   48.0      48.0 0.708333 4.452969 5.123193  1996.075000    41.584896            399.215000       NaN  59.0
+   25         4898        MNQ             asian_range_sweep_mitigation_block_5m_rr   60.0      58.0 0.551724 2.223861 2.223861  2842.282143    49.004865            355.285268  2.840000  23.0
+   26         4828        MGC silver_bullet_pdh_pdl_retest_15m_50pct_filter_roll48   30.0      27.0 0.888889 8.328912 8.328912  2763.000000   102.333333            345.375000       NaN  41.0
+   27         4869         6J                             ict_mitigation_block_15m   47.0      47.0 0.595745 2.711865 2.711865  1587.541902    33.777487            317.508380  1.720000 107.0
+   28         4877        MNQ                     ict_inside_bar_disp_breakout_15m   30.0      28.0 0.785714 5.666066 5.666066  2543.289286    90.831760            282.587698  3.490000 144.0
+   29         4867        MNQ                              ict_mitigation_block_5m   94.0      94.0 0.563830 2.195133 2.195133  2202.814334    23.434195            244.757148  2.070000 122.0
+   30         4903         6J             asian_range_sweep_mitigation_block_5m_rr   34.0      32.0 0.593750 3.586950 3.586950  1393.682143    43.552567            232.280357  5.520000  20.0
+
+... 73 active strategies clear n_closed>=20. 58 have shadow PF>=1.3, 1 are 1.0-1.3, 14 are below 1.0.
+
+====================================================================================================
+PART 5 -- SIGNAL VOLUME vs the 10-contract cap (how oversubscribed is the book?)
+====================================================================================================
+tradeday  2026-10-11  2026-10-12  2026-10-13  2026-10-14  2026-10-15  2026-10-16  2026-10-17  2026-10-18  2026-10-19  2026-10-20
+symbol                                                                                                                          
+6J                38          93         204         219         149         145           0          63          58          79
+MCL               73         331         292         336         361         285           0          66         370         377
+MGC               40         303         361         399         288         321           1          60         300         255
+MNQ              121         248         274         282         273         243           0          61         235         220
+ZF                 1          28          37          30          39          31           0           0          29          56
+
+total closed trades over 9 sessions = 7645  => 849/day book-wide vs a 10-contract cap.
+Every signal above is a HYPOTHETICAL. At most 10 could ever be live at once.
+
+Top-10 active strategies by shadow $/contract-day would have produced $9,616 over 9 sessions (~$1,068/day) -- vs the whole book's $216,633.
+
+====================================================================================================
+PART 6 -- DIRECTION / QUALITY cross-check (does the edge live anywhere specific?)
+====================================================================================================
+                   n_sig  n_closed        wr        pf           usd  usd_per_sig  days  usd_per_cday
+symbol direction                                                                                     
+6J     long        687.0     687.0  0.780204  5.987500  18422.077517    26.815251   9.0   2046.897502
+       short       331.0     331.0  0.329305  1.201905   1087.436383     3.285306   9.0    120.826265
+MCL    long       1273.0    1273.0  0.453260  0.791398   -602.951894    -0.473646   9.0    -66.994655
+       short      1083.0    1083.0  0.765466  1.847854    890.122208     0.821904   9.0     98.902468
+MGC    long        990.0     990.0  0.567677  2.462727  31164.351491    31.479143   9.0   3462.705721
+       short      1227.0    1227.0  0.682967  3.601204  55355.904273    45.114836  10.0   5535.590427
+MNQ    long        934.0     934.0  0.519272  2.035956  30587.274452    32.748688   9.0   3398.586050
+       short       911.0     911.0  0.611416  4.188934  78149.809817    85.784643   9.0   8683.312202
+ZF     long        105.0     105.0  0.552381  1.466676   1244.888208    11.856078   8.0    155.611026
+       short       104.0     104.0  0.586538  1.138654    333.677554     3.208438   7.0     47.668222
+
+[quality_score unavailable: NULL on 100% of rows -> bucketing skipped]
+
+RR (target distance / stop distance) buckets:
+        n_sig  n_closed        wr        pf            usd  usd_per_sig  days  usd_per_cday
+rrb                                                                                        
+<0.9R    37.0      37.0  0.918919  5.541434    1696.947349    45.863442   7.0    242.421050
+1R       67.0      67.0  0.805970  8.254105    5199.385437    77.602768   8.0    649.923180
+1.5R    676.0     676.0  0.582840  2.153800   15793.251549    23.362798   9.0   1754.805728
+2R     6376.0    6376.0  0.616374  3.192397  187924.942559    29.473799  10.0  18792.494256
+>2.5R   489.0     489.0  0.408998  1.423283    6018.063115    12.306878   9.0    668.673679
+
+====================================================================================================
+PART 7 -- THE DECISIVE CUT: symbol x direction x family, with significance
+====================================================================================================
+symbol direction                                     strategy_family  n_closed       wr       e_r        lo        hi          usd  usd_per_cday   sig
+   MNQ     short                                           custom_1h        22 1.000000  1.000000  1.000000  1.000000  8721.000000   1744.200000  REAL
+   MCL      long                    silver_bullet_pdh_pdl_retest_15m        27 0.925926  0.851852  0.650516  1.053187   168.000000     24.000000  REAL
+   MGC     short          silver_bullet_pdh_pdl_retest_15m_v4_roll24        24 0.916667  0.833333  0.607422  1.059244  2974.000000    424.857143  REAL
+   MNQ     short       silver_bullet_pdh_pdl_retest_5m_nogate_roll24        20 0.900000  0.800000  0.530207  1.069793  3584.000000    512.000000  REAL
+   MCL      long              silver_bullet_pdh_pdl_retest_15m_50pct        25 0.880000  0.760000  0.499977  1.020023   140.900000     20.128571  REAL
+   MCL     short     asian_range_sweep_mitigation_block_15m_opposite        25 0.880000  0.760000  0.499977  1.020023   239.347857     59.836964  REAL
+   MGC     short silver_bullet_pdh_pdl_retest_5m_nogate_roll24_tight        28 0.857143  0.714286  0.450299  0.978272  1777.000000    592.333333  REAL
+   MCL     short       silver_bullet_pdh_pdl_retest_5m_nogate_roll12        58 0.844828  0.689655  0.501663  0.877647   147.400000     16.377778  REAL
+   MCL     short              silver_bullet_pdh_pdl_retest_5m_roll12        58 0.844828  0.689655  0.501663  0.877647   147.400000     16.377778  REAL
+   MCL     short              silver_bullet_pdh_pdl_retest_5m_roll24        45 0.844444  0.688889  0.474704  0.903073   124.600000     13.844444  REAL
+   MCL     short       silver_bullet_pdh_pdl_retest_5m_nogate_roll24        45 0.844444  0.688889  0.474704  0.903073   124.600000     13.844444  REAL
+   MCL     short                     ict_inside_bar_disp_breakout_5m        57 0.842105  0.684211  0.493199  0.875222    -0.910714     -0.101190  REAL
+   MCL     short                        ict_inside_bar_disp_breakout        57 0.842105  0.684211  0.493199  0.875222    -0.910714     -0.101190  REAL
+   MCL     short              silver_bullet_pdh_pdl_retest_5m_nogate        50 0.840000  0.680000  0.474701  0.885299    91.900000     11.487500  REAL
+   MCL      long                            ict_mitigation_block_15m        25 0.840000  0.680000  0.386654  0.973346    48.851628     12.212907  REAL
+    6J      long                                ict_mitigation_block       217 0.834101  0.668203  0.568985  0.767421  5701.443413    712.680427  REAL
+    6J      long                  ict_mitigation_block_5m_v2_disp1.5        72 0.819444  0.638889  0.459943  0.817835   563.578503    112.715701  REAL
+   MNQ     short                ifvg_midpoint_reversion_htf_bias_15m        22 0.818182  0.636364  0.306435  0.966292  1254.100000    250.820000  REAL
+   MGC      long          silver_bullet_pdh_pdl_retest_15m_v4_roll24        22 0.818182  0.636364  0.306435  0.966292  1938.000000    215.333333  REAL
+   MCL     short                  ict_inside_bar_disp_breakout_tight        27 0.814815  0.629630  0.331001  0.928259     0.203571      0.025446  REAL
+   MGC     short              asian_range_sweep_mitigation_block_15m        26 0.807692  0.615385  0.306400  0.924370  2164.978571    360.829762  REAL
+   MCL      long silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset        31 0.806452  0.612903  0.330149  0.895658   141.000000     20.142857  REAL
+   MGC     short     asian_range_sweep_mitigation_block_15m_opposite        41 0.804878  0.609756  0.364130  0.855382  6683.671429   1113.945238  REAL
+   MCL     short silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset        20 0.800000  0.600000  0.240276  0.959724    79.400000     11.342857  REAL
+   MCL     short                   custom_5m_ict_mitigation_block_v1        40 0.800000  0.600000  0.348919  0.851081     4.440542      0.740090  REAL
+   MCL      long       silver_bullet_pdh_pdl_retest_5m_nogate_v2_mcl        39 0.794872  0.589744  0.332967  0.846520   103.100000     25.775000  REAL
+    6J      long                     ict_mitigation_block_5m_csid333       170 0.794118  0.588235  0.466310  0.710161  4408.737900    734.789650  REAL
+   MGC     short       silver_bullet_pdh_pdl_retest_5m_nogate_v2_mgc        47 0.787234  0.574468  0.337925  0.811011  2515.000000    628.750000  REAL
+   MCL     short                                           custom_5m       108 0.777778  0.555556  0.398007  0.713105    -7.468695     -0.933587  REAL
+   MNQ     short                                          custom_15m        54 0.777778  0.555556  0.331699  0.779412  8802.174017   1257.453431  REAL
+   MGC     short              silver_bullet_pdh_pdl_retest_5m_roll24        87 0.770115  0.540230  0.362373  0.718086  4359.000000    544.875000  REAL
+   MNQ     short          silver_bullet_pdh_pdl_retest_15m_roll24_v1        39 0.769231  0.538462  0.270538  0.806385 10775.500000   1346.937500  REAL
+   MCL     short       silver_bullet_pdh_pdl_retest_5m_nogate_v2_mcl        20 0.750000  0.500000  0.110587  0.889413    55.900000     13.975000  REAL
+    ZF      long                            ict_mitigation_block_15m        26 0.730769  0.461538  0.113787  0.809290   388.889008    129.629669  REAL
+   MNQ      long                   custom_5m_ict_mitigation_block_v1        70 0.728571  0.457143  0.247285  0.667001  3411.596036    682.319207  REAL
+   MGC     short            asian_range_sweep_mitigation_block_5m_rr        47 0.723404  0.446809  0.188273  0.705344  3116.628571    519.438095  REAL
+   MGC     short       silver_bullet_pdh_pdl_retest_5m_nogate_roll48        61 0.721311  0.442623  0.215725  0.669521  2817.000000    402.428571  REAL
+    6J      long                                           custom_5m        25 0.720000  0.440000  0.080726  0.799274   927.265462    231.816366  REAL
+   MGC      long              silver_bullet_pdh_pdl_retest_5m_nogate        46 0.717391  0.434783  0.171665  0.697901  3335.000000    555.833333  REAL
+   MNQ     short              silver_bullet_pdh_pdl_retest_5m_nogate        46 0.717391  0.434783  0.171665  0.697901  5493.500000    686.687500  REAL
+   MNQ     short             silver_bullet_pdh_pdl_retest_15m_nogate        49 0.714286  0.428571  0.172968  0.684175  8723.500000   1246.214286  REAL
+    6J      long                          ict_mitigation_block_5m_6j        49 0.714286  0.428571  0.172968  0.684175   978.271509    244.567877  REAL
+   MGC     short              silver_bullet_pdh_pdl_retest_5m_nogate        52 0.711538  0.423077  0.174395  0.671759  1965.000000    393.000000  REAL
+   MCL     short                         htf_1h_disp_5m_fvg_pullback       124 0.709677  0.419355  0.258918  0.579792  -142.510000    -15.834444  REAL
+   MCL     short                           ob_midpoint_reversion_15m        58 0.706897  0.413793  0.177453  0.650133    31.370000      3.921250  REAL
+   MGC      long       silver_bullet_pdh_pdl_retest_5m_nogate_roll48        44 0.704545  0.409091  0.136349  0.681833  3216.000000    402.000000  REAL
+   MGC      long              silver_bullet_pdh_pdl_retest_5m_roll24        64 0.687500  0.375000  0.146083  0.603917  3838.000000    426.444444  REAL
+   MNQ     short                      ny_am_pdh_pdl_silver_bullet_5m        34 0.676471  0.352941  0.033706  0.672176  2973.912571    594.782514  REAL
+   MNQ     short                   custom_5m_ict_mitigation_block_v1        21 0.666667  0.333333 -0.079871  0.746538   729.190619    243.063540 noise
+   MGC      long    silver_bullet_pdh_pdl_retest_5m_roll12_timegated        27 0.666667  0.333333 -0.029071  0.695737   901.000000    128.714286 noise
+   MGC      long                       propulsion_block_5m_octant_v1        41 0.658537  0.317073  0.023161  0.610986  3021.748007    503.624668  REAL
+   MNQ      long                                          custom_15m        41 0.658537  0.317073  0.023161  0.610986  2304.468493    384.078082  REAL
+   MNQ     short                                           custom_5m        32 0.656250  0.312500 -0.021896  0.646896  1241.928455    177.418351 noise
+   MNQ     short            asian_range_sweep_mitigation_block_5m_rr        26 0.653846  0.307692 -0.065290  0.680675  1714.675000    342.935000 noise
+   MGC     short    silver_bullet_pdh_pdl_retest_5m_roll12_timegated        23 0.652174  0.304348 -0.093702  0.702398   671.000000     95.857143 noise
+   MNQ     short                             ict_mitigation_block_5m        23 0.652174  0.304348 -0.093702  0.702398   807.567229    161.513446 noise
+   MNQ      long       silver_bullet_pdh_pdl_retest_5m_nogate_roll24        20 0.650000  0.300000 -0.128943  0.728943  1476.000000    295.200000 noise
+   MCL      long     asian_range_sweep_mitigation_block_15m_opposite        20 0.650000  0.300000 -0.128943  0.728943    98.034286     32.678095 noise
+   MGC     short                         htf_1h_disp_5m_fvg_pullback        93 0.645161  0.290323  0.094780  0.485865  1497.700000    187.212500  REAL
+   MCL      long              silver_bullet_pdh_pdl_retest_5m_roll24        71 0.633803  0.267606  0.041885  0.493326    32.700000      4.671429  REAL
+   MCL      long       silver_bullet_pdh_pdl_retest_5m_nogate_roll24        71 0.633803  0.267606  0.041885  0.493326    32.700000      4.671429  REAL
+    6J      long                           ob_midpoint_reversion_15m        38 0.631579  0.263158 -0.047707  0.574022   787.692857     98.461607 noise
+   MGC     short                     ict_inside_bar_disp_breakout_5m        38 0.631579  0.263158 -0.047707  0.574022   520.807143     74.401020 noise
+   MGC     short                                           custom_5m       192 0.630208  0.260417  0.123489  0.397344  5272.247394    585.805266  REAL
+   MNQ      long                unicorn_model_fvg_inside_breaker_15m        58 0.620690  0.241379 -0.010553  0.493311  3138.792857    784.698214 noise
+   MNQ     short                        ict_ifvg_vshape_continuation        34 0.617647  0.235294 -0.096319  0.566907  2421.221633    605.305408 noise
+   MNQ      long                ifvg_midpoint_reversion_htf_bias_15m        26 0.615385  0.230769 -0.150650  0.612189   741.975000    185.493750 noise
+   MGC     short                ifvg_midpoint_reversion_htf_bias_15m        26 0.615385  0.230769 -0.150650  0.612189   262.600000     32.825000 noise
+   MCL     short    ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1        91 0.615385  0.230769  0.029744  0.431795  -103.811429    -14.830204  REAL
+   MNQ     short              silver_bullet_pdh_pdl_retest_5m_roll24        23 0.608696  0.217391 -0.190488  0.625271  1383.000000    197.571429 noise
+   MGC      long                     ict_inside_bar_disp_breakout_5m        56 0.607143  0.214286 -0.043862  0.472433   965.292857    120.661607 noise
+   MNQ      long              silver_bullet_pdh_pdl_retest_5m_nogate        45 0.600000  0.200000 -0.089511  0.489511  1765.500000    252.214286 noise
+   MGC     short                 ifvg_midpoint_reversion_htf_bias_5m        69 0.594203  0.188406 -0.045022  0.421834   681.550000     85.193750 noise
+   MGC      long       silver_bullet_pdh_pdl_retest_5m_nogate_v2_mgc        27 0.592593  0.185185 -0.192554  0.562924   732.000000    183.000000 noise
+    6J      long                            ict_mitigation_block_15m        46 0.586957  0.173913 -0.113814  0.461640  1564.416206    391.104051 noise
+   MGC      long                        ict_inside_bar_disp_breakout        41 0.585366  0.170732 -0.134621  0.476085   551.571429    110.314286 noise
+   MCL      long              silver_bullet_pdh_pdl_retest_5m_roll12        87 0.574713  0.149425 -0.059554  0.358405    -7.700000     -0.962500 noise
+   MCL      long       silver_bullet_pdh_pdl_retest_5m_nogate_roll12        87 0.574713  0.149425 -0.059554  0.358405    -7.700000     -0.962500 noise
+    6J     short            asian_range_sweep_mitigation_block_5m_rr        23 0.565217  0.130435 -0.283869  0.544738   793.023214    132.170536 noise
+   MGC     short               asian_range_sweep_mitigation_block_5m        47 0.553191  0.106383 -0.180963  0.393729  2333.871429    388.978571 noise
+   MGC      long                                           custom_5m       198 0.550505  0.101010 -0.037920  0.239940  5519.692376    613.299153 noise
+   MGC     short                        ict_inside_bar_disp_breakout        24 0.541667  0.083333 -0.323933  0.490600    53.071429     10.614286 noise
+   MCL      long                                propulsion_block_15m        24 0.541667  0.083333 -0.323933  0.490600    -0.291210     -0.048535 noise
+   MNQ      long                             ict_mitigation_block_5m        71 0.535211  0.070423 -0.163261  0.304106  1395.247105    174.405888 noise
+    6J     short                           ob_midpoint_reversion_15m        39 0.512821  0.025641 -0.292208  0.343490   573.257143     71.657143 noise
+   MNQ      long                                           custom_5m        84 0.511905  0.023810 -0.191267  0.238886  1285.381185    183.625884 noise
+   MNQ     short                 ifvg_midpoint_reversion_htf_bias_5m        30 0.500000  0.000000 -0.363963  0.363963   220.425000     31.489286 noise
+   MNQ      long                 ifvg_midpoint_reversion_htf_bias_5m        22 0.500000  0.000000 -0.427707  0.427707   341.500000     68.300000 noise
+   MCL      long              silver_bullet_pdh_pdl_retest_5m_nogate        65 0.492308 -0.015385 -0.260356  0.229586   -90.800000    -12.971429 noise
+   MNQ     short           silver_bullet_pdh_pdl_retest_5m_nogate_4R        35 0.485714 -0.028571 -0.364571  0.307429  3741.500000    467.687500 noise
+   MNQ      long            asian_range_sweep_mitigation_block_5m_rr        32 0.468750 -0.062500 -0.413838  0.288838  1127.607143    187.934524 noise
+   MNQ      long              silver_bullet_pdh_pdl_retest_5m_roll24        22 0.454545 -0.090909 -0.516845  0.335027   199.000000     39.800000 noise
+   MGC      long                ifvg_midpoint_reversion_htf_bias_15m        20 0.450000 -0.100000 -0.547401  0.347401    33.600000      5.600000 noise
+   MNQ     short                         htf_1h_disp_5m_fvg_pullback        97 0.443299 -0.113402 -0.312153  0.085349   157.550000     26.258333 noise
+   MNQ      long           silver_bullet_pdh_pdl_retest_5m_nogate_4R        34 0.441176 -0.117647 -0.456470  0.221176  1702.500000    243.214286 noise
+   MNQ     short     asian_range_sweep_mitigation_block_15m_opposite        25 0.440000 -0.120000 -0.517192  0.277192  2028.350000    507.087500 noise
+   MGC      long                 ifvg_midpoint_reversion_htf_bias_5m        25 0.440000 -0.120000 -0.517192  0.277192    42.650000      6.092857 noise
+   MNQ      long                         htf_1h_disp_5m_fvg_pullback        87 0.425287 -0.149425 -0.358405  0.059554  1656.050000    276.008333 noise
+    6J     short                                           custom_5m        29 0.413793 -0.172414 -0.537272  0.192444   191.878903     23.984863 noise
+   MGC      long                         htf_1h_disp_5m_fvg_pullback       107 0.411215 -0.177570 -0.364917  0.009777   432.700000     61.814286 noise
+   MNQ     short                      propulsion_block_15m_octant_v1        22 0.409091 -0.181818 -0.602396  0.238760   145.585896     36.396474 noise
+   MGC     short                       propulsion_block_5m_octant_v1        28 0.392857 -0.214286 -0.582726  0.154154   124.162554     20.693759 noise
+   MCL      long                      ny_am_pdh_pdl_silver_bullet_5m        25 0.360000 -0.280000 -0.664080  0.104080   -51.507320    -17.169107 noise
+    ZF     short     asian_range_sweep_mitigation_block_15m_opposite        28 0.357143 -0.285714 -0.647193  0.075764  -276.089286    -55.217857 noise
+    6J     short     asian_range_sweep_mitigation_block_15m_opposite        37 0.351351 -0.297297 -0.609194  0.014599   485.119643     97.023929 noise
+   MCL      long                   ob_midpoint_reversion_htf_bias_5m        27 0.333333 -0.333333 -0.695737  0.029071   -54.104286     -7.729184 noise
+   MCL      long                  ict_inside_bar_disp_breakout_tight        24 0.291667 -0.416667 -0.788189 -0.045145   -58.072857     -8.296122  LOSS
+   MNQ     short    ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1        26 0.269231 -0.461538 -0.809290 -0.113787  -531.828571   -177.276190  LOSS
+   MCL      long    ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1        41 0.268293 -0.463415 -0.738033 -0.188797   -29.924286     -5.984857  LOSS
+   MCL      long                           ob_midpoint_reversion_15m        67 0.253731 -0.492537 -0.702503 -0.282571  -147.938571    -18.492321  LOSS
+   MCL      long                         htf_1h_disp_5m_fvg_pullback       160 0.250000 -0.500000 -0.634613 -0.365387  -343.600000    -49.085714  LOSS
+   MNQ      long    ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1        42 0.238095 -0.523810 -0.784557 -0.263062  -468.678571    -66.954082  LOSS
+    6J     short                          ict_mitigation_block_5m_6j        21 0.238095 -0.523810 -0.897143 -0.150476  -186.708477    -93.354239  LOSS
+   MCL      long                        ict_inside_bar_disp_breakout        46 0.217391 -0.565217 -0.806249 -0.324186  -122.976429    -17.568061  LOSS
+   MCL      long                     ict_inside_bar_disp_breakout_5m        46 0.217391 -0.565217 -0.806249 -0.324186  -122.976429    -17.568061  LOSS
+    6J     short                                ict_mitigation_block        74 0.189189 -0.621622 -0.801315 -0.441928  -690.403630   -115.067272  LOSS
+   MNQ      long                        ict_ifvg_vshape_continuation        36 0.166667 -0.666667 -0.913603 -0.419730  -613.535186   -122.707037  LOSS
+    6J     short                     ict_mitigation_block_5m_csid333        25 0.120000 -0.760000 -1.020023 -0.499977  -179.056422    -44.764105  LOSS
+   MCL      long                                           custom_5m        93 0.096774 -0.806452 -0.927280 -0.685623  -287.645463    -41.092209  LOSS
+   MNQ      long     asian_range_sweep_mitigation_block_15m_opposite        26 0.076923 -0.846154 -1.055066 -0.637242 -1754.142857   -438.535714  LOSS
+   MCL      long                   custom_5m_ict_mitigation_block_v1        41 0.073171 -0.853659 -1.015066 -0.692251  -108.809031    -27.202258  LOSS
+   MGC      long                      propulsion_block_15m_octant_v1        21 0.047619 -0.904762 -1.091429 -0.718095 -1339.338831   -334.834708  LOSS
+    6J     short                  ict_mitigation_block_5m_v2_disp1.5        20 0.000000 -1.000000 -1.000000 -1.000000  -237.273537    -79.091179  LOSS
+
+--- SIGN-VERDICT SUMMARY (n_closed>=20) ---
+       cells            usd
+sig                        
+LOSS      17   -7222.909149
+REAL      55  120961.112933
+noise     51   47251.346488
+
+--- PER-SYMBOL x DIRECTION verdict ---
+symbol direction  n_closed          usd       e_r        lo        hi   sig
+    6J      long       687 18422.077517  0.560408  0.498429  0.622386  REAL
+    6J     short       331  1087.436383 -0.341390 -0.442802 -0.239977  LOSS
+   MCL      long      1273  -602.951894 -0.093480 -0.148195 -0.038765  LOSS
+   MCL     short      1083   890.122208  0.530933  0.480439  0.581426  REAL
+   MGC      long       990 31164.351491  0.135354  0.073603  0.197104  REAL
+   MGC     short      1227 55355.904273  0.365933  0.313839  0.418028  REAL
+   MNQ      long       934 30587.274452  0.038544 -0.025576  0.102664 noise
+   MNQ     short       911 78149.809817  0.222832  0.159492  0.286172  REAL
+    ZF      long       105  1244.888208  0.104762 -0.086374  0.295898 noise
+    ZF     short       104   333.677554  0.173077 -0.017133  0.363287 noise
+
+--- HOW MUCH OF THE BOOK IS IN REAL CELLS? ---
+whole book shadow $      = $216,633
+sum over REAL cells only = $120,961
+share of book $ in cells with CI(expectancy) > 0 = 55.8%
+
+--- CONTRACT-OCCUPANCY IMPLICATION ---
+The 10-contract cap is filled book-wide, uniformly. If the edge is only
+in a subset of (symbol,direction,family) cells, then the cap is being
+spent on LOSING cells. Ranked REAL cells by $ per contract-day:
+symbol direction                                     strategy_family  n_closed      e_r  usd_per_cday
+   MNQ     short                                           custom_1h        22 1.000000   1744.200000
+   MNQ     short          silver_bullet_pdh_pdl_retest_15m_roll24_v1        39 0.538462   1346.937500
+   MNQ     short                                          custom_15m        54 0.555556   1257.453431
+   MNQ     short             silver_bullet_pdh_pdl_retest_15m_nogate        49 0.428571   1246.214286
+   MGC     short     asian_range_sweep_mitigation_block_15m_opposite        41 0.609756   1113.945238
+    6J      long                     ict_mitigation_block_5m_csid333       170 0.588235    734.789650
+    6J      long                                ict_mitigation_block       217 0.668203    712.680427
+   MNQ     short              silver_bullet_pdh_pdl_retest_5m_nogate        46 0.434783    686.687500
+   MNQ      long                   custom_5m_ict_mitigation_block_v1        70 0.457143    682.319207
+   MGC     short       silver_bullet_pdh_pdl_retest_5m_nogate_v2_mgc        47 0.574468    628.750000
+   MNQ     short                      ny_am_pdh_pdl_silver_bullet_5m        34 0.352941    594.782514
+   MGC     short silver_bullet_pdh_pdl_retest_5m_nogate_roll24_tight        28 0.714286    592.333333
+
+====================================================================================================
+PART 8 -- OUT-OF-SAMPLE CHECK (is the cell ranking real, or data-mined?)
+====================================================================================================
+train days 2026-10-11..2026-10-15   test days 2026-10-16..2026-10-20
+
+top-15 cells by train shadow $  (n=15):
+symbol direction                                 strategy_family  n_closed         usd  tot_r
+   MNQ     short                                       custom_1h        17 7236.500000   17.0
+   MNQ     short      silver_bullet_pdh_pdl_retest_15m_roll24_v1        21 6393.000000   17.0
+   MNQ     short   silver_bullet_pdh_pdl_retest_15m_50pct_filter        17 5014.000000   15.0
+   MNQ     short                                      custom_15m        30 4578.924017   20.0
+   MNQ     short         silver_bullet_pdh_pdl_retest_15m_nogate        28 4199.500000   12.0
+   MGC      long                                       custom_5m       149 4144.424831   11.0
+   MNQ     short          silver_bullet_pdh_pdl_retest_5m_nogate        26 4051.000000   14.0
+    6J      long                            ict_mitigation_block       154 3657.612474  110.0
+   MGC      long          silver_bullet_pdh_pdl_retest_5m_nogate        42 2922.000000   18.0
+   MGC      long          silver_bullet_pdh_pdl_retest_5m_roll24        42 2922.000000   18.0
+   MGC     short asian_range_sweep_mitigation_block_15m_opposite        22 2909.650000   10.0
+   MNQ     short                  ny_am_pdh_pdl_silver_bullet_5m        31 2887.890318   11.0
+   MGC      long                   propulsion_block_5m_octant_v1        21 2754.580777   13.0
+    6J      long                 ict_mitigation_block_5m_csid333       129 2512.348362   73.0
+   MGC     short                                       custom_5m       117 2426.123019   21.0
+
+test-window sign agreement: 93.3% of frozen top-15 cells still positive   (train was 100% by construction)
+train $ on those cells = $58,610   test $ on the SAME cells = $29,675
+degradation = -49.4%
+Traceback (most recent call last):
+  File "/home/rob/judas-agentic-crew/research/shadow_ledger_addendum.py", line 241, in <module>
+    from scipy.stats import spearmanr
+ModuleNotFoundError: No module named 'scipy'

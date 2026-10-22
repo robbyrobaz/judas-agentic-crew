@@ -1,0 +1,382 @@
+signals=8075  unique_setups=5855  dup_rate=27.5%
+
+=== BOOK-LEVEL ADVERSE  (ambiguous bar -> LOSS) ===
+  all signals : closed n=7645.0  WR=0.603  PF=2.888  net=$216,633  open=415.0
+  unique setup: closed n=5527.0  WR=0.574  PF=2.711  net=$155,468
+
+=== BOOK-LEVEL UPPER BD (ambiguous bar -> WIN) ===
+  all signals : closed n=7645.0  WR=0.620  PF=2.942  net=$219,956  open=415.0
+  unique setup: closed n=5527.0  WR=0.592  PF=2.763  net=$158,180
+
+ambiguous 5m bars (span BOTH stop and target): 126 = 1.6%  <-- the entire PF band width
+
+=== (B) PER-STRATEGY n_closed>=10 (n=148) ===
+--- TOP 25 by shadow $ ---
+ strategy_id act_symbol                                          act_family act_state  n_sig  n_closed       wr        pf     pf_ub          usd  usd_per_sig  usd_per_contract_day  n_open   bt_pf  bt_n
+        4831        MNQ          silver_bullet_pdh_pdl_retest_15m_roll24_v1    active   63.0      52.0 0.692308  5.218571  5.218571 11040.000000   212.307692           1380.000000    11.0  5.3600  83.0
+        4846        MNQ             silver_bullet_pdh_pdl_retest_15m_nogate    active   85.0      66.0 0.636364  3.786757  3.929731  9069.500000   137.416667           1133.687500    19.0     NaN   NaN
+        4634        MNQ                                           custom_1h   retired   23.0      23.0 0.956522 55.371429 55.371429  8563.500000   372.326087           1712.700000     0.0  5.4500  94.0
+        4857        MGC              silver_bullet_pdh_pdl_retest_5m_roll24    active  157.0     151.0 0.735099  3.898515  3.909961  8197.000000    54.284768            910.777778     6.0  5.6600 119.0
+        4697        MGC                                           custom_5m    active  210.0     203.0 0.650246  2.572186  2.582532  7710.000000    37.980296            856.666667     7.0  4.2640 105.0
+        4599        MNQ                                          custom_15m    active   33.0      24.0 0.791667  9.320205  9.320205  7288.500000   303.687500           1041.214286     9.0  1.8200   NaN
+        4901        MGC     asian_range_sweep_mitigation_block_15m_opposite    active   73.0      54.0 0.648148  5.435874  5.435874  6450.014286   119.444709           1075.002381    19.0  2.0300  33.0
+        4827        MGC       silver_bullet_pdh_pdl_retest_5m_nogate_roll48    active  112.0     105.0 0.714286  3.641419  3.641419  6033.000000    57.457143            754.125000     7.0     NaN  85.0
+        4745        MNQ           silver_bullet_pdh_pdl_retest_5m_nogate_4R    active   78.0      69.0 0.463768  2.678175  2.678175  5444.000000    78.898551            604.888889     9.0     NaN   NaN
+        4779        MGC              silver_bullet_pdh_pdl_retest_5m_nogate   retired  104.0      98.0 0.714286  3.605703  3.620622  5300.000000    54.081633            883.333333     6.0  5.1300 120.0
+        4788        MNQ       silver_bullet_pdh_pdl_retest_15m_50pct_filter   retired   29.0      24.0 0.791667  9.262128  9.262128  5279.500000   219.979167           1319.875000     5.0     NaN  84.0
+        4875        MNQ       silver_bullet_pdh_pdl_retest_5m_nogate_roll24    active   42.0      40.0 0.775000  5.544230  5.544230  5060.000000   126.500000            632.500000     2.0  7.1100 115.0
+        4749         6J                                ict_mitigation_block    active  291.0     291.0 0.670103  4.208960  4.345875  5011.039783    17.220068            556.782198     0.0     NaN   NaN
+        4678        MNQ              silver_bullet_pdh_pdl_retest_5m_nogate    active   78.0      75.0 0.640000  2.926485  2.926485  4913.500000    65.513333            545.944444     3.0  5.5870   NaN
+        4832        MGC          silver_bullet_pdh_pdl_retest_15m_v4_roll24    active   55.0      46.0 0.869565  8.772152  8.772152  4912.000000   106.782609            545.777778     9.0  3.3500  60.0
+        4896        MNQ                      ny_am_pdh_pdl_silver_bullet_5m    active   46.0      46.0 0.673913  6.647803  7.227860  4314.396938    93.791238            719.066156     0.0 31.9700  25.0
+        4888         6J                     ict_mitigation_block_5m_csid333    active  195.0     195.0 0.707692  6.012086  6.354754  4229.681478    21.690674            528.710185     0.0  1.9452 192.0
+        4764        MNQ                   custom_5m_ict_mitigation_block_v1   retired   91.0      91.0 0.714286  5.726243  5.726243  4140.786654    45.503150            690.131109     0.0     NaN   NaN
+        4675        MGC silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset   retired   46.0      38.0 0.842105  7.278481  7.278481  3968.000000   104.421053            496.000000     8.0     NaN 100.0
+        4859        MGC                     silver_bullet_pdh_pdl_retest_1h   retired   18.0      13.0 1.000000       NaN       NaN  3959.000000   304.538462            659.833333     5.0  5.3400  68.0
+        4902        MGC            asian_range_sweep_mitigation_block_5m_rr    active   57.0      57.0 0.719298  5.091381  5.189154  3527.792857    61.891103            587.965476     0.0  4.0700  27.0
+        4949        MNQ       silver_bullet_pdh_pdl_retest_5m_nogate_v2_mnq    active   37.0      37.0 0.729730  4.159338  4.159338  3341.000000    90.297297            835.250000     0.0     NaN   NaN
+        4932        MNQ                unicorn_model_fvg_inside_breaker_15m    active   59.0      59.0 0.627119  2.468474  2.468474  3269.692857    55.418523            817.423214     0.0     NaN   NaN
+        4950        MGC       silver_bullet_pdh_pdl_retest_5m_nogate_v2_mgc    active   74.0      74.0 0.716216  3.747039  3.747039  3247.000000    43.878378            811.750000     0.0     NaN   NaN
+        4914        MNQ                            ict_mitigation_block_15m    active   14.0      14.0 1.000000       NaN       NaN  3174.814151   226.772439           1058.271384     0.0     NaN   NaN
+
+--- BOTTOM 25 by shadow $ ---
+ strategy_id act_symbol                                       act_family act_state  n_sig  n_closed       wr        pf     pf_ub          usd  usd_per_sig  usd_per_contract_day  n_open    bt_pf  bt_n
+        4911        MCL                         ict_mitigation_block_15m    active   25.0      22.0 0.545455  0.618014  0.618014   -26.081206    -1.185509             -8.693735     3.0      NaN   NaN
+        4643        MCL                                        custom_5m   retired   13.0      13.0 0.384615  0.139829  0.139829   -30.276639    -2.328972            -10.092213     0.0      NaN   NaN
+        4908        MCL               ob_midpoint_reversion_htf_bias_15m    active   14.0      14.0 0.142857  0.184710  0.184710   -41.591429    -2.970816             -8.318286     0.0 5.573000  30.0
+        4893        MCL                   ny_am_pdh_pdl_silver_bullet_5m    active   33.0      33.0 0.515152  0.198453  0.198453   -41.879144    -1.269065             -8.375829     0.0 2.680000  28.0
+        4952        MCL                      ict_mitigation_block_5m_mcl    active   24.0      24.0 0.458333  0.231272  0.231272   -45.426509    -1.892771            -15.142170     0.0      NaN   NaN
+        4947        MCL                  ict_mitigation_block_5m_csid252    active   24.0      24.0 0.458333  0.231272  0.231272   -45.426509    -1.892771            -15.142170     0.0 1.657878 138.0
+        4909        MCL                ob_midpoint_reversion_htf_bias_5m    active   41.0      41.0 0.536585 -0.006181 -0.008476   -55.351429    -1.350035             -6.918929     0.0      NaN   NaN
+        4841        MCL               ict_inside_bar_disp_breakout_tight    active   51.0      51.0 0.568627  0.262214  0.249827   -57.869286    -1.134692             -7.233661     0.0 4.972077   NaN
+        4907        MGC               ob_midpoint_reversion_htf_bias_15m    active   19.0      19.0 0.368421  0.919240  0.919240   -60.328571    -3.175188             -8.618367     0.0 2.265000  48.0
+        4765        MCL                custom_5m_ict_mitigation_block_v1   retired   81.0      81.0 0.432099  0.243920  0.243920  -104.368490    -1.288500            -17.394748     0.0      NaN   NaN
+        4694        MCL                                        custom_5m   retired   74.0      74.0 0.445946  0.205760  0.205760  -107.191444    -1.448533            -15.313063     0.0 2.069000  75.0
+        4915        MCL                        ob_midpoint_reversion_15m    active  123.0     119.0 0.462185  0.604549  0.656657  -114.318571    -0.960660            -16.331224     4.0 2.532000 175.0
+        4871        MCL                  ict_inside_bar_disp_breakout_5m    active  103.0     103.0 0.563107  0.213536  0.205928  -123.887143    -1.202788            -13.765238     0.0 3.760000 216.0
+        4842        MCL                     ict_inside_bar_disp_breakout    active  103.0     103.0 0.563107  0.213536  0.205928  -123.887143    -1.202788            -13.765238     0.0 3.762492   NaN
+        4621        MCL                                        custom_5m    active   91.0      91.0 0.461538  0.242897  0.242897  -130.878574    -1.438226            -16.359822     0.0 1.770000   NaN
+        4845        MCL ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1    active  132.0     132.0 0.507576  0.291544  0.272366  -133.735714    -1.013149            -19.105102     0.0      NaN 110.0
+        4889         ZF                     bsl_run_judas_eq_cluster_15m    active   11.0      11.0 0.454545  0.537120  0.537120  -161.324058   -14.665823            -26.887343     0.0 2.264500  43.0
+        4807         ZF                      bsl_run_judas_eq_cluster_5m   retired   11.0      11.0 0.454545  0.147384  0.234724  -184.121452   -16.738314            -36.824290     0.0 1.403348  62.0
+        4838         ZF   ifvg_midpoint_reversion_htf_bias_ny_only_5m_v2    active   16.0      16.0 0.500000 -0.202770 -0.202770  -248.992188   -15.562012            -49.798438     0.0 4.230000  32.0
+        4746        MNQ                             ict_mitigation_block   retired   15.0      15.0 0.266667  0.509987  0.509987  -374.360522   -24.957368           -187.180261     0.0      NaN   NaN
+        4854        MCL                      htf_1h_disp_5m_fvg_pullback    active  284.0     284.0 0.450704 -0.079357 -0.122109  -486.110000    -1.711655            -54.012222     0.0 1.720782 150.0
+        4808        MNQ              unicorn_model_fvg_inside_breaker_5m   retired   14.0      14.0 0.000000  0.000000  0.000000  -514.914286   -36.779592           -257.457143     0.0 1.661640  22.0
+        4768        MNQ               custom_15m_ict_mitigation_block_v1   retired   24.0      24.0 0.250000  0.465967  0.465967  -676.225423   -28.176059           -225.408474     0.0      NaN   NaN
+        4844        MNQ ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1    active   68.0      68.0 0.250000  0.493421  0.580798 -1000.507143   -14.713340           -142.929592     0.0      NaN 159.0
+        4829        MGC                   propulsion_block_15m_octant_v1    active   40.0      40.0 0.075000  0.118161  0.118161 -2210.379810   -55.259495           -368.396635     0.0 3.810000  47.0
+
+TIER1  PF>=1.3 & n>=20 : 74
+ strategy_id act_symbol                                           act_family act_state  n_sig  n_closed       wr        pf     pf_ub          usd  usd_per_sig  usd_per_contract_day  n_open     bt_pf  bt_n
+        4831        MNQ           silver_bullet_pdh_pdl_retest_15m_roll24_v1    active   63.0      52.0 0.692308  5.218571  5.218571 11040.000000   212.307692           1380.000000    11.0  5.360000  83.0
+        4846        MNQ              silver_bullet_pdh_pdl_retest_15m_nogate    active   85.0      66.0 0.636364  3.786757  3.929731  9069.500000   137.416667           1133.687500    19.0       NaN   NaN
+        4634        MNQ                                            custom_1h   retired   23.0      23.0 0.956522 55.371429 55.371429  8563.500000   372.326087           1712.700000     0.0  5.450000  94.0
+        4857        MGC               silver_bullet_pdh_pdl_retest_5m_roll24    active  157.0     151.0 0.735099  3.898515  3.909961  8197.000000    54.284768            910.777778     6.0  5.660000 119.0
+        4697        MGC                                            custom_5m    active  210.0     203.0 0.650246  2.572186  2.582532  7710.000000    37.980296            856.666667     7.0  4.264000 105.0
+        4599        MNQ                                           custom_15m    active   33.0      24.0 0.791667  9.320205  9.320205  7288.500000   303.687500           1041.214286     9.0  1.820000   NaN
+        4901        MGC      asian_range_sweep_mitigation_block_15m_opposite    active   73.0      54.0 0.648148  5.435874  5.435874  6450.014286   119.444709           1075.002381    19.0  2.030000  33.0
+        4827        MGC        silver_bullet_pdh_pdl_retest_5m_nogate_roll48    active  112.0     105.0 0.714286  3.641419  3.641419  6033.000000    57.457143            754.125000     7.0       NaN  85.0
+        4745        MNQ            silver_bullet_pdh_pdl_retest_5m_nogate_4R    active   78.0      69.0 0.463768  2.678175  2.678175  5444.000000    78.898551            604.888889     9.0       NaN   NaN
+        4779        MGC               silver_bullet_pdh_pdl_retest_5m_nogate   retired  104.0      98.0 0.714286  3.605703  3.620622  5300.000000    54.081633            883.333333     6.0  5.130000 120.0
+        4788        MNQ        silver_bullet_pdh_pdl_retest_15m_50pct_filter   retired   29.0      24.0 0.791667  9.262128  9.262128  5279.500000   219.979167           1319.875000     5.0       NaN  84.0
+        4875        MNQ        silver_bullet_pdh_pdl_retest_5m_nogate_roll24    active   42.0      40.0 0.775000  5.544230  5.544230  5060.000000   126.500000            632.500000     2.0  7.110000 115.0
+        4749         6J                                 ict_mitigation_block    active  291.0     291.0 0.670103  4.208960  4.345875  5011.039783    17.220068            556.782198     0.0       NaN   NaN
+        4678        MNQ               silver_bullet_pdh_pdl_retest_5m_nogate    active   78.0      75.0 0.640000  2.926485  2.926485  4913.500000    65.513333            545.944444     3.0  5.587000   NaN
+        4832        MGC           silver_bullet_pdh_pdl_retest_15m_v4_roll24    active   55.0      46.0 0.869565  8.772152  8.772152  4912.000000   106.782609            545.777778     9.0  3.350000  60.0
+        4896        MNQ                       ny_am_pdh_pdl_silver_bullet_5m    active   46.0      46.0 0.673913  6.647803  7.227860  4314.396938    93.791238            719.066156     0.0 31.970000  25.0
+        4888         6J                      ict_mitigation_block_5m_csid333    active  195.0     195.0 0.707692  6.012086  6.354754  4229.681478    21.690674            528.710185     0.0  1.945200 192.0
+        4764        MNQ                    custom_5m_ict_mitigation_block_v1   retired   91.0      91.0 0.714286  5.726243  5.726243  4140.786654    45.503150            690.131109     0.0       NaN   NaN
+        4675        MGC  silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset   retired   46.0      38.0 0.842105  7.278481  7.278481  3968.000000   104.421053            496.000000     8.0       NaN 100.0
+        4902        MGC             asian_range_sweep_mitigation_block_5m_rr    active   57.0      57.0 0.719298  5.091381  5.189154  3527.792857    61.891103            587.965476     0.0  4.070000  27.0
+        4949        MNQ        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mnq    active   37.0      37.0 0.729730  4.159338  4.159338  3341.000000    90.297297            835.250000     0.0       NaN   NaN
+        4932        MNQ                 unicorn_model_fvg_inside_breaker_15m    active   59.0      59.0 0.627119  2.468474  2.468474  3269.692857    55.418523            817.423214     0.0       NaN   NaN
+        4950        MGC        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mgc    active   74.0      74.0 0.716216  3.747039  3.747039  3247.000000    43.878378            811.750000     0.0       NaN   NaN
+        4830        MGC                        propulsion_block_5m_octant_v1    active   72.0      69.0 0.550725  4.187583  4.434535  3145.910561    45.592907            449.415794     3.0  1.787000  29.0
+        4894        MGC                asian_range_sweep_mitigation_block_5m    active   57.0      57.0 0.561404  3.427215  3.427215  2876.857143    50.471178            479.476190     0.0  4.253600  31.0
+        4898        MNQ             asian_range_sweep_mitigation_block_5m_rr    active   60.0      58.0 0.551724  2.223861  2.223861  2842.282143    49.004865            355.285268     2.0  2.840000  23.0
+        4828        MGC silver_bullet_pdh_pdl_retest_15m_50pct_filter_roll48    active   30.0      27.0 0.888889  8.328912  8.328912  2763.000000   102.333333            345.375000     3.0       NaN  41.0
+        4787        MGC        silver_bullet_pdh_pdl_retest_15m_50pct_filter   retired   28.0      27.0 0.888889  8.390244  8.390244  2727.000000   101.000000            454.500000     1.0       NaN  56.0
+        4877        MNQ                     ict_inside_bar_disp_breakout_15m    active   30.0      28.0 0.785714  5.666066  5.666066  2543.289286    90.831760            282.587698     2.0  3.490000 144.0
+        4895        MGC               asian_range_sweep_mitigation_block_15m    active   35.0      32.0 0.781250  6.642878  6.642878  2507.614286    78.362946            417.935714     3.0  4.155400  59.0
+        4693        MNQ                                            custom_5m   retired   82.0      82.0 0.609756  2.689736  2.689736  2283.948748    27.853034            326.278393     0.0  5.475000 145.0
+        4867        MNQ                              ict_mitigation_block_5m    active   94.0      94.0 0.563830  2.195133  2.195133  2202.814334    23.434195            244.757148     0.0  2.070000 122.0
+        4966        MGC  silver_bullet_pdh_pdl_retest_5m_nogate_roll24_tight    active   44.0      44.0 0.727273  3.586819  3.586819  2041.000000    46.386364            680.333333     0.0  4.355631 137.0
+        4701        MNQ                                           custom_15m    active   48.0      48.0 0.708333  4.452969  5.123193  1996.075000    41.584896            399.215000     0.0  3.326000 108.0
+        4884        MNQ                 ifvg_midpoint_reversion_htf_bias_15m    active   48.0      48.0 0.708333  4.452969  5.123193  1996.075000    41.584896            399.215000     0.0       NaN  59.0
+        4852        MGC                          htf_1h_disp_5m_fvg_pullback    active  200.0     200.0 0.520000  2.033737  2.221554  1930.400000     9.652000            214.488889     0.0  1.572699 325.0
+        4853        MNQ                          htf_1h_disp_5m_fvg_pullback    active  184.0     184.0 0.434783  1.651063  1.822280  1813.600000     9.856522            201.511111     0.0  2.068337 333.0
+        4809        MNQ                         ict_ifvg_vshape_continuation   retired   77.0      70.0 0.385714  1.507856  1.507856  1807.686447    25.824092            301.281074     7.0  2.750000   NaN
+        4869         6J                             ict_mitigation_block_15m    active   47.0      47.0 0.595745  2.711865  2.711865  1587.541902    33.777487            317.508380     0.0  1.720000 107.0
+        4847        MNQ               silver_bullet_pdh_pdl_retest_5m_roll24    active   48.0      45.0 0.533333  1.588542  1.588542  1582.000000    35.155556            197.750000     3.0       NaN   NaN
+        4864        MGC     silver_bullet_pdh_pdl_retest_5m_roll12_timegated    active   55.0      50.0 0.660000  2.123660  2.137931  1572.000000    31.440000            224.571429     5.0  3.520000  42.0
+        4702        MGC                                            custom_5m    active   93.0      93.0 0.494624  1.929293  2.148800  1550.482204    16.671852            193.810275     0.0  2.196000 132.0
+        4861        MGC                      ict_inside_bar_disp_breakout_5m    active   94.0      94.0 0.617021  2.072079  2.192740  1486.100000    15.809574            185.762500     0.0  3.900000 191.0
+        4903         6J             asian_range_sweep_mitigation_block_5m_rr    active   34.0      32.0 0.593750  3.586950  3.586950  1393.682143    43.552567            232.280357     2.0  5.520000  20.0
+        4730         6J                            ob_midpoint_reversion_15m   retired   79.0      77.0 0.571429  2.115252  2.115252  1360.950000    17.674675            170.118750     2.0       NaN 188.0
+        4876        MGC                     ict_inside_bar_disp_breakout_15m    active   28.0      28.0 0.678571  3.757824  3.757824  1340.007143    47.857398            148.889683     0.0  4.560000 141.0
+        4904         6J      asian_range_sweep_mitigation_block_15m_opposite    active   65.0      43.0 0.418605  2.145767  2.145767  1003.416071    23.335257            167.236012    22.0  3.690000  28.0
+        4953         6J                           ict_mitigation_block_5m_6j    active   70.0      70.0 0.571429  2.472608  2.567752   791.563032    11.308043            197.890758     0.0       NaN   NaN
+        4802        MGC                                            custom_5m   retired   36.0      31.0 0.580645  1.662882  1.677504   759.000000    24.483871            189.750000     5.0       NaN   NaN
+        4912        MNQ                    ob_midpoint_reversion_htf_bias_5m    active   27.0      27.0 0.518519  2.404399  2.404399   747.050000    27.668519            106.721429     0.0       NaN   NaN
+        4775        MGC                  ifvg_midpoint_reversion_htf_bias_5m    active   94.0      94.0 0.553191  1.960605  2.367286   724.200000     7.704255             90.525000     0.0       NaN 135.0
+        4798        MGC                         ict_inside_bar_disp_breakout   retired   65.0      65.0 0.569231  1.513454  1.572421   604.642857     9.302198            120.928571     0.0  4.520000   NaN
+        4774        MNQ                  ifvg_midpoint_reversion_htf_bias_5m    active   52.0      52.0 0.500000  1.957895  2.260247   561.925000    10.806250             70.240625     0.0       NaN 144.0
+        4826        MNQ                       propulsion_block_15m_octant_v1   retired   29.0      29.0 0.482759  1.642344  1.642344   543.010533    18.724501            108.602107     0.0       NaN   NaN
+        4638        MGC                                            custom_5m   retired   31.0      31.0 0.580645  1.855814  1.855814   505.443281    16.304622             84.240547     0.0       NaN   NaN
+        4897         ZF      asian_range_sweep_mitigation_block_15m_opposite    active   63.0      35.0 0.428571  1.447151  1.447151   417.053571    11.915816             59.579082    23.0  3.640000  62.0
+        4892         ZF                             ict_mitigation_block_15m    active   26.0      26.0 0.730769  2.168183  2.168183   388.889008    14.957270            129.629669     0.0  2.142200  43.0
+        4900        MCL      asian_range_sweep_mitigation_block_15m_opposite    active   87.0      45.0 0.777778  8.099579  8.099579   337.382143     7.497381             56.230357    32.0  3.150000  61.0
+        4617         6J                                            custom_5m    active   20.0      20.0 0.550000  2.023847  2.023847   327.870536    16.393527             40.983817     0.0  1.570000  98.0
+        4773         6J                   ict_mitigation_block_5m_v2_disp1.5   retired   92.0      92.0 0.641304  1.876703  1.876703   326.304966     3.546793             65.260993     0.0       NaN   NaN
+        4619         6J                                            custom_5m    active   21.0      21.0 0.523810  1.906165  1.906165   308.100000    14.671429             38.512500     0.0  1.369000 147.0
+        4885        MGC                 ifvg_midpoint_reversion_htf_bias_15m    active   46.0      46.0 0.543478  1.620054  1.861937   296.200000     6.439130             32.911111     0.0       NaN 209.0
+        4954        MGC                    ict_mitigation_block_5m_mgc_fresh    active   24.0      24.0 0.541667  1.594376  1.915393   268.067593    11.169483             89.355864     0.0       NaN   NaN
+        4665        MCL                     silver_bullet_pdh_pdl_retest_15m    active   44.0      40.0 0.900000 12.492754 12.492754   237.900000     5.947500             29.737500     4.0  4.814000  74.0
+        4681        MCL  silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset    active   61.0      51.0 0.803922  4.015048  4.015048   220.400000     4.321569             24.488889    10.0       NaN   NaN
+        4860        MCL               silver_bullet_pdh_pdl_retest_15m_50pct    active   47.0      39.0 0.897436 11.710784 11.710784   218.500000     5.602564             24.277778     8.0  3.980000  72.0
+        4948        MCL        silver_bullet_pdh_pdl_retest_5m_nogate_v2_mcl    active   65.0      59.0 0.779661  3.284483  3.379464   159.000000     2.694915             39.750000     6.0       NaN   NaN
+        4874        MCL        silver_bullet_pdh_pdl_retest_5m_nogate_roll24    active  124.0     116.0 0.715517  1.778713  1.778713   157.300000     1.356034             17.477778     8.0  5.380000  84.0
+        4858        MCL               silver_bullet_pdh_pdl_retest_5m_roll24    active  124.0     116.0 0.715517  1.778713  1.778713   157.300000     1.356034             17.477778     8.0  5.380000  84.0
+        4834        MCL        silver_bullet_pdh_pdl_retest_5m_nogate_roll12    active  154.0     145.0 0.682759  1.524006  1.532173   139.700000     0.963448             15.522222     9.0       NaN   NaN
+        4862        MCL               silver_bullet_pdh_pdl_retest_5m_roll12    active  154.0     145.0 0.682759  1.524006  1.532173   139.700000     0.963448             15.522222     9.0  3.840000  87.0
+        4825        MGC                                            custom_5m   retired   22.0      22.0 0.500000  1.842777  2.572435   105.600000     4.800000             26.400000     0.0       NaN   NaN
+        4790        MCL        silver_bullet_pdh_pdl_retest_15m_50pct_filter   retired   26.0      21.0 0.857143  7.261146  7.261146    98.300000     4.680952             19.660000     5.0       NaN  55.0
+        4879        MCL                                 propulsion_block_15m    active   27.0      27.0 0.592593  1.397589  1.397589    18.859301     0.698493              3.143217     0.0  2.382000  61.0
+
+TIER2  PF 1.0-1.3 & n>=20 : 3
+ strategy_id act_symbol                                      act_family act_state  n_sig  n_closed       wr       pf    pf_ub        usd  usd_per_sig  usd_per_contract_day  n_open  bt_pf  bt_n
+        4899        MNQ asian_range_sweep_mitigation_block_15m_opposite    active   83.0      51.0 0.254902 1.066069 1.066069 274.207143     5.376611             39.172449    32.0   2.54  34.0
+        4824        MNQ                                       custom_5m   retired   32.0      32.0 0.406250 1.044441 1.173892  19.775000     0.617969              3.955000     0.0    NaN   NaN
+        4737        MCL          silver_bullet_pdh_pdl_retest_5m_nogate   retired  120.0     115.0 0.643478 1.004525 1.004525   1.100000     0.009565              0.137500     5.0   2.89 119.0
+
+TIER3  PF<1.0 & n>=20  (DECAY / HARMFUL) : 18
+ strategy_id act_symbol                                       act_family act_state  n_sig  n_closed       wr        pf     pf_ub          usd  usd_per_sig  usd_per_contract_day  n_open    bt_pf  bt_n
+        4821        MNQ                  ict_mitigation_block_15m_mnq_v1   retired   23.0      23.0 0.391304  0.994258  0.994258    -5.280244    -0.229576             -1.320061     0.0 1.971101  29.0
+        4911        MCL                         ict_mitigation_block_15m    active   25.0      22.0 0.545455  0.618014  0.618014   -26.081206    -1.185509             -8.693735     3.0      NaN   NaN
+        4893        MCL                   ny_am_pdh_pdl_silver_bullet_5m    active   33.0      33.0 0.515152  0.198453  0.198453   -41.879144    -1.269065             -8.375829     0.0 2.680000  28.0
+        4952        MCL                      ict_mitigation_block_5m_mcl    active   24.0      24.0 0.458333  0.231272  0.231272   -45.426509    -1.892771            -15.142170     0.0      NaN   NaN
+        4947        MCL                  ict_mitigation_block_5m_csid252    active   24.0      24.0 0.458333  0.231272  0.231272   -45.426509    -1.892771            -15.142170     0.0 1.657878 138.0
+        4909        MCL                ob_midpoint_reversion_htf_bias_5m    active   41.0      41.0 0.536585 -0.006181 -0.008476   -55.351429    -1.350035             -6.918929     0.0      NaN   NaN
+        4841        MCL               ict_inside_bar_disp_breakout_tight    active   51.0      51.0 0.568627  0.262214  0.249827   -57.869286    -1.134692             -7.233661     0.0 4.972077   NaN
+        4765        MCL                custom_5m_ict_mitigation_block_v1   retired   81.0      81.0 0.432099  0.243920  0.243920  -104.368490    -1.288500            -17.394748     0.0      NaN   NaN
+        4694        MCL                                        custom_5m   retired   74.0      74.0 0.445946  0.205760  0.205760  -107.191444    -1.448533            -15.313063     0.0 2.069000  75.0
+        4915        MCL                        ob_midpoint_reversion_15m    active  123.0     119.0 0.462185  0.604549  0.656657  -114.318571    -0.960660            -16.331224     4.0 2.532000 175.0
+        4871        MCL                  ict_inside_bar_disp_breakout_5m    active  103.0     103.0 0.563107  0.213536  0.205928  -123.887143    -1.202788            -13.765238     0.0 3.760000 216.0
+        4842        MCL                     ict_inside_bar_disp_breakout    active  103.0     103.0 0.563107  0.213536  0.205928  -123.887143    -1.202788            -13.765238     0.0 3.762492   NaN
+        4621        MCL                                        custom_5m    active   91.0      91.0 0.461538  0.242897  0.242897  -130.878574    -1.438226            -16.359822     0.0 1.770000   NaN
+        4845        MCL ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1    active  132.0     132.0 0.507576  0.291544  0.272366  -133.735714    -1.013149            -19.105102     0.0      NaN 110.0
+        4854        MCL                      htf_1h_disp_5m_fvg_pullback    active  284.0     284.0 0.450704 -0.079357 -0.122109  -486.110000    -1.711655            -54.012222     0.0 1.720782 150.0
+        4768        MNQ               custom_15m_ict_mitigation_block_v1   retired   24.0      24.0 0.250000  0.465967  0.465967  -676.225423   -28.176059           -225.408474     0.0      NaN   NaN
+        4844        MNQ ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1    active   68.0      68.0 0.250000  0.493421  0.580798 -1000.507143   -14.713340           -142.929592     0.0      NaN 159.0
+        4829        MGC                   propulsion_block_15m_octant_v1    active   40.0      40.0 0.075000  0.118161  0.118161 -2210.379810   -55.259495           -368.396635     0.0 3.810000  47.0
+
+TIER4  n<20 (INSUFFICIENT) : 152
+
+=== (C1) BY SYMBOL (adverse) ===
+         n_sig  n_closed   n_win  n_loss        wr        pf            usd  usd_per_sig  days  usd_per_contract_day  n_open  avg_risk_pts
+symbol                                                                                                                                    
+6J      1048.0    1018.0   645.0   373.0  0.633595  3.148736   19509.513901    19.164552   9.0           2167.723767    30.0      0.000002
+MCL     2491.0    2356.0  1406.0   950.0  0.596774  1.072880     287.170314     0.121889   9.0             31.907813   125.0      0.275293
+MGC     2328.0    2217.0  1400.0   817.0  0.631484  3.031634   86520.255763    39.025826  10.0           8652.025576   111.0      5.718180
+MNQ     1957.0    1845.0  1042.0   803.0  0.564770  3.012450  108737.084269    58.936089   9.0          12081.898252   112.0     41.007420
+ZF       251.0     209.0   119.0    90.0  0.569378  1.311102    1578.565762     7.552946   8.0            197.320720    37.0      0.053471
+
+=== (C2) BY ET SESSION (adverse) ===
+                 n_sig  n_closed   n_win  n_loss        wr        pf           usd  usd_per_sig  days  usd_per_contract_day  n_open  avg_risk_pts
+session                                                                                                                                          
+Asia_00_04ET    1385.0    1325.0   783.0   542.0  0.590943  2.470814  30689.125787    23.161604   8.0           3836.140723    60.0     11.663802
+London_04_08ET  1295.0    1285.0   769.0   516.0  0.598444  2.395105  27322.464379    21.262618   7.0           3903.209197    10.0      8.917747
+NY_AM_08_12ET   1878.0    1764.0  1051.0   713.0  0.595805  2.988279  58532.121212    33.181475   7.0           8361.731602   109.0     12.710318
+NY_PM_12_17ET   1523.0    1364.0   800.0   564.0  0.586510  3.618706  51591.674902    37.823809   7.0           7370.239272   149.0     13.398180
+Post_17_20ET    1994.0    1907.0  1209.0   698.0  0.633980  2.930394  48497.203729    25.431150   9.0           5388.578192    87.0     11.175712
+
+=== (C3) SYMBOL x SESSION net $ (closed, adverse) ===
+                        sum                                                      count                   
+symbol                   6J         MCL           MGC           MNQ           ZF    6J  MCL  MGC  MNQ  ZF
+session                                                                                                  
+Asia_00_04ET    3449.090462 -477.286939  18369.018221   9523.807305  -175.503262   149  397  394  375  10
+London_04_08ET  2346.795734  170.508526  15586.918699   9565.462132  -347.220712   137  397  389  331  31
+NY_AM_08_12ET   4490.993409  294.355646  22680.456146  31553.360910  -487.044900   151  631  495  390  97
+NY_PM_12_17ET   4908.452150  -15.662809  12717.021505  32226.355152  1755.508904   236  429  381  276  42
+Post_17_20ET    4314.182146  315.255890  17166.841192  25868.098769   832.825732   345  502  558  473  29
+
+=== (C4) SYMBOL x SESSION PF (closed, adverse) ===
+symbol            6J   MCL   MGC   MNQ    ZF
+session                                     
+Asia_00_04ET    4.22  0.32  3.70  1.79  0.27
+London_04_08ET  2.45  1.26  3.57  1.91  0.55
+NY_AM_08_12ET   3.48  1.25  3.10  3.48  0.83
+NY_PM_12_17ET   3.72  0.98  2.42  5.42  3.42
+Post_17_20ET    2.56  1.63  2.72  3.25  3.17
+
+=== (D) NEW-WAVE FAMILY SCAN ===
+  pattern 'session_disp_fvg_pullback': 6 strategies, 37 shadow signals
+ strategy_id act_symbol                                act_family act_state  n_sig  n_closed       wr       pf    pf_ub       usd  usd_per_sig  usd_per_contract_day  n_open  bt_pf  bt_n
+        4981         ZF     session_disp_fvg_pullback_5m_ny_sb_v1    active   15.0      11.0 0.545455 1.126077 1.126077  42.53125     3.866477             21.265625     4.0    NaN  33.0
+        4977         ZF          session_disp_fvg_pullback_15m_v1    active    7.0       6.0 0.666667 1.174230 1.174230  23.15625     3.859375             11.578125     1.0  2.713   NaN
+        4985        MGC session_disp_fvg_pullback_5m_london_sb_v1    active    2.0       2.0 0.500000 2.823529 2.823529  15.50000     7.750000             15.500000     0.0  2.160  20.0
+        4980        MCL     session_disp_fvg_pullback_5m_ny_sb_v1    active    5.0       5.0 1.000000      NaN      NaN   2.40000     0.480000              1.200000     0.0    NaN  83.0
+        4976        MCL          session_disp_fvg_pullback_15m_v1    active    1.0       1.0 0.000000 0.000000 0.000000  -4.80000    -4.800000             -4.800000     0.0  1.890   NaN
+        4978        MGC     session_disp_fvg_pullback_5m_ny_sb_v1    active    7.0       7.0 0.857143 0.707071 0.707071 -29.00000    -4.142857            -14.500000     0.0    NaN  27.0
+  pattern 'htf_1h_disp_5m_fvg_pullback': 3 strategies, 668 shadow signals
+ strategy_id act_symbol                  act_family act_state  n_sig  n_closed       wr        pf     pf_ub     usd  usd_per_sig  usd_per_contract_day  n_open    bt_pf  bt_n
+        4852        MGC htf_1h_disp_5m_fvg_pullback    active  200.0     200.0 0.520000  2.033737  2.221554 1930.40     9.652000            214.488889     0.0 1.572699 325.0
+        4853        MNQ htf_1h_disp_5m_fvg_pullback    active  184.0     184.0 0.434783  1.651063  1.822280 1813.60     9.856522            201.511111     0.0 2.068337 333.0
+        4854        MCL htf_1h_disp_5m_fvg_pullback    active  284.0     284.0 0.450704 -0.079357 -0.122109 -486.11    -1.711655            -54.012222     0.0 1.720782 150.0
+  pattern 'fvg_pullback': 9 strategies, 705 shadow signals
+ strategy_id act_symbol                                act_family act_state  n_sig  n_closed       wr        pf     pf_ub        usd  usd_per_sig  usd_per_contract_day  n_open    bt_pf  bt_n
+        4852        MGC               htf_1h_disp_5m_fvg_pullback    active  200.0     200.0 0.520000  2.033737  2.221554 1930.40000     9.652000            214.488889     0.0 1.572699 325.0
+        4853        MNQ               htf_1h_disp_5m_fvg_pullback    active  184.0     184.0 0.434783  1.651063  1.822280 1813.60000     9.856522            201.511111     0.0 2.068337 333.0
+        4981         ZF     session_disp_fvg_pullback_5m_ny_sb_v1    active   15.0      11.0 0.545455  1.126077  1.126077   42.53125     3.866477             21.265625     4.0      NaN  33.0
+        4977         ZF          session_disp_fvg_pullback_15m_v1    active    7.0       6.0 0.666667  1.174230  1.174230   23.15625     3.859375             11.578125     1.0 2.713000   NaN
+        4985        MGC session_disp_fvg_pullback_5m_london_sb_v1    active    2.0       2.0 0.500000  2.823529  2.823529   15.50000     7.750000             15.500000     0.0 2.160000  20.0
+        4980        MCL     session_disp_fvg_pullback_5m_ny_sb_v1    active    5.0       5.0 1.000000       NaN       NaN    2.40000     0.480000              1.200000     0.0      NaN  83.0
+        4976        MCL          session_disp_fvg_pullback_15m_v1    active    1.0       1.0 0.000000  0.000000  0.000000   -4.80000    -4.800000             -4.800000     0.0 1.890000   NaN
+        4978        MGC     session_disp_fvg_pullback_5m_ny_sb_v1    active    7.0       7.0 0.857143  0.707071  0.707071  -29.00000    -4.142857            -14.500000     0.0      NaN  27.0
+        4854        MCL               htf_1h_disp_5m_fvg_pullback    active  284.0     284.0 0.450704 -0.079357 -0.122109 -486.11000    -1.711655            -54.012222     0.0 1.720782 150.0
+  pattern 'hourly': 0 strategies, 0 shadow signals
+
+=== (B3) BT-vs-SHADOW CONTRADICTIONS ===
+STRICT  BT_PF>=1.5 AND shadow_PF<0.8 (n>=10): 20
+ strategy_id act_symbol                                     act_family act_state  n_sig  n_closed       wr        pf     pf_ub          usd  usd_per_sig  usd_per_contract_day  n_open    bt_pf  bt_n
+        4865        MCL                   turtle_soup_session_sweep_5m    active   10.0      10.0 0.700000  0.510088  0.510088    -4.466071    -0.446607             -0.744345     0.0 2.870000  21.0
+        4890        MCL                       ict_mitigation_block_15m    active   18.0      15.0 0.600000  0.679172  0.679172   -11.193368    -0.746225             -2.798342     3.0 3.053100  27.0
+        4817        MCL                                     custom_15m   retired   18.0      18.0 0.555556  0.628794  0.628794   -16.051607    -0.891756             -4.012902     0.0 1.599705   NaN
+        4837        MCL ifvg_midpoint_reversion_htf_bias_ny_only_5m_v3    active   16.0      16.0 0.750000 -0.407855 -0.407855   -16.310000    -1.019375             -4.077500     0.0 4.550000  27.0
+        4937        MCL           ifvg_midpoint_reversion_htf_bias_15m    active   13.0      13.0 0.615385  0.098514  0.098514   -16.380000    -1.260000             -4.095000     0.0 1.500000  88.0
+        4812        MCL                                      custom_5m   retired   14.0      14.0 0.500000  0.263675  0.263675   -22.787143    -1.627653             -3.797857     0.0 2.694390   NaN
+        4908        MCL             ob_midpoint_reversion_htf_bias_15m    active   14.0      14.0 0.142857  0.184710  0.184710   -41.591429    -2.970816             -8.318286     0.0 5.573000  30.0
+        4893        MCL                 ny_am_pdh_pdl_silver_bullet_5m    active   33.0      33.0 0.515152  0.198453  0.198453   -41.879144    -1.269065             -8.375829     0.0 2.680000  28.0
+        4947        MCL                ict_mitigation_block_5m_csid252    active   24.0      24.0 0.458333  0.231272  0.231272   -45.426509    -1.892771            -15.142170     0.0 1.657878 138.0
+        4841        MCL             ict_inside_bar_disp_breakout_tight    active   51.0      51.0 0.568627  0.262214  0.249827   -57.869286    -1.134692             -7.233661     0.0 4.972077   NaN
+        4694        MCL                                      custom_5m   retired   74.0      74.0 0.445946  0.205760  0.205760  -107.191444    -1.448533            -15.313063     0.0 2.069000  75.0
+        4915        MCL                      ob_midpoint_reversion_15m    active  123.0     119.0 0.462185  0.604549  0.656657  -114.318571    -0.960660            -16.331224     4.0 2.532000 175.0
+        4871        MCL                ict_inside_bar_disp_breakout_5m    active  103.0     103.0 0.563107  0.213536  0.205928  -123.887143    -1.202788            -13.765238     0.0 3.760000 216.0
+        4842        MCL                   ict_inside_bar_disp_breakout    active  103.0     103.0 0.563107  0.213536  0.205928  -123.887143    -1.202788            -13.765238     0.0 3.762492   NaN
+        4621        MCL                                      custom_5m    active   91.0      91.0 0.461538  0.242897  0.242897  -130.878574    -1.438226            -16.359822     0.0 1.770000   NaN
+        4889         ZF                   bsl_run_judas_eq_cluster_15m    active   11.0      11.0 0.454545  0.537120  0.537120  -161.324058   -14.665823            -26.887343     0.0 2.264500  43.0
+        4838         ZF ifvg_midpoint_reversion_htf_bias_ny_only_5m_v2    active   16.0      16.0 0.500000 -0.202770 -0.202770  -248.992188   -15.562012            -49.798438     0.0 4.230000  32.0
+        4854        MCL                    htf_1h_disp_5m_fvg_pullback    active  284.0     284.0 0.450704 -0.079357 -0.122109  -486.110000    -1.711655            -54.012222     0.0 1.720782 150.0
+        4808        MNQ            unicorn_model_fvg_inside_breaker_5m   retired   14.0      14.0 0.000000  0.000000  0.000000  -514.914286   -36.779592           -257.457143     0.0 1.661640  22.0
+        4829        MGC                 propulsion_block_15m_octant_v1    active   40.0      40.0 0.075000  0.118161  0.118161 -2210.379810   -55.259495           -368.396635     0.0 3.810000  47.0
+
+WIDE    BT_PF>=1.3 AND shadow_PF<1.0 (n>=20): 11
+ strategy_id act_symbol                         act_family act_state  n_sig  n_closed       wr        pf     pf_ub          usd  usd_per_sig  usd_per_contract_day  n_open    bt_pf  bt_n
+        4821        MNQ    ict_mitigation_block_15m_mnq_v1   retired   23.0      23.0 0.391304  0.994258  0.994258    -5.280244    -0.229576             -1.320061     0.0 1.971101  29.0
+        4893        MCL     ny_am_pdh_pdl_silver_bullet_5m    active   33.0      33.0 0.515152  0.198453  0.198453   -41.879144    -1.269065             -8.375829     0.0 2.680000  28.0
+        4947        MCL    ict_mitigation_block_5m_csid252    active   24.0      24.0 0.458333  0.231272  0.231272   -45.426509    -1.892771            -15.142170     0.0 1.657878 138.0
+        4841        MCL ict_inside_bar_disp_breakout_tight    active   51.0      51.0 0.568627  0.262214  0.249827   -57.869286    -1.134692             -7.233661     0.0 4.972077   NaN
+        4694        MCL                          custom_5m   retired   74.0      74.0 0.445946  0.205760  0.205760  -107.191444    -1.448533            -15.313063     0.0 2.069000  75.0
+        4915        MCL          ob_midpoint_reversion_15m    active  123.0     119.0 0.462185  0.604549  0.656657  -114.318571    -0.960660            -16.331224     4.0 2.532000 175.0
+        4871        MCL    ict_inside_bar_disp_breakout_5m    active  103.0     103.0 0.563107  0.213536  0.205928  -123.887143    -1.202788            -13.765238     0.0 3.760000 216.0
+        4842        MCL       ict_inside_bar_disp_breakout    active  103.0     103.0 0.563107  0.213536  0.205928  -123.887143    -1.202788            -13.765238     0.0 3.762492   NaN
+        4621        MCL                          custom_5m    active   91.0      91.0 0.461538  0.242897  0.242897  -130.878574    -1.438226            -16.359822     0.0 1.770000   NaN
+        4854        MCL        htf_1h_disp_5m_fvg_pullback    active  284.0     284.0 0.450704 -0.079357 -0.122109  -486.110000    -1.711655            -54.012222     0.0 1.720782 150.0
+        4829        MGC     propulsion_block_15m_octant_v1    active   40.0      40.0 0.075000  0.118161  0.118161 -2210.379810   -55.259495           -368.396635     0.0 3.810000  47.0
+
+UPWARD  BT_PF<1.2 AND shadow_PF>=1.3 (n>=20): 0
+Empty DataFrame
+Columns: [strategy_id, act_symbol, act_family, act_state, n_sig, n_closed, wr, pf, pf_ub, usd, usd_per_sig, usd_per_contract_day, n_open, bt_pf, bt_n]
+Index: []
+
+=== (B4) ACTIVE STRATEGIES WITH ZERO SIGNALS IN WINDOW: 11 of 176 ===
+  id symbol                                     strategy_family  version     activated_at_utc
+4843    MNQ                   sweep_ifvg_combined_5m_session_v1        1 2026-10-10T11:01:49Z
+4920    MNQ                            bsl_run_judas_eq_cluster        2 2026-10-14T13:03:56Z
+4960     ZF silver_bullet_pdh_pdl_retest_5m_nogate_roll36_zf_v1        1 2026-10-17T07:01:56Z
+4961     ZF silver_bullet_pdh_pdl_retest_5m_nogate_roll24_zf_v1        1 2026-10-17T07:02:00Z
+4968    MNQ                       judas_continuation_15m_body80        1 2026-10-17T22:02:32Z
+4974    MGC                    session_disp_fvg_pullback_15m_v1        1 2026-10-19T11:01:17Z
+4975    MNQ                    session_disp_fvg_pullback_15m_v1        1 2026-10-19T11:01:21Z
+4979    MNQ               session_disp_fvg_pullback_5m_ny_sb_v1        1 2026-10-19T14:01:57Z
+4986    MCL          session_disp_fvg_pullback_15m_london_sb_v1        1 2026-10-20T00:42:48Z
+4987     ZF     silver_bullet_pdh_pdl_retest_1h_nogate_roll4_v1        1 2026-10-20T08:40:54Z
+4988     ZF           silver_bullet_pdh_pdl_retest_5m_nogate_v2        1 2026-10-20T08:40:58Z
+
+signalled but NOT active at end of window: 82
+ strategy_id act_symbol                                          act_family  act_state  n_sig  n_closed        pf         usd
+        4634        MNQ                                           custom_1h    retired   23.0      23.0 55.371429 8563.500000
+        4779        MGC              silver_bullet_pdh_pdl_retest_5m_nogate    retired  104.0      98.0  3.605703 5300.000000
+        4788        MNQ       silver_bullet_pdh_pdl_retest_15m_50pct_filter    retired   29.0      24.0  9.262128 5279.500000
+        4764        MNQ                   custom_5m_ict_mitigation_block_v1    retired   91.0      91.0  5.726243 4140.786654
+        4675        MGC silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset    retired   46.0      38.0  7.278481 3968.000000
+        4859        MGC                     silver_bullet_pdh_pdl_retest_1h    retired   18.0      13.0       NaN 3959.000000
+        4787        MGC       silver_bullet_pdh_pdl_retest_15m_50pct_filter    retired   28.0      27.0  8.390244 2727.000000
+        4778        MNQ              silver_bullet_pdh_pdl_retest_5m_nogate    retired   18.0      16.0  8.096823 2345.500000
+        4693        MNQ                                           custom_5m    retired   82.0      82.0  2.689736 2283.948748
+        4809        MNQ                        ict_ifvg_vshape_continuation    retired   77.0      70.0  1.507856 1807.686447
+        4663        MGC                    silver_bullet_pdh_pdl_retest_15m    retired   20.0      15.0 18.229885 1499.000000
+        4766        MGC                  custom_15m_ict_mitigation_block_v1    retired   11.0      11.0       NaN 1464.590002
+        4935        MNQ                     silver_bullet_pdh_pdl_retest_1h    retired    6.0       6.0 10.187302 1447.000000
+        4730         6J                           ob_midpoint_reversion_15m    retired   79.0      77.0  2.115252 1360.950000
+        4789        MNQ silver_bullet_pdh_pdl_retest_5m_nogate_50pct_filter    retired   16.0      14.0  2.323396 1021.000000
+        4810        MNQ                                          custom_15m    retired   14.0      13.0  3.107575  784.247321
+        4802        MGC                                           custom_5m    retired   36.0      31.0  1.662882  759.000000
+        4738        MNQ                                  judas_continuation    retired   10.0      10.0  3.549747  706.013190
+        4816        MNQ                                          custom_15m    retired    4.0       3.0       NaN  704.057143
+        4823         6J                      ict_mitigation_block_15m_6j_v1    retired    7.0       7.0       NaN  696.065017
+        4798        MGC                        ict_inside_bar_disp_breakout    retired   65.0      65.0  1.513454  604.642857
+        4826        MNQ                      propulsion_block_15m_octant_v1    retired   29.0      29.0  1.642344  543.010533
+        4639        MGC                                          custom_15m    retired    9.0       8.0  3.282187  539.839856
+        4638        MGC                                           custom_5m    retired   31.0      31.0  1.855814  505.443281
+        4785        MNQ                         bsl_run_judas_eq_cluster_5m    retired    1.0       1.0       NaN  356.752317
+        4645        MNQ                                  judas_continuation    retired    4.0       4.0  4.417305  336.563088
+        4804        MNQ                                          custom_15m    retired    7.0       7.0  2.688755  333.763046
+        4773         6J                  ict_mitigation_block_5m_v2_disp1.5    retired   92.0      92.0  1.876703  326.304966
+        4805         6J                                           custom_5m    retired    4.0       4.0 19.568660  245.505973
+        4679         6J                             custom_5m_bsl_run_judas    retired    4.0       4.0 19.568660  245.505973
+        4813         6J                                           custom_5m    retired    9.0       9.0  2.680777  237.667857
+        4654        MNQ                                           custom_5m    retired    2.0       2.0  2.103493  223.585892
+        4799        MNQ                        ict_inside_bar_disp_breakout    retired    7.0       7.0  3.542449  223.535714
+        4819        MGC                             judas_nyam_disp_bias_5m    retired    3.0       3.0       NaN  185.390027
+        4822        MGC             ict_mitigation_block_15m_csid333_mgc_v1    retired    2.0       2.0       NaN  164.729362
+        4811        MGC                                           custom_5m    retired   10.0      10.0  1.655623  161.414286
+        4759        MGC                         bsl_run_judas_eq_cluster_5m    retired   14.0      14.0  1.510851  138.787740
+        4732        MGC                 unicorn_model_fvg_inside_breaker_5m    retired    4.0       4.0       NaN  136.571429
+        4770        MNQ                  ict_mitigation_block_5m_v2_disp1.5    retired    2.0       2.0       NaN  117.675734
+        4825        MGC                                           custom_5m    retired   22.0      22.0  1.842777  105.600000
+        4660        MNQ                            ob_midpoint_reversion_5m    retired    3.0       3.0  4.758901  105.571429
+        4790        MCL       silver_bullet_pdh_pdl_retest_15m_50pct_filter    retired   26.0      21.0  7.261146   98.300000
+        4742        MNQ                                ict_mitigation_block    retired   12.0      12.0  1.480994   92.114983
+        4797        MGC                      ict_mitigation_block_15m_50pct    retired    1.0       1.0       NaN   81.093445
+        4801        MNQ                      ict_swing_reclaim_continuation    retired    2.0       2.0  2.177799   68.080443
+        4771        MGC                  ict_mitigation_block_5m_v2_disp1.5    retired   15.0      15.0  1.229088   64.985887
+        4658        MGC                      ict_judas_swing_asian_range_5m    retired    4.0       4.0  2.265306   62.000000
+        4786         ZF                              sfp_liquidity_grab_15m    retired    5.0       5.0  2.028994   59.224419
+        4936        MCL                     silver_bullet_pdh_pdl_retest_1h    retired    4.0       4.0       NaN   50.200000
+        4814        MGC                                          custom_15m    retired   14.0      13.0  1.061955   42.723214
+        4795        MGC                         bsl_run_judas_eq_cluster_5m    retired   12.0      12.0  1.145639   39.567102
+        4748        MCL                                ict_mitigation_block    retired    6.0       6.0       NaN   20.990449
+        4824        MNQ                                           custom_5m    retired   32.0      32.0  1.044441   19.775000
+        4769        MCL                  custom_15m_ict_mitigation_block_v1    retired   11.0      11.0  1.766595    9.567973
+        4737        MCL              silver_bullet_pdh_pdl_retest_5m_nogate    retired  120.0     115.0  1.004525    1.100000
+        4731        MCL                           ob_midpoint_reversion_15m    retired    6.0       6.0  0.839564   -2.250000
+        4803        MCL                                           custom_5m    retired    9.0       9.0  0.563369   -3.980357
+        4821        MNQ                     ict_mitigation_block_15m_mnq_v1    retired   23.0      23.0  0.994258   -5.280244
+        4818        MCL                             judas_nyam_disp_bias_5m    retired    3.0       3.0  0.257123   -7.223926
+        4671        MCL                              sfp_liquidity_grab_15m    retired    7.0       7.0  0.047398  -11.633921
+        4817        MCL                                          custom_15m    retired   18.0      18.0  0.628794  -16.051607
+        4772        MCL                  ict_mitigation_block_5m_v2_disp1.5    retired   14.0      14.0 -0.907310  -16.314877
+        4812        MCL                                           custom_5m    retired   14.0      14.0  0.263675  -22.787143
+        4643        MCL                                           custom_5m    retired   13.0      13.0  0.139829  -30.276639
+        4800        MGC                      ict_swing_reclaim_continuation    retired    1.0       1.0  0.000000  -48.370203
+        4659        MGC                            ob_midpoint_reversion_5m    retired    2.0       2.0  0.000000  -51.328571
+        4729        MGC                   sweep_first_ob_midpoint_15m_loose    retired    1.0       1.0  0.000000  -54.828571
+        4989        MGC                                              custom superseded    1.0       1.0  0.000000  -67.271429
+        4793         ZF         ifvg_midpoint_reversion_htf_bias_ny_only_5m    retired    6.0       6.0 -0.179858  -80.359375
+        4780         ZF                                          custom_15m    retired    7.0       6.0  0.744471  -81.754464
+        4934         ZF              silver_bullet_pdh_pdl_retest_5m_nogate    retired    7.0       5.0  0.568383 -103.750000
+        4765        MCL                   custom_5m_ict_mitigation_block_v1    retired   81.0      81.0  0.243920 -104.368490
+        4694        MCL                                           custom_5m    retired   74.0      74.0  0.205760 -107.191444
+        4815        MGC                                          custom_15m    retired    4.0       3.0  0.509942 -113.200000
+        4791        MNQ         ifvg_midpoint_reversion_htf_bias_ny_only_5m    retired    5.0       5.0  0.085951 -154.200000
+        4767         6J                  custom_15m_ict_mitigation_block_v1    retired    9.0       9.0  0.359430 -174.899893
+        4807         ZF                         bsl_run_judas_eq_cluster_5m    retired   11.0      11.0  0.147384 -184.121452
+        4806        MNQ                  lrm_magnet_attraction_htf_bias_15m    retired    4.0       4.0  0.000000 -278.673655
+        4640         ZF                                          custom_15m    retired    8.0       8.0  0.271545 -308.308357
+        4746        MNQ                                ict_mitigation_block    retired   15.0      15.0  0.509987 -374.360522
+        4808        MNQ                 unicorn_model_fvg_inside_breaker_5m    retired   14.0      14.0  0.000000 -514.914286
+        4768        MNQ                  custom_15m_ict_mitigation_block_v1    retired   24.0      24.0  0.465967 -676.225423
+
+DONE

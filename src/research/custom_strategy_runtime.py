@@ -405,10 +405,15 @@ def run_custom_backtest_on_bars(
     rs: list[float] = []
     open_trade: dict | None = None
     error: str | None = None
+    # Retro-fill diagnostic (finding 07f3a4c2). COUNTED, never dropped, so no
+    # existing result changes -- but every stamp now carries its own
+    # contamination, because a signal filled on a bar that had already closed
+    # can produce an envelope the market never offered.
+    stale_fill_n = 0
 
     try:
         def _run_loop():
-            nonlocal n_signals, wins, losses, open_trade
+            nonlocal n_signals, wins, losses, open_trade, stale_fill_n
             n = len(bars)
             # cap iterations to bound runtime
             for i in range(2, n):
@@ -468,6 +473,20 @@ def run_custom_backtest_on_bars(
                 except (KeyError, TypeError, ValueError):
                     continue
                 n_signals += 1
+                # RETRO-FILL DIAGNOSTIC. The engine only ever hands evaluate()
+                # bars[:i+1], so it cannot legitimately know a price from any bar
+                # but the decision bar. If the signal's ts predates that bar by
+                # more than 90s it was filled retroactively. Counted only --
+                # dropping the signal here would silently rewrite history.
+                _sig_ts = sig.get("ts")
+                if _sig_ts is not None:
+                    try:
+                        _gap = (pd.Timestamp(bars.iloc[i]["ts"])
+                                - pd.Timestamp(_sig_ts)).total_seconds()
+                        if _gap > 90:
+                            stale_fill_n += 1
+                    except Exception:  # noqa: BLE001
+                        pass
                 open_trade = {
                     "direction": direction,
                     "entry": entry,
@@ -501,6 +520,10 @@ def run_custom_backtest_on_bars(
 
     return {
         "n_signals": int(n_signals),
+        "stale_fill_n": int(stale_fill_n),
+        "stale_fill_pct": (round(100.0 * stale_fill_n / n_signals, 1)
+                           if n_signals else 0.0),
+        "backtest_fill_valid": bool(stale_fill_n == 0),
         "n_wins": int(wins),
         "n_losses": int(losses),
         "total_pnl": total_pnl,

@@ -32,7 +32,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src import bar_archive  # noqa: E402
 
 LEGAL_SYMBOLS = ["MGC", "MNQ", "MCL", "ZF", "6J"]
-TIMEFRAMES = ["5m", "15m"]
+# 1h is in scope: `bar_archive.BAR_SIZE`/`DEFAULT_CHUNK_DAYS` already carry it,
+# but this script rejected it, so MNQ_1h.parquet only existed by hand and ZF/6J
+# had no 1h archive at all. Any timeframe `bar_archive` understands is legal here.
+TIMEFRAMES = ["5m", "15m", "1h"]
 TARGET_DAYS = 120
 
 

@@ -350,6 +350,49 @@ def _merge_deep_archive(symbol: str, tf: str, live_df):
     return merged
 
 
+_STALE_GAP_S = 90.0
+
+
+def _stale_gap_seconds(decision_ts, signal_ts) -> float | None:
+    """Seconds by which ``signal_ts`` PREDATES ``decision_ts``.
+
+    Returns ``None`` when the two cannot be compared -- a measurement that
+    could not be taken. Callers must treat ``None`` as UNKNOWN, never as 0.
+
+    Why this exists: strategies read timestamps out of ``bars["ts"].values``,
+    which yields tz-naive ``numpy.datetime64`` scalars, while ``bars.iloc[i]``
+    yields tz-aware ``pandas.Timestamp``. Subtracting those raises
+    ``TypeError: Cannot subtract tz-naive and tz-aware``. That exception was
+    swallowed by a bare ``except``, so ``stale_fill_n`` stayed 0 for EVERY
+    strategy and every envelope stamped ``stale_fill_pct: 0.0`` and
+    ``backtest_fill_valid: true`` -- a false all-clear across the whole
+    evidence class (finding 07f3a4c2 follow-up, task #2867).
+    """
+    import pandas as pd
+
+    try:
+        dec = pd.Timestamp(decision_ts)
+        sig = pd.Timestamp(signal_ts)
+    except Exception:  # noqa: BLE001
+        return None
+    # NaT/NaN are NOT zero. `NaT - NaT` is NaT, `.total_seconds()` is NaN, and
+    # `NaN > _STALE_GAP_S` is False -- which would read as a clean result.
+    if dec is pd.NaT or sig is pd.NaT or pd.isna(dec) or pd.isna(sig):
+        return None
+    # Normalise awareness before subtracting: a numpy scalar loses the tz that
+    # the column carries.
+    if dec.tz is not None and sig.tz is None:
+        sig = sig.tz_localize(dec.tz)
+    elif dec.tz is None and sig.tz is not None:
+        dec = dec.tz_localize(None)
+    try:
+        gap = float((dec - sig).total_seconds())
+    except Exception:  # noqa: BLE001
+        return None
+    # Defensive: a NaN gap is unmeasurable, not clean.
+    return None if gap != gap else gap
+
+
 def run_custom_backtest_on_bars(
     *,
     code: str,
@@ -410,10 +453,14 @@ def run_custom_backtest_on_bars(
     # contamination, because a signal filled on a bar that had already closed
     # can produce an envelope the market never offered.
     stale_fill_n = 0
+    # A measurement that cannot be taken must never read as a clean result
+    # (see _stale_gap_seconds below). Counted and stamped separately.
+    stale_measure_fail_n = 0
 
     try:
         def _run_loop():
             nonlocal n_signals, wins, losses, open_trade, stale_fill_n
+            nonlocal stale_measure_fail_n
             n = len(bars)
             # cap iterations to bound runtime
             for i in range(2, n):
@@ -480,13 +527,11 @@ def run_custom_backtest_on_bars(
                 # dropping the signal here would silently rewrite history.
                 _sig_ts = sig.get("ts")
                 if _sig_ts is not None:
-                    try:
-                        _gap = (pd.Timestamp(bars.iloc[i]["ts"])
-                                - pd.Timestamp(_sig_ts)).total_seconds()
-                        if _gap > 90:
-                            stale_fill_n += 1
-                    except Exception:  # noqa: BLE001
-                        pass
+                    _gap = _stale_gap_seconds(bars.iloc[i]["ts"], _sig_ts)
+                    if _gap is None:
+                        stale_measure_fail_n += 1
+                    elif _gap > _STALE_GAP_S:
+                        stale_fill_n += 1
                 open_trade = {
                     "direction": direction,
                     "entry": entry,
@@ -523,7 +568,9 @@ def run_custom_backtest_on_bars(
         "stale_fill_n": int(stale_fill_n),
         "stale_fill_pct": (round(100.0 * stale_fill_n / n_signals, 1)
                            if n_signals else 0.0),
-        "backtest_fill_valid": bool(stale_fill_n == 0),
+        "stale_measure_fail_n": int(stale_measure_fail_n),
+        "backtest_fill_valid": bool(stale_fill_n == 0
+                                    and stale_measure_fail_n == 0),
         "n_wins": int(wins),
         "n_losses": int(losses),
         "total_pnl": total_pnl,

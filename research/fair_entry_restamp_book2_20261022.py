@@ -334,7 +334,7 @@ def main():
             continue
         ts = bars["ts"]
         rec["archive_bars"] = int(len(bars))
-        rec["span_days"] = int((ts.iloc[-1] - ts.iloc[0]).days / 86400e9)
+        rec["span_days"] = int((ts.iloc[-1] - ts.iloc[0]).total_seconds() / 86400)
         rec["first_bar"] = str(ts.iloc[0])
         rec["last_bar"] = str(ts.iloc[-1])
         spec = _CONTRACT_SPECS.get(u["symbol"])

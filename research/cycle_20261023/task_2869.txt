@@ -1,0 +1,60 @@
+{"topic": "FAIR_ENTRY_BOOK_REMEASURE: how many of the 175 actives actually survive a fair decision-time entry restamp \u2014 what is the DEFENSIBLE BOOK we should fire into the reset"}
+=====RATIONALE=====
+## WHY THIS IS NOW THE HIGHEST-VALUE TASK IN THE BOOK
+
+Finding **9124** (`LIVE_FILL_EVIDENCE_TIERING_AND_BUFFET_ZOO_RESTAMP_2026-10-22`, yours, 09:44Z) landed at 09:44Z today and **the 12:00Z operator brief never incorporated it**. It falsified the premise the whole team has been operating on. I am propagating it here so the next book-wide step uses your method rather than rediscovering it.
+
+**What 9124 proved:**
+- #4308 MNQ buffet_zoo RSI(10,30,70) 1H, exact registered params, 146d real archive, fair decision-time entry: **PF 1.005, n=122, WR 38.5%, E[R] -0.047, +$81.20, maxDD $3,838.** The live +$2,340.50 was **14 trades**. 250× gap. p=0.046 vs a Bonferroni threshold of p<0.00029 across 175 actives — misses by two orders of magnitude.
+- #3969 MGC: MGC 1h is **NOT-RESTAMPABLE**. Same config on MGC 5m = PF 0.836, on MGC 15m = PF 1.019. Verdict INCONCLUSIVE→HOLD. MGC 1h slot stays EMPTY.
+- Span inflation 0.986 = **1.00x**. Third independent confirmation that the window was never the defect.
+- **The retro-fill defect (07f3a4c2) does NOT apply to `buffet_zoo`.** Different engine; live `_evaluate_rsi` fills at `bars["close"].iloc[-1]`, the last bar of the slice. You proved the port: 134 fires vs 134 live fires, tuples identical.
+- The four promotion gates are **prompt-only**. `grep "GATE FAIL" src/` → zero hits; `promote_candidate()` enforces only params shape, symbol ban, custom link, cross-tf slot guard. No n/PF/E[R]/cost_model check in deterministic code.
+
+**Why this task exists anyway:** 9124 falsified ONE configuration. The team's standing belief — written into finding e5237b33 and the 12:00Z session brief — is that the book has **"two verified edges, #4599 (+$533.50, n=16) and #4678 (+$287, n=7)"**. Under 9124's own standard that claim is not safe: n=16 and n=7 cannot distinguish edge from luck across 175 actives either. #4678's 6W/1L / 86% WR is a smaller version of exactly what 9124 just demolished in #4308.
+
+**Nobody has asked the book-wide version of that question. That is the gap.**
+
+## DELIVERABLE — `FAIR_ENTRY_BOOK_REMEASURE_2026-10-22`, 72h
+
+### (A) THE HEADLINE NUMBER
+> **"Of the 175 active strategies, N have a configuration that survives a fair decision-time entry restamp on a real archive at n>=50 with PF>1.2. M are known-dead. K are unmeasurable. U are unmeasured-but-measurable."**
+
+N is the number the reset should be planned around. **If N < 15, say so plainly and early.** A book of 5 firing into a 10-contract cap is a completely different operation from a book of 175, and I would rather build the post-reset plan around the true number.
+
+### (B) PER-ACTIVE TABLE — archive-covered population only
+Archive coverage is 6 of 15 legal (symbol, tf) cells: **MGC 5m/15m, MNQ 5m/15m/1h, MCL 5m.** That still covers the large majority of the roster (MGC ~40, MNQ ~50, MCL ~40 actives sit on 5m/15m).
+
+For each: `id | symbol | tf | csid | %_stale_fills (from 07f3a4c2 scan) | restamp_n | PF | WR | $/trade | live_$/trade | ratio | p_Bonferroni | verdict`
+
+**Verdict vocabulary:** `DEFENSIBLE` / `DEAD` (measured PF<=1.0) / `UNVERIFIED` (measurable, not yet measured) / `NOT-RESTAMPABLE` (no archive).
+
+### (C) METHOD — reuse, do not re-derive
+- **Faithful-port discipline from 9124.** Port the live `_evaluate_*` byte-for-byte and **prove the port** by matching fires against live signals. `research/rsi_zoo_strategy.py` is explicitly NOT a faithful port (Wilder `ewm` ATR vs live `rolling(14).mean()`).
+- Reuse `research/stale_fill_scan_20261022.py`, `research/stale_entry_probe_20261022.py`, and 9124's restamp harness.
+- **Never silently fall back to the 13-day cache.** If a cell lacks an archive, mark NOT-RESTAMPABLE (9122 and 9124 both established this rule).
+- Report progress incrementally. #2861's scan timed out at 44 rows and cost us a day — do not repeat it.
+
+### (D) THE TWO MARKERS OF A 9124-STYLE FAILURE — flag every instance
+1. **Live/backtest $/trade ratio > 10×** on any row with live fills. That is the #4308 signature: real money banked, config measurably dead.
+2. **Any row whose live WR exceeds its restamp WR by >20 points** on n>=10 live. #4308 was live 64.3% vs honest 38.5%.
+
+These two markers may be cheaper and more decisive than restamping all ~130 rows. **Consider running them first** as a screen, then restamping only the rows that survive.
+
+### (E) THE HONEST CAVEAT I NEED YOU TO STATE
+**"Not flagged by the retro-fill scan" does NOT mean "has edge."** It means the backtester is not lying in the one specific way 07f3a4c2 measured. 146 actives read that way and nobody has measured what they actually do. I need that distinction to be explicit in your output, because #2867(E) is producing a "clean-reading list" off exactly that weaker bar and I need to know whether it is any better than the population average.
+
+### (F) NEW BLOCKER — CONFIRM OR REFUTE FIRST, IT GATES EVERYTHING
+Your 9124 run recorded **`ConnectionRefusedError 127.0.0.1:7497`** — IBKR unreachable from the research sandbox — which is why MGC 1h could not be built. If that is still true:
+- **No further archive can be built at all.** That freezes (A)-(D) to the 6 existing cells and makes MCL 15m/1h, MGC 1h, **all ZF and all 6J** permanently NOT-RESTAMPABLE (~28 actives plus the two chronic bleeders).
+- Say so plainly at the top of the finding. If IBKR is back up, the first thing to build is **MGC 1h, then ZF and 6J** — 6J and MCL are our two chronic bleeders (−$750 / −$1,775 lifetime) and neither currently has a fair-entry number available at all.
+
+## CONSTRAINTS
+- READ-ONLY with respect to registry and account. No registry mutations, no SQL writes, no account reset, no halt-flag or guard change (ac1a58b7).
+- Legal symbols only: MGC, MNQ, MCL, ZF, 6J. Exclude DX/MET/MBT (banned).
+- Every number carries n, span_days_actual, and cost_model. PF on n<20 without provenance is a data point.
+- Do NOT redo #2867's per-active stale scan or its #4599/#4678 fair-entry measurement — that is owned and in flight. Do NOT redo #2860's shadow ranking or #2862's entry-arbitration audit. **You own: what the configurations actually do when priced fairly, book-wide.**
+- If a restamp is inconclusive, say INCONCLUSIVE. Do not resolve ambiguity favourably. I would rather have 60 honest rows than 130 optimistic ones.
+
+## WHY 72 HOURS
+We are 18 days into a broker-side halt with zero fills. The reset is one human NT action away. The single question that decides whether we reset into a book worth firing at all is N in (A) — and right now the team believes a number (two verified edges) that one of our own findings falsified at 09:44Z today and that nobody propagated. I am not allocating the reset cap, or writing the post-reset book, or retiring anything, until N exists.

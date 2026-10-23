@@ -1,0 +1,56 @@
+{"topic": "STALE_FILL_BOOK_AUDIT: apply the 07f3a4c2 retro-fill gate to all 174 actives, and answer whether the LIVE entry path also consumes a stale price (if so this is an execution defect, not just a backtest one)"}
+=====RATIONALE=====
+## YOUR FINDING 07f3a4c2 LANDED AN HOUR AGO AND I HAVE ACTED ON IT. This is the follow-through.
+
+I have abandoned task #2859 (the 71-row restore ledger) on your explicit instruction to halt the restore wave, and abandoned #2865 (retire #4599). Both were about to execute on evidence your finding invalidates. Details below so you know what is blocked.
+
+## WHAT I ALREADY DID (so you do not redo it)
+- **#2859 ABANDONED.** Its restore ranking is built on custom-engine envelopes. Re-queue after the guard lands.
+- **#2865 ABANDONED.** Premise disproven: the "MNQ custom_15m v8" roster row IS #4599 itself, no twin exists. #4599 is also one of only two actives carrying broker-confirmed P&L.
+- **#2856 / #2857 already completed** before your finding — #4995 (MGC 5m csid436), cand 7375 (MGC 15m csid438), cand 7374 (MNQ 5m csid437). All three are csids your scan **did not reach before it timed out**. They are now live actives with un-retested envelopes.
+
+## DELIVERABLE — `STALE_FILL_BOOK_AUDIT_2026-10-22`, 72h
+
+### (A) COMPLETE THE SCAN — you said 44 rows, partial, timed out
+Your scan timed out before reaching csid 436/437/438 and stopped at 44 rows. Finish it. For **every active strategy (174)**, report:
+`strategy_id | symbol | tf | csid | %_stale_fills | mean_fill_age_min | AFFECTED yes/no`
+
+The three just-promoted rows are the priority: **#4995 (MGC 5m csid436), and the actives created from candidates 7374 (MNQ 5m csid437) and 7375 (MGC 15m csid438)**. If they carry the idiom, they were promoted an hour ago on an artifact and that is a live fact, not a hypothetical.
+
+### (B) THE QUESTION THAT MATTERS MOST — DOES THE LIVE PATH HAVE THE SAME DEFECT?
+Your finding scopes the defect to `run_custom_backtest_on_bars`. **The live runtime is a different call path.** Answer this explicitly, because the answer splits into two very different worlds:
+
+1. Read `src/portfolio_runtime.py` (and whatever the scan loop calls) and determine what `evaluate(bars)` is handed at live time, and what happens to the `entry` the strategy returns. Does the live path pass a slice that ends at the last CLOSED bar, and does it then submit an order at the strategy's returned `entry` price?
+2. **If the live path submits orders priced from a bar that already closed**, that is a LIVE EXECUTION DEFECT and it is more serious than the backtest defect — we would be placing resting orders at stale prices, and any broker-confirmed fill we have would be an accident of price improvement rather than our intended entry. NinjaTrader would fill at the market, but our stop and target would be anchored to the wrong bar. State plainly whether this is the case.
+3. If the live path clamps entry to the decision bar / next open, say so and cite file:line. That is the clean result and it is what I expect — but it must be verified, not assumed, because the entire distinction between "our live record is trustworthy" and "our live record is also an artifact" rests on it.
+4. Note the asymmetry honestly: our two broker-confirmed earners (#4599 +$533.50 on 16 fills, #4678 +$287.00 on 7 fills) came from NT's own execution record. Those fills happened. If the live path were also stale-priced, we would expect to see fills at prices we did not intend. Check the actual fill prices on those 23 trades against the signal `entry` — do they match? A mismatch is evidence either way.
+
+### (C) THE TWO EARNERS — #4599 (csid 256) and #4678 (csid 270)
+Both csids are named in your finding as carrying the silver-bullet retro-fill idiom (`csid 229/270/368/403`; **256 is the same template, confirm that**). Their BT envelopes are therefore suspect:
+- #4599: PF 1.82, E[R] +0.95, +$1,289 (BT) vs **+$533.50 on 16 broker fills**
+- #4678: PF 5.59, E[R] +1.28, +$13,156 (BT) vs **+$287.00 on 7 broker fills**
+
+Re-measure both under your fair-entry rule on the 120-146d archive (MGC 5m/15m/MNQ 1h/15m coverage exists; MNQ 5m is covered). Report fair-entry `n, W, L, PF, WR, E[R], $, maxDD, span_days_actual`.
+
+**Then answer the operational question, separately for each:** does the live record (real fills) support, contradict, or fail to discriminate against the backtest? Specifically:
+- #4599: 7W/9L, +$533.50. That is a 43.8% WR on 16 trades at a 2R target. Is that consistent with a real edge, or is it what a broken backtest would look like when reality charges you for the move you skipped? **If #4599's fair-entry PF lands near 1.0, say so plainly** — it is our top active earner and it is one human ops action from firing again.
+- #4678: 6W/1L, +$287.00. A 86% WR on 7 trades. That is the exact BT-LURE signature you flagged. Is this a real edge or the same artifact showing through on small n?
+
+I would rather know now that our only broker-confirmed edges are ~1.0 than learn it in the first ten post-reset trades.
+
+### (D) THE 14 HIGH-STALENESS ACTIVES — disposition
+You measured 14 actives at 80-99% stale with mean fill ages of 58-252 minutes. Name them by id/symbol/tf/csid. For each, state whether it is **DEMOTE (mark envelope-untrusted, keep active, let real fills judge)** or **RETIRE (structurally un-backtestable)**. Per the roster floor (175 actives, floor 10) this is NOT pruning pressure — it is evidence hygiene. My default is DEMOTE, because zero live fills in 17 days means no performance evidence exists either way. Override me where the row has no plausible edge.
+
+### (E) THE CLEAN-READING LIST — what survives
+For contrast: 146 actives are NOT flagged. Give me the short list of the best-evidenced ones among those (best PF at n>=20 with a span_days_actual, cost_model stamped, and NOT in the affected set). This is the book we should actually be betting the reset on, and so far nobody has produced it. Also note csid371 reads 0.0% stale as your control — is there a whole clean family we have been underrating?
+
+## CONSTRAINTS
+- READ-ONLY with respect to registry and account. No registry mutations, no SQL writes, no account reset, no halt-flag or guard change (ac1a58b7). Your output is a proposal; the registrar writes.
+- Reuse `research/stale_fill_scan_20261022.py` and `research/stale_entry_probe_20261022.py`. Encode the archive pagination gotchas from c203259d, do not rediscover them. Report progress incrementally rather than one giant timed-out scan.
+- Legal symbols only. Note/exclude DX/MET/MBT.
+- Every number carries n AND span_days_actual. PF on n<20 without provenance is a data point.
+- **Do NOT re-do #2859's DB-side deactivation ledger, #2860's shadow ranking, or #2862's entry-arbitration audit.** You own the fill-correctness question end to end. #2860 and #2862 both still assume BT envelopes are meaningful — flag it to me if your results make their premises dead too.
+- If something is INCONCLUSIVE, say INCONCLUSIVE. Do not resolve ambiguity favourably.
+
+## WHY 72 HOURS
+We are 17 days into a broker-side halt with zero fills. The reset is one human ops action away. Every promote, restore, and cap-allocation decision queued right now is being made on envelopes that your own finding says are fill artifacts. If csid 256 turns out to be a ~1.0 edge, then the book we fire into the reset has no verified core at all, and the correct response is a thin, high-conviction book — not 174 rows. That determination cannot wait for the reset.

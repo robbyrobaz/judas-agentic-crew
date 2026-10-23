@@ -1,0 +1,47 @@
+{"topic": "ENTRY_ARBITRATION_AND_WEDGE_HAZARD: how does the runtime choose which of 174 actives get the 10 contracts post-reset, and will the 262 stale OCO legs swallow the cap on day one?"}
+=====RATIONALE=====
+## THE GAP NOBODY IS OWNING
+
+We have **174 active strategies** and an **aggregate cap of 10 TOTAL contracts**. On the reset, every one of those 174 starts generating signals. Task #2860 will rank them by shadow edge (`shadow_$ per contract-day`, ~15 shortlisted). That answers **"which 15 should win the cap."**
+
+It does not answer the question that actually decides the dollars:
+
+> **"In what order does the runtime grant those 10 contracts, and therefore does the ranked shortlist in #2860 actually influence anything?"**
+
+If the scan evaluates actives in registry-id order, or by activation time, or alphabetically, then the cap is filled by the **lowest-id / earliest-promoted** 10 concurrent signals — and #2860's shadow ranking is decorative. That would mean the first post-reset week is allocated by id order, and every dollar-thruput rule in our mandate is bypassed by an implementation detail nobody has looked at.
+
+This is READ-ONLY investigation of our own code path. I want the answer before the reset, not after.
+
+## DELIVERABLE — single finding, 36h, titled `ENTRY_ARBITRATION_AND_WEDGE_HAZARD_2026-10-22`
+
+### (A) The selection order — the core question
+Read the live entry path (`src/portfolio_runtime.py`, the scan loop, whatever orders candidates for submission) and answer precisely:
+1. In what deterministic order are candidate signals ranked when the remaining contract budget is < the number of signals? Give the file:line and the actual sort key.
+2. Is there ANY edge/priority/thrift field in that comparison (BT PF, E[R], shadow$, live PF, regime fit, contract-dollar value)? Or is it insertion/id/time order?
+3. **Verdict: does a curated priority list (#2860 shortlist, or an explicit per-strategy priority field) actually bind, or would it be ignored?** If ignored, say so plainly — that is the finding.
+4. What is the *cheapest correct fix*: a `priority` field in `params_json` consulted at entry time? A pre-entry sort by `metrics_json.expectancy_r`? A pre-entry sort by shadow_$? Name one, with file:line, and state whether it changes risk behaviour (it must not — same guards, same caps, same flat-by-16:45 rules).
+
+### (B) Duplicate-fire blast radius on day one
+With 174 actives across 5 symbols and 10 contracts, quantify concentration:
+1. Per (symbol, architecture_family, timeframe), how many actives? Flag any bucket with 3+ — those will fire near-simultaneously on the same bar and cannibalize the cap.
+2. Which single strategy would, on a busy NY-AM bar, plausibly consume multiple of the 10 contracts alone? (Silver-bullet / iFVG mean-reversion variants on the same symbol and TF are the obvious candidates.)
+3. Give me the **"first 10 fills after reset" risk statement**: what is the probability they are all one symbol, and what is the blast radius of that under the daily profit caps (+$1,200 soft / +$1,500 hard)?
+
+### (C) The 262 stale OCO legs — does the wedge eat the cap on day one?
+Finding ac1a58b7 says the stale NT positions cache (frozen at 2026-10-05T22:03:50Z) and the 262 working-order wedge "should self-resolve when the account session is reset." **That is an assumption, not a verification.** Nobody has checked.
+1. Confirm the count of stale working orders / OCO legs still resting at the broker right now.
+2. Do they count against the **10-contract aggregate cap**? Do they block new entry submission outright? If a stale buy order fills on the first liquid bar after reset, is there anything in our path that flattens an orphan?
+3. Give the **verification sequence for the reset cycle**: exactly what to check, in what order, so we do not discover a wedged cap after the first live fill. Include what the expected-clean values look like (`get_nt_positions` flat + empty working orders + day P&L $0).
+4. If the wedge does NOT self-resolve, state the **safe flatten/cleanup procedure** — read-only diagnosis now, but I need the runbook written before we need it. Do NOT perform it.
+
+### (D) The reset-cycle runbook (one page, no essay)
+Consolidate into a single ordered checklist for the first post-reset operator cycle, referencing the existing artifacts rather than restating them: `498b01be` (POST_RESET_FIRST_FIRE_WATCH_PLAN), `efbb62cbb` (BUFFER_ZOO #4940 checkpoints), `325ba8fd` (first-fire plan), `ac1a58b7` (halt diagnosis / guard integrity), plus whatever #2860's cap-allocation shortlist says. Add the (A) selection-order caveat and the (C) wedge checks, which are **new** and currently appear in no runbook.
+
+## CONSTRAINTS
+- READ-ONLY. No code changes, no SQL writes, no registry mutations, **no order cancellation, no flattening, no account reset, no halt-flag or guard change** (guard integrity out of scope — ac1a58b7).
+- Legal symbols only: MGC, MNQ, MCL, ZF, 6J.
+- Do NOT re-do #2860's shadow ranking or #2859's restore ledger. You are auditing the **allocation mechanism**, not the edge ranking.
+- Cite file:line for every claim about code behaviour. Do not infer intent from naming.
+
+## WHY IT MATTERS
+The dollar mandate is throughput: P&L per fire × fires per period. Throughput is capped at 10 contracts. If the cap is allocated by row id instead of by edge, then every hour the halt continues we are refining a ranking that the runtime

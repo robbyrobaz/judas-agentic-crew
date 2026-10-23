@@ -1,0 +1,49 @@
+{"topic": "SHADOW_LEDGER_RANKING: forward-signal P&L of the ~9,400 halt-discarded signals (2026-10-12\u219221) to arbitrate 173 actives + BT-vs-shadow decay contradictions"}
+=====RATIONALE=====
+## WHY THIS IS THE NEXT-DOLLAR QUESTION
+The account has been HALTED 16 days (CUSHION_EXHAUSTED, $67/$100, zero fills since 2026-10-05). It is not recoverable by trading. So the ONLY evidence that can exist right now about which edges work on the CURRENT regime is the forward-looking signal stream the halt is throwing away — roughly 940 signals/day, ~100% rejected by a risk guard rather than by signal failure. Every one carries entry, stop, target, direction, symbol, strategy_id, ts_utc.
+
+A prior attempt at this (task #2850, 2026-10-20) was ABANDONED, not completed. I am re-queuing it because it became materially more important after this cycle's finding.
+
+## WHY IT MATTERS MORE NOW
+Today I found the book is being gutted by a timeframe-blind supersede key — 71 strategies deactivated in 7 days with zero performance justification, including #4634 MNQ 1h silver_bullet (PF 5.45, n=94, +$31,064 envelope) and #4693 MNQ 5m ict_mitigation_block (PF 5.48, n=145). The coder fix returned `harness_no_fix` (task #2858), so restoration is blocked on evidence. Task #2859 will produce the restore ledger — but that ledger is pure backtest evidence, and every 5m/15m envelope carries an UNVERIFIED span label (task #2853: `days` stamped 90, true span possibly 13–27 days).
+
+So we currently have no trustworthy way to rank 173 actives against each other. The shadow ledger supplies that ranking from forward data we already paid for, and it is the only evidence class that is not span-compromised.
+
+## DELIVERABLE — single finding, 72h, titled `SHADOW_LEDGER_RANKING_2026-10-21`
+Scope the window to 2026-10-12 → 2026-10-21 (10 days) to keep this tractable. Do not attempt all 8,400 signals across a longer window.
+
+### (A) Shadow P&L per strategy
+For each signal: WIN if target touched before stop, LOSS if stop first, OPEN/SCRATCH at window end. State the fill assumption explicitly and resolve mid-bar ambiguity ADVERSELY — never favourably. Report per strategy: n_shadow, W, L, shadow_PF, shadow_$, avg R. Restrict to strategies with n_shadow >= 20; list everything below that separately as insufficient-sample, do not rank it.
+
+**LABEL CLEARLY: this is SYNTHETIC, bar-touch-reconciled evidence.** Per the SIM validation mandate it must never be mixed with broker-confirmed fills or presented as live P&L. It is a ranking aid and a decay detector, not an earnings claim.
+
+### (B) The high-value output: BACKTEST vs SHADOW CONTRADICTIONS
+This is the reason to do the work. A strategy with PF 2.6 in backtest and shadow_PF < 0.8 on current-regime signals is live decay no backtest can surface, because the backtest window is mislabeled and possibly stale. List every such contradiction at the TOP of the finding, worst first.
+Specifically cross-check the rows we are about to restore and the rows promoted today:
+- #4634 MNQ 1h SB csid229 (deleted, +$31,064 envelope) and #4693 MNQ 5m ict_mit csid253 (deleted, PF 5.48 n=145) — do their architecture signals appear at all in the window, and what is shadow_PF?
+- #4995 MGC ny_am_judas_ifvg 5m (n=217, PF 2.05, +$3,134) — the architecture I am promoting 15m/MNQ siblings of today
+- #4994 MNQ 15m csid434, #4993 MGC 5m csid433, #4992 MCL 15m csid435 — the new hourly-bias/FVG wave
+If any of these show NO signals at all in the window, flag it — a zero-signal strategy is a possible engine/param mismatch (zombie), which is a different and more urgent problem than weak edge.
+
+### (C) Session weighting (keep it brief — one table)
+Break shadow_$ by ET session: Asia / London / NY AM / NY PM. The book currently has zero evidence-based session weighting and 15m/5m strategies with NY-AM-only gates. If London or NY AM carries the edge, that directly informs post-reset sequencing under the 10-contract cap and 16:45 ET flat rule.
+
+### (D) Cap-allocation answer (one table, no essay)
+Post-reset we have 10 contracts and 173 actives competing. Give a ranked shortlist of ~15 strategies by shadow_$ per contract-day, with n_shadow shown on each. Anything with n_shadow < 20 goes in a separate "insufficient evidence, do not guess" bucket.
+
+### (E) Zero-signal audit
+List actives with ZERO signals in the window. Distinct from a strategy that signalled and lost — zero signals usually means engine or param mismatch, which no amount of backtesting will reveal.
+
+## CONSTRAINTS
+- READ-ONLY. No code changes, no SQL writes, no registry mutations.
+- Legal symbols only: MGC, MNQ, MCL, 6J, ZF. Note and exclude DX/MET/MBT if they appear.
+- **DO NOT propose or perform any account reset, halt-flag edit, or guard change** — guard integrity is out of scope (finding ac1a58b7).
+- Every number carries its n. PF on n=6 is a data point, not evidence.
+- Do not re-derive the supersedure forensics — task #2852 delivered that (finding ffea9e3c) and task #2859 owns the restore ledger. Your job is the forward signal data.
+
+## CONTEXT YOU DON'T NEED TO RE-DERIVE
+Broker FLAT. HALTED CUSHION_EXHAUSTED 16 days. 173 actives, floor 10. Regime mid/trending/leaders [MNQ, MGC, MCL]. Coder fix for supersedure keying returned harness_no_fix (task #2858), so no code-level mitigation exists and operator-level guarding is in force.
+
+## WHY IT'S WORTH 72 HOURS
+This is the only forward-looking, non-span-compromised evidence available during a blackout. It is the only thing that can tell us whether the edges we are about to restore and re-promote still work on the market as it is trading today, rather than on a window that may be 13 days wide and labeled 90.

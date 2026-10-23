@@ -1,0 +1,2721 @@
+{
+  "generated_utc": "2026-10-23T18:31:17.067055Z",
+  "counts": {
+    "joined_all": 866,
+    "legal": 745,
+    "banned_control": 121,
+    "pnl_reconstruction": {
+      "match_fill": 866,
+      "match_intended": 0,
+      "match_neither": 0
+    }
+  },
+  "A_distribution": {
+    "MGC": {
+      "n": 306,
+      "ticks_signed": {
+        "p0.5": 21.5,
+        "p0.75": 77.4,
+        "p0.9": 234.5,
+        "p0.95": 418.0,
+        "p0.99": 925.3
+      },
+      "ticks_max": 1125.0,
+      "ticks_adverse_only": {
+        "p0.5": 21.5,
+        "p0.75": 77.4,
+        "p0.9": 234.5,
+        "p0.95": 418.0,
+        "p0.99": 925.3
+      },
+      "adverse_count": 233,
+      "favorable_count": 69,
+      "flat_count": 4,
+      "mean_adv_dollars": 96.06,
+      "sum_adv_dollars": 29393.4,
+      "divR_signed": {
+        "p0.5": 0.5649,
+        "p0.75": 1.7347,
+        "p0.9": 3.9655,
+        "p0.95": 5.8198,
+        "p0.99": 14.3525
+      },
+      "share_exceed_R": {
+        "0.25R": 0.614,
+        "0.5R": 0.529,
+        "1.0R": 0.392
+      },
+      "realized": {
+        "n": 306,
+        "W": 121,
+        "L": 185,
+        "wr_pct": 39.5,
+        "PF": 0.829,
+        "net_$": -2168.68,
+        "$/contract": -7.09
+      }
+    },
+    "MNQ": {
+      "n": 212,
+      "ticks_signed": {
+        "p0.5": 24.0,
+        "p0.75": 94.5,
+        "p0.9": 323.4,
+        "p0.95": 555.5,
+        "p0.99": 1386.93
+      },
+      "ticks_max": 2569.0,
+      "ticks_adverse_only": {
+        "p0.5": 24.0,
+        "p0.75": 94.5,
+        "p0.9": 323.4,
+        "p0.95": 555.5,
+        "p0.99": 1386.93
+      },
+      "adverse_count": 141,
+      "favorable_count": 63,
+      "flat_count": 8,
+      "mean_adv_dollars": 73.43,
+      "sum_adv_dollars": 15566.2,
+      "divR_signed": {
+        "p0.5": 0.207,
+        "p0.75": 1.1068,
+        "p0.9": 3.2643,
+        "p0.95": 4.4455,
+        "p0.99": 12.2366
+      },
+      "share_exceed_R": {
+        "0.25R": 0.476,
+        "0.5R": 0.377,
+        "1.0R": 0.255
+      },
+      "realized": {
+        "n": 212,
+        "W": 74,
+        "L": 138,
+        "wr_pct": 34.9,
+        "PF": 0.794,
+        "net_$": -3013.1,
+        "$/contract": -14.21
+      }
+    },
+    "MCL": {
+      "n": 115,
+      "ticks_signed": {
+        "p0.5": 7.0,
+        "p0.75": 16.6,
+        "p0.9": 44.2667,
+        "p0.95": 61.65,
+        "p0.99": 124.8
+      },
+      "ticks_max": 591.0,
+      "ticks_adverse_only": {
+        "p0.5": 7.0,
+        "p0.75": 16.6,
+        "p0.9": 44.2667,
+        "p0.95": 61.65,
+        "p0.99": 124.8
+      },
+      "adverse_count": 80,
+      "favorable_count": 32,
+      "flat_count": 3,
+      "mean_adv_dollars": 30.9,
+      "sum_adv_dollars": 3553.4,
+      "divR_signed": {
+        "p0.5": 0.4687,
+        "p0.75": 1.2989,
+        "p0.9": 3.1125,
+        "p0.95": 4.6308,
+        "p0.99": 7.86
+      },
+      "share_exceed_R": {
+        "0.25R": 0.583,
+        "0.5R": 0.496,
+        "1.0R": 0.313
+      },
+      "realized": {
+        "n": 115,
+        "W": 37,
+        "L": 78,
+        "wr_pct": 32.2,
+        "PF": 0.668,
+        "net_$": -782.89,
+        "$/contract": -6.81
+      }
+    },
+    "ZF": {
+      "n": 70,
+      "ticks_signed": {
+        "p0.5": 1.1,
+        "p0.75": 2.375,
+        "p0.9": 4.55,
+        "p0.95": 5.995,
+        "p0.99": 11.74
+      },
+      "ticks_max": 14.5,
+      "ticks_adverse_only": {
+        "p0.5": 1.1,
+        "p0.75": 2.375,
+        "p0.9": 4.55,
+        "p0.95": 5.995,
+        "p0.99": 11.74
+      },
+      "adverse_count": 51,
+      "favorable_count": 5,
+      "flat_count": 14,
+      "mean_adv_dollars": 13.24,
+      "sum_adv_dollars": 926.56,
+      "divR_signed": {
+        "p0.5": 0.747,
+        "p0.75": 0.9202,
+        "p0.9": 2.3077,
+        "p0.95": 2.3077,
+        "p0.99": 2.3077
+      },
+      "share_exceed_R": {
+        "0.25R": 0.643,
+        "0.5R": 0.586,
+        "1.0R": 0.243
+      },
+      "realized": {
+        "n": 70,
+        "W": 25,
+        "L": 45,
+        "wr_pct": 35.7,
+        "PF": 0.646,
+        "net_$": -945.55,
+        "$/contract": -13.51
+      }
+    },
+    "6J": {
+      "n": 42,
+      "ticks_signed": {
+        "p0.5": 1.75,
+        "p0.75": 4.8,
+        "p0.9": 9.33,
+        "p0.95": 12.925,
+        "p0.99": 40.035
+      },
+      "ticks_max": 55.0,
+      "ticks_adverse_only": {
+        "p0.5": 1.75,
+        "p0.75": 4.8,
+        "p0.9": 9.33,
+        "p0.95": 12.925,
+        "p0.99": 40.035
+      },
+      "adverse_count": 26,
+      "favorable_count": 11,
+      "flat_count": 5,
+      "mean_adv_dollars": 21.73,
+      "sum_adv_dollars": 912.5,
+      "divR_signed": {
+        "p0.5": 0.3841,
+        "p0.75": 0.9273,
+        "p0.9": 2.1383,
+        "p0.95": 2.2895,
+        "p0.99": 7.007
+      },
+      "share_exceed_R": {
+        "0.25R": 0.548,
+        "0.5R": 0.429,
+        "1.0R": 0.238
+      },
+      "realized": {
+        "n": 42,
+        "W": 11,
+        "L": 31,
+        "wr_pct": 26.2,
+        "PF": 0.405,
+        "net_$": -643.75,
+        "$/contract": -15.33
+      }
+    }
+  },
+  "B_counterfactual_book": [
+    {
+      "threshold": "1 ticks",
+      "kept": {
+        "n": 244,
+        "W": 83,
+        "L": 161,
+        "wr_pct": 34.0,
+        "PF": 0.696,
+        "net_$": -3561.2,
+        "$/contract": -14.6
+      },
+      "rejected": {
+        "n": 501,
+        "W": 185,
+        "L": 316,
+        "wr_pct": 36.9,
+        "PF": 0.816,
+        "net_$": -3992.77,
+        "$/contract": -7.97
+      },
+      "all": {
+        "n": 745,
+        "W": 268,
+        "L": 477,
+        "wr_pct": 36.0,
+        "PF": 0.774,
+        "net_$": -7553.97,
+        "$/contract": -10.14
+      },
+      "delta_net_$": 3992.77,
+      "delta_$/contract": -4.46,
+      "keep_rate": 0.328
+    },
+    {
+      "threshold": "2 ticks",
+      "kept": {
+        "n": 268,
+        "W": 89,
+        "L": 179,
+        "wr_pct": 33.2,
+        "PF": 0.692,
+        "net_$": -3699.23,
+        "$/contract": -13.8
+      },
+      "rejected": {
+        "n": 477,
+        "W": 179,
+        "L": 298,
+        "wr_pct": 37.5,
+        "PF": 0.82,
+        "net_$": -3854.74,
+        "$/contract": -8.08
+      },
+      "all": {
+        "n": 745,
+        "W": 268,
+        "L": 477,
+        "wr_pct": 36.0,
+        "PF": 0.774,
+        "net_$": -7553.97,
+        "$/contract": -10.14
+      },
+      "delta_net_$": 3854.74,
+      "delta_$/contract": -3.66,
+      "keep_rate": 0.36
+    },
+    {
+      "threshold": "5 ticks",
+      "kept": {
+        "n": 323,
+        "W": 108,
+        "L": 215,
+        "wr_pct": 33.4,
+        "PF": 0.63,
+        "net_$": -5420.48,
+        "$/contract": -16.78
+      },
+      "rejected": {
+        "n": 422,
+        "W": 160,
+        "L": 262,
+        "wr_pct": 37.9,
+        "PF": 0.886,
+        "net_$": -2133.49,
+        "$/contract": -5.06
+      },
+      "all": {
+        "n": 745,
+        "W": 268,
+        "L": 477,
+        "wr_pct": 36.0,
+        "PF": 0.774,
+        "net_$": -7553.97,
+        "$/contract": -10.14
+      },
+      "delta_net_$": 2133.49,
+      "delta_$/contract": -6.64,
+      "keep_rate": 0.434
+    },
+    {
+      "threshold": "10 ticks",
+      "kept": {
+        "n": 377,
+        "W": 130,
+        "L": 247,
+        "wr_pct": 34.5,
+        "PF": 0.655,
+        "net_$": -5645.79,
+        "$/contract": -14.98
+      },
+      "rejected": {
+        "n": 368,
+        "W": 138,
+        "L": 230,
+        "wr_pct": 37.5,
+        "PF": 0.888,
+        "net_$": -1908.18,
+        "$/contract": -5.19
+      },
+      "all": {
+        "n": 745,
+        "W": 268,
+        "L": 477,
+        "wr_pct": 36.0,
+        "PF": 0.774,
+        "net_$": -7553.97,
+        "$/contract": -10.14
+      },
+      "delta_net_$": 1908.18,
+      "delta_$/contract": -4.84,
+      "keep_rate": 0.506
+    },
+    {
+      "threshold": "20 ticks",
+      "kept": {
+        "n": 451,
+        "W": 158,
+        "L": 293,
+        "wr_pct": 35.0,
+        "PF": 0.703,
+        "net_$": -5419.98,
+        "$/contract": -12.02
+      },
+      "rejected": {
+        "n": 294,
+        "W": 110,
+        "L": 184,
+        "wr_pct": 37.4,
+        "PF": 0.86,
+        "net_$": -2133.99,
+        "$/contract": -7.26
+      },
+      "all": {
+        "n": 745,
+        "W": 268,
+        "L": 477,
+        "wr_pct": 36.0,
+        "PF": 0.774,
+        "net_$": -7553.97,
+        "$/contract": -10.14
+      },
+      "delta_net_$": 2133.99,
+      "delta_$/contract": -1.88,
+      "keep_rate": 0.605
+    },
+    {
+      "threshold": "50 ticks",
+      "kept": {
+        "n": 560,
+        "W": 202,
+        "L": 358,
+        "wr_pct": 36.1,
+        "PF": 0.782,
+        "net_$": -5059.05,
+        "$/contract": -9.03
+      },
+      "rejected": {
+        "n": 185,
+        "W": 66,
+        "L": 119,
+        "wr_pct": 35.7,
+        "PF": 0.756,
+        "net_$": -2494.92,
+        "$/contract": -13.49
+      },
+      "all": {
+        "n": 745,
+        "W": 268,
+        "L": 477,
+        "wr_pct": 36.0,
+        "PF": 0.774,
+        "net_$": -7553.97,
+        "$/contract": -10.14
+      },
+      "delta_net_$": 2494.92,
+      "delta_$/contract": 1.11,
+      "keep_rate": 0.752
+    },
+    {
+      "threshold": "100 ticks",
+      "kept": {
+        "n": 631,
+        "W": 223,
+        "L": 408,
+        "wr_pct": 35.3,
+        "PF": 0.766,
+        "net_$": -6267.97,
+        "$/contract": -9.93
+      },
+      "rejected": {
+        "n": 114,
+        "W": 45,
+        "L": 69,
+        "wr_pct": 39.5,
+        "PF": 0.804,
+        "net_$": -1286.0,
+        "$/contract": -11.28
+      },
+      "all": {
+        "n": 745,
+        "W": 268,
+        "L": 477,
+        "wr_pct": 36.0,
+        "PF": 0.774,
+        "net_$": -7553.97,
+        "$/contract": -10.14
+      },
+      "delta_net_$": 1286.0,
+      "delta_$/contract": 0.21,
+      "keep_rate": 0.847
+    },
+    {
+      "threshold": "0.25R",
+      "kept": {
+        "n": 321,
+        "W": 112,
+        "L": 209,
+        "wr_pct": 34.9,
+        "PF": 0.748,
+        "net_$": -5044.65,
+        "$/contract": -15.72
+      },
+      "rejected": {
+        "n": 424,
+        "W": 156,
+        "L": 268,
+        "wr_pct": 36.8,
+        "PF": 0.813,
+        "net_$": -2509.32,
+        "$/contract": -5.92
+      },
+      "all": {
+        "n": 745,
+        "W": 268,
+        "L": 477,
+        "wr_pct": 36.0,
+        "PF": 0.774,
+        "net_$": -7553.97,
+        "$/contract": -10.14
+      },
+      "delta_net_$": 2509.32,
+      "delta_$/contract": -5.58,
+      "keep_rate": 0.431
+    },
+    {
+      "threshold": "0.5R",
+      "kept": {
+        "n": 387,
+        "W": 142,
+        "L": 245,
+        "wr_pct": 36.7,
+        "PF": 0.801,
+        "net_$": -4433.92,
+        "$/contract": -11.46
+      },
+      "rejected": {
+        "n": 358,
+        "W": 126,
+        "L": 232,
+        "wr_pct": 35.2,
+        "PF": 0.72,
+        "net_$": -3120.05,
+        "$/contract": -8.72
+      },
+      "all": {
+        "n": 745,
+        "W": 268,
+        "L": 477,
+        "wr_pct": 36.0,
+        "PF": 0.774,
+        "net_$": -7553.97,
+        "$/contract": -10.14
+      },
+      "delta_net_$": 3120.05,
+      "delta_$/contract": -1.32,
+      "keep_rate": 0.519
+    },
+    {
+      "threshold": "1.0R",
+      "kept": {
+        "n": 508,
+        "W": 189,
+        "L": 319,
+        "wr_pct": 37.2,
+        "PF": 0.798,
+        "net_$": -5376.21,
+        "$/contract": -10.58
+      },
+      "rejected": {
+        "n": 237,
+        "W": 79,
+        "L": 158,
+        "wr_pct": 33.3,
+        "PF": 0.679,
+        "net_$": -2177.76,
+        "$/contract": -9.19
+      },
+      "all": {
+        "n": 745,
+        "W": 268,
+        "L": 477,
+        "wr_pct": 36.0,
+        "PF": 0.774,
+        "net_$": -7553.97,
+        "$/contract": -10.14
+      },
+      "delta_net_$": 2177.76,
+      "delta_$/contract": -0.44,
+      "keep_rate": 0.682
+    }
+  ],
+  "B_counterfactual_per_symbol": {
+    "MGC": [
+      {
+        "threshold": "1 ticks",
+        "kept": {
+          "n": 78,
+          "W": 33,
+          "L": 45,
+          "wr_pct": 42.3,
+          "PF": 0.593,
+          "net_$": -1713.77,
+          "$/contract": -21.97
+        },
+        "rejected": {
+          "n": 228,
+          "W": 88,
+          "L": 140,
+          "wr_pct": 38.6,
+          "PF": 0.947,
+          "net_$": -454.92,
+          "$/contract": -2.0
+        },
+        "all": {
+          "n": 306,
+          "W": 121,
+          "L": 185,
+          "wr_pct": 39.5,
+          "PF": 0.829,
+          "net_$": -2168.68,
+          "$/contract": -7.09
+        },
+        "delta_net_$": 454.91,
+        "delta_$/contract": -14.88,
+        "keep_rate": 0.255
+      },
+      {
+        "threshold": "2 ticks",
+        "kept": {
+          "n": 82,
+          "W": 34,
+          "L": 48,
+          "wr_pct": 41.5,
+          "PF": 0.588,
+          "net_$": -1757.77,
+          "$/contract": -21.44
+        },
+        "rejected": {
+          "n": 224,
+          "W": 87,
+          "L": 137,
+          "wr_pct": 38.8,
+          "PF": 0.951,
+          "net_$": -410.92,
+          "$/contract": -1.83
+        },
+        "all": {
+          "n": 306,
+          "W": 121,
+          "L": 185,
+          "wr_pct": 39.5,
+          "PF": 0.829,
+          "net_$": -2168.68,
+          "$/contract": -7.09
+        },
+        "delta_net_$": 410.91,
+        "delta_$/contract": -14.35,
+        "keep_rate": 0.268
+      },
+      {
+        "threshold": "5 ticks",
+        "kept": {
+          "n": 97,
+          "W": 40,
+          "L": 57,
+          "wr_pct": 41.2,
+          "PF": 0.659,
+          "net_$": -1564.77,
+          "$/contract": -16.13
+        },
+        "rejected": {
+          "n": 209,
+          "W": 81,
+          "L": 128,
+          "wr_pct": 38.8,
+          "PF": 0.926,
+          "net_$": -603.92,
+          "$/contract": -2.89
+        },
+        "all": {
+          "n": 306,
+          "W": 121,
+          "L": 185,
+          "wr_pct": 39.5,
+          "PF": 0.829,
+          "net_$": -2168.68,
+          "$/contract": -7.09
+        },
+        "delta_net_$": 603.91,
+        "delta_$/contract": -9.04,
+        "keep_rate": 0.317
+      },
+      {
+        "threshold": "10 ticks",
+        "kept": {
+          "n": 119,
+          "W": 51,
+          "L": 68,
+          "wr_pct": 42.9,
+          "PF": 0.712,
+          "net_$": -1538.77,
+          "$/contract": -12.93
+        },
+        "rejected": {
+          "n": 187,
+          "W": 70,
+          "L": 117,
+          "wr_pct": 37.4,
+          "PF": 0.914,
+          "net_$": -629.92,
+          "$/contract": -3.37
+        },
+        "all": {
+          "n": 306,
+          "W": 121,
+          "L": 185,
+          "wr_pct": 39.5,
+          "PF": 0.829,
+          "net_$": -2168.68,
+          "$/contract": -7.09
+        },
+        "delta_net_$": 629.91,
+        "delta_$/contract": -5.84,
+        "keep_rate": 0.389
+      },
+      {
+        "threshold": "20 ticks",
+        "kept": {
+          "n": 150,
+          "W": 62,
+          "L": 88,
+          "wr_pct": 41.3,
+          "PF": 0.754,
+          "net_$": -1520.77,
+          "$/contract": -10.14
+        },
+        "rejected": {
+          "n": 156,
+          "W": 59,
+          "L": 97,
+          "wr_pct": 37.8,
+          "PF": 0.901,
+          "net_$": -647.92,
+          "$/contract": -4.15
+        },
+        "all": {
+          "n": 306,
+          "W": 121,
+          "L": 185,
+          "wr_pct": 39.5,
+          "PF": 0.829,
+          "net_$": -2168.68,
+          "$/contract": -7.09
+        },
+        "delta_net_$": 647.91,
+        "delta_$/contract": -3.05,
+        "keep_rate": 0.49
+      },
+      {
+        "threshold": "50 ticks",
+        "kept": {
+          "n": 208,
+          "W": 85,
+          "L": 123,
+          "wr_pct": 40.9,
+          "PF": 0.94,
+          "net_$": -437.77,
+          "$/contract": -2.1
+        },
+        "rejected": {
+          "n": 98,
+          "W": 36,
+          "L": 62,
+          "wr_pct": 36.7,
+          "PF": 0.678,
+          "net_$": -1730.92,
+          "$/contract": -17.66
+        },
+        "all": {
+          "n": 306,
+          "W": 121,
+          "L": 185,
+          "wr_pct": 39.5,
+          "PF": 0.829,
+          "net_$": -2168.68,
+          "$/contract": -7.09
+        },
+        "delta_net_$": 1730.91,
+        "delta_$/contract": 4.99,
+        "keep_rate": 0.68
+      },
+      {
+        "threshold": "100 ticks",
+        "kept": {
+          "n": 244,
+          "W": 94,
+          "L": 150,
+          "wr_pct": 38.5,
+          "PF": 0.894,
+          "net_$": -959.93,
+          "$/contract": -3.93
+        },
+        "rejected": {
+          "n": 62,
+          "W": 27,
+          "L": 35,
+          "wr_pct": 43.5,
+          "PF": 0.67,
+          "net_$": -1208.75,
+          "$/contract": -19.5
+        },
+        "all": {
+          "n": 306,
+          "W": 121,
+          "L": 185,
+          "wr_pct": 39.5,
+          "PF": 0.829,
+          "net_$": -2168.68,
+          "$/contract": -7.09
+        },
+        "delta_net_$": 1208.75,
+        "delta_$/contract": 3.16,
+        "keep_rate": 0.797
+      },
+      {
+        "threshold": "0.25R",
+        "kept": {
+          "n": 118,
+          "W": 48,
+          "L": 70,
+          "wr_pct": 40.7,
+          "PF": 0.81,
+          "net_$": -1123.77,
+          "$/contract": -9.52
+        },
+        "rejected": {
+          "n": 188,
+          "W": 73,
+          "L": 115,
+          "wr_pct": 38.8,
+          "PF": 0.846,
+          "net_$": -1044.92,
+          "$/contract": -5.56
+        },
+        "all": {
+          "n": 306,
+          "W": 121,
+          "L": 185,
+          "wr_pct": 39.5,
+          "PF": 0.829,
+          "net_$": -2168.68,
+          "$/contract": -7.09
+        },
+        "delta_net_$": 1044.91,
+        "delta_$/contract": -2.43,
+        "keep_rate": 0.386
+      },
+      {
+        "threshold": "0.5R",
+        "kept": {
+          "n": 144,
+          "W": 61,
+          "L": 83,
+          "wr_pct": 42.4,
+          "PF": 0.946,
+          "net_$": -371.77,
+          "$/contract": -2.58
+        },
+        "rejected": {
+          "n": 162,
+          "W": 60,
+          "L": 102,
+          "wr_pct": 37.0,
+          "PF": 0.694,
+          "net_$": -1796.92,
+          "$/contract": -11.09
+        },
+        "all": {
+          "n": 306,
+          "W": 121,
+          "L": 185,
+          "wr_pct": 39.5,
+          "PF": 0.829,
+          "net_$": -2168.68,
+          "$/contract": -7.09
+        },
+        "delta_net_$": 1796.91,
+        "delta_$/contract": 4.51,
+        "keep_rate": 0.471
+      },
+      {
+        "threshold": "1.0R",
+        "kept": {
+          "n": 186,
+          "W": 79,
+          "L": 107,
+          "wr_pct": 42.5,
+          "PF": 1.022,
+          "net_$": 180.23,
+          "$/contract": 0.97
+        },
+        "rejected": {
+          "n": 120,
+          "W": 42,
+          "L": 78,
+          "wr_pct": 35.0,
+          "PF": 0.458,
+          "net_$": -2348.92,
+          "$/contract": -19.57
+        },
+        "all": {
+          "n": 306,
+          "W": 121,
+          "L": 185,
+          "wr_pct": 39.5,
+          "PF": 0.829,
+          "net_$": -2168.68,
+          "$/contract": -7.09
+        },
+        "delta_net_$": 2348.91,
+        "delta_$/contract": 8.06,
+        "keep_rate": 0.608
+      }
+    ],
+    "MNQ": [
+      {
+        "threshold": "1 ticks",
+        "kept": {
+          "n": 72,
+          "W": 21,
+          "L": 51,
+          "wr_pct": 29.2,
+          "PF": 0.65,
+          "net_$": -1914.83,
+          "$/contract": -26.59
+        },
+        "rejected": {
+          "n": 140,
+          "W": 53,
+          "L": 87,
+          "wr_pct": 37.9,
+          "PF": 0.88,
+          "net_$": -1098.27,
+          "$/contract": -7.84
+        },
+        "all": {
+          "n": 212,
+          "W": 74,
+          "L": 138,
+          "wr_pct": 34.9,
+          "PF": 0.794,
+          "net_$": -3013.1,
+          "$/contract": -14.21
+        },
+        "delta_net_$": 1098.27,
+        "delta_$/contract": -12.38,
+        "keep_rate": 0.34
+      },
+      {
+        "threshold": "2 ticks",
+        "kept": {
+          "n": 72,
+          "W": 21,
+          "L": 51,
+          "wr_pct": 29.2,
+          "PF": 0.65,
+          "net_$": -1914.83,
+          "$/contract": -26.59
+        },
+        "rejected": {
+          "n": 140,
+          "W": 53,
+          "L": 87,
+          "wr_pct": 37.9,
+          "PF": 0.88,
+          "net_$": -1098.27,
+          "$/contract": -7.84
+        },
+        "all": {
+          "n": 212,
+          "W": 74,
+          "L": 138,
+          "wr_pct": 34.9,
+          "PF": 0.794,
+          "net_$": -3013.1,
+          "$/contract": -14.21
+        },
+        "delta_net_$": 1098.27,
+        "delta_$/contract": -12.38,
+        "keep_rate": 0.34
+      },
+      {
+        "threshold": "5 ticks",
+        "kept": {
+          "n": 78,
+          "W": 21,
+          "L": 57,
+          "wr_pct": 26.9,
+          "PF": 0.609,
+          "net_$": -2281.83,
+          "$/contract": -29.25
+        },
+        "rejected": {
+          "n": 134,
+          "W": 53,
+          "L": 81,
+          "wr_pct": 39.6,
+          "PF": 0.916,
+          "net_$": -731.27,
+          "$/contract": -5.46
+        },
+        "all": {
+          "n": 212,
+          "W": 74,
+          "L": 138,
+          "wr_pct": 34.9,
+          "PF": 0.794,
+          "net_$": -3013.1,
+          "$/contract": -14.21
+        },
+        "delta_net_$": 731.27,
+        "delta_$/contract": -15.04,
+        "keep_rate": 0.368
+      },
+      {
+        "threshold": "10 ticks",
+        "kept": {
+          "n": 83,
+          "W": 24,
+          "L": 59,
+          "wr_pct": 28.9,
+          "PF": 0.654,
+          "net_$": -2121.33,
+          "$/contract": -25.56
+        },
+        "rejected": {
+          "n": 129,
+          "W": 50,
+          "L": 79,
+          "wr_pct": 38.8,
+          "PF": 0.895,
+          "net_$": -891.77,
+          "$/contract": -6.91
+        },
+        "all": {
+          "n": 212,
+          "W": 74,
+          "L": 138,
+          "wr_pct": 34.9,
+          "PF": 0.794,
+          "net_$": -3013.1,
+          "$/contract": -14.21
+        },
+        "delta_net_$": 891.77,
+        "delta_$/contract": -11.35,
+        "keep_rate": 0.392
+      },
+      {
+        "threshold": "20 ticks",
+        "kept": {
+          "n": 99,
+          "W": 30,
+          "L": 69,
+          "wr_pct": 30.3,
+          "PF": 0.74,
+          "net_$": -1721.31,
+          "$/contract": -17.39
+        },
+        "rejected": {
+          "n": 113,
+          "W": 44,
+          "L": 69,
+          "wr_pct": 38.9,
+          "PF": 0.838,
+          "net_$": -1291.79,
+          "$/contract": -11.43
+        },
+        "all": {
+          "n": 212,
+          "W": 74,
+          "L": 138,
+          "wr_pct": 34.9,
+          "PF": 0.794,
+          "net_$": -3013.1,
+          "$/contract": -14.21
+        },
+        "delta_net_$": 1291.79,
+        "delta_$/contract": -3.18,
+        "keep_rate": 0.467
+      },
+      {
+        "threshold": "50 ticks",
+        "kept": {
+          "n": 137,
+          "W": 46,
+          "L": 91,
+          "wr_pct": 33.6,
+          "PF": 0.749,
+          "net_$": -2582.85,
+          "$/contract": -18.85
+        },
+        "rejected": {
+          "n": 75,
+          "W": 28,
+          "L": 47,
+          "wr_pct": 37.3,
+          "PF": 0.9,
+          "net_$": -430.25,
+          "$/contract": -5.74
+        },
+        "all": {
+          "n": 212,
+          "W": 74,
+          "L": 138,
+          "wr_pct": 34.9,
+          "PF": 0.794,
+          "net_$": -3013.1,
+          "$/contract": -14.21
+        },
+        "delta_net_$": 430.25,
+        "delta_$/contract": -4.64,
+        "keep_rate": 0.646
+      },
+      {
+        "threshold": "100 ticks",
+        "kept": {
+          "n": 162,
+          "W": 56,
+          "L": 106,
+          "wr_pct": 34.6,
+          "PF": 0.745,
+          "net_$": -2986.85,
+          "$/contract": -18.44
+        },
+        "rejected": {
+          "n": 50,
+          "W": 18,
+          "L": 32,
+          "wr_pct": 36.0,
+          "PF": 0.991,
+          "net_$": -26.25,
+          "$/contract": -0.53
+        },
+        "all": {
+          "n": 212,
+          "W": 74,
+          "L": 138,
+          "wr_pct": 34.9,
+          "PF": 0.794,
+          "net_$": -3013.1,
+          "$/contract": -14.21
+        },
+        "delta_net_$": 26.25,
+        "delta_$/contract": -4.23,
+        "keep_rate": 0.764
+      },
+      {
+        "threshold": "0.25R",
+        "kept": {
+          "n": 111,
+          "W": 37,
+          "L": 74,
+          "wr_pct": 33.3,
+          "PF": 0.693,
+          "net_$": -3506.33,
+          "$/contract": -31.59
+        },
+        "rejected": {
+          "n": 101,
+          "W": 37,
+          "L": 64,
+          "wr_pct": 36.6,
+          "PF": 1.156,
+          "net_$": 493.23,
+          "$/contract": 4.88
+        },
+        "all": {
+          "n": 212,
+          "W": 74,
+          "L": 138,
+          "wr_pct": 34.9,
+          "PF": 0.794,
+          "net_$": -3013.1,
+          "$/contract": -14.21
+        },
+        "delta_net_$": -493.23,
+        "delta_$/contract": -17.38,
+        "keep_rate": 0.524
+      },
+      {
+        "threshold": "0.5R",
+        "kept": {
+          "n": 132,
+          "W": 46,
+          "L": 86,
+          "wr_pct": 34.8,
+          "PF": 0.725,
+          "net_$": -3396.42,
+          "$/contract": -25.73
+        },
+        "rejected": {
+          "n": 80,
+          "W": 28,
+          "L": 52,
+          "wr_pct": 35.0,
+          "PF": 1.172,
+          "net_$": 383.32,
+          "$/contract": 4.79
+        },
+        "all": {
+          "n": 212,
+          "W": 74,
+          "L": 138,
+          "wr_pct": 34.9,
+          "PF": 0.794,
+          "net_$": -3013.1,
+          "$/contract": -14.21
+        },
+        "delta_net_$": -383.32,
+        "delta_$/contract": -11.52,
+        "keep_rate": 0.623
+      },
+      {
+        "threshold": "1.0R",
+        "kept": {
+          "n": 158,
+          "W": 55,
+          "L": 103,
+          "wr_pct": 34.8,
+          "PF": 0.729,
+          "net_$": -3525.5,
+          "$/contract": -22.31
+        },
+        "rejected": {
+          "n": 54,
+          "W": 19,
+          "L": 35,
+          "wr_pct": 35.2,
+          "PF": 1.322,
+          "net_$": 512.4,
+          "$/contract": 9.49
+        },
+        "all": {
+          "n": 212,
+          "W": 74,
+          "L": 138,
+          "wr_pct": 34.9,
+          "PF": 0.794,
+          "net_$": -3013.1,
+          "$/contract": -14.21
+        },
+        "delta_net_$": -512.4,
+        "delta_$/contract": -8.1,
+        "keep_rate": 0.745
+      }
+    ],
+    "MCL": [
+      {
+        "threshold": "1 ticks",
+        "kept": {
+          "n": 39,
+          "W": 11,
+          "L": 28,
+          "wr_pct": 28.2,
+          "PF": 0.988,
+          "net_$": -8.89,
+          "$/contract": -0.23
+        },
+        "rejected": {
+          "n": 76,
+          "W": 26,
+          "L": 50,
+          "wr_pct": 34.2,
+          "PF": 0.521,
+          "net_$": -774.0,
+          "$/contract": -10.18
+        },
+        "all": {
+          "n": 115,
+          "W": 37,
+          "L": 78,
+          "wr_pct": 32.2,
+          "PF": 0.668,
+          "net_$": -782.89,
+          "$/contract": -6.81
+        },
+        "delta_net_$": 774.0,
+        "delta_$/contract": 6.58,
+        "keep_rate": 0.339
+      },
+      {
+        "threshold": "2 ticks",
+        "kept": {
+          "n": 41,
+          "W": 12,
+          "L": 29,
+          "wr_pct": 29.3,
+          "PF": 0.95,
+          "net_$": -38.89,
+          "$/contract": -0.95
+        },
+        "rejected": {
+          "n": 74,
+          "W": 25,
+          "L": 49,
+          "wr_pct": 33.8,
+          "PF": 0.529,
+          "net_$": -744.0,
+          "$/contract": -10.05
+        },
+        "all": {
+          "n": 115,
+          "W": 37,
+          "L": 78,
+          "wr_pct": 32.2,
+          "PF": 0.668,
+          "net_$": -782.89,
+          "$/contract": -6.81
+        },
+        "delta_net_$": 744.0,
+        "delta_$/contract": 5.86,
+        "keep_rate": 0.357
+      },
+      {
+        "threshold": "5 ticks",
+        "kept": {
+          "n": 50,
+          "W": 18,
+          "L": 32,
+          "wr_pct": 36.0,
+          "PF": 1.096,
+          "net_$": 76.36,
+          "$/contract": 1.53
+        },
+        "rejected": {
+          "n": 65,
+          "W": 19,
+          "L": 46,
+          "wr_pct": 29.2,
+          "PF": 0.448,
+          "net_$": -859.25,
+          "$/contract": -13.22
+        },
+        "all": {
+          "n": 115,
+          "W": 37,
+          "L": 78,
+          "wr_pct": 32.2,
+          "PF": 0.668,
+          "net_$": -782.89,
+          "$/contract": -6.81
+        },
+        "delta_net_$": 859.25,
+        "delta_$/contract": 8.34,
+        "keep_rate": 0.435
+      },
+      {
+        "threshold": "10 ticks",
+        "kept": {
+          "n": 69,
+          "W": 23,
+          "L": 46,
+          "wr_pct": 33.3,
+          "PF": 0.77,
+          "net_$": -304.2,
+          "$/contract": -4.41
+        },
+        "rejected": {
+          "n": 46,
+          "W": 14,
+          "L": 32,
+          "wr_pct": 30.4,
+          "PF": 0.537,
+          "net_$": -478.68,
+          "$/contract": -10.41
+        },
+        "all": {
+          "n": 115,
+          "W": 37,
+          "L": 78,
+          "wr_pct": 32.2,
+          "PF": 0.668,
+          "net_$": -782.89,
+          "$/contract": -6.81
+        },
+        "delta_net_$": 478.69,
+        "delta_$/contract": 2.4,
+        "keep_rate": 0.6
+      },
+      {
+        "threshold": "20 ticks",
+        "kept": {
+          "n": 91,
+          "W": 30,
+          "L": 61,
+          "wr_pct": 33.0,
+          "PF": 0.592,
+          "net_$": -738.6,
+          "$/contract": -8.12
+        },
+        "rejected": {
+          "n": 24,
+          "W": 7,
+          "L": 17,
+          "wr_pct": 29.2,
+          "PF": 0.918,
+          "net_$": -44.28,
+          "$/contract": -1.85
+        },
+        "all": {
+          "n": 115,
+          "W": 37,
+          "L": 78,
+          "wr_pct": 32.2,
+          "PF": 0.668,
+          "net_$": -782.89,
+          "$/contract": -6.81
+        },
+        "delta_net_$": 44.29,
+        "delta_$/contract": -1.31,
+        "keep_rate": 0.791
+      },
+      {
+        "threshold": "50 ticks",
+        "kept": {
+          "n": 104,
+          "W": 35,
+          "L": 69,
+          "wr_pct": 33.7,
+          "PF": 0.69,
+          "net_$": -599.14,
+          "$/contract": -5.76
+        },
+        "rejected": {
+          "n": 11,
+          "W": 2,
+          "L": 9,
+          "wr_pct": 18.2,
+          "PF": 0.563,
+          "net_$": -183.75,
+          "$/contract": -16.7
+        },
+        "all": {
+          "n": 115,
+          "W": 37,
+          "L": 78,
+          "wr_pct": 32.2,
+          "PF": 0.668,
+          "net_$": -782.89,
+          "$/contract": -6.81
+        },
+        "delta_net_$": 183.75,
+        "delta_$/contract": 1.05,
+        "keep_rate": 0.904
+      },
+      {
+        "threshold": "100 ticks",
+        "kept": {
+          "n": 113,
+          "W": 37,
+          "L": 76,
+          "wr_pct": 32.7,
+          "PF": 0.682,
+          "net_$": -731.89,
+          "$/contract": -6.48
+        },
+        "rejected": {
+          "n": 2,
+          "W": 0,
+          "L": 2,
+          "wr_pct": 0.0,
+          "PF": 0.0,
+          "net_$": -51.0,
+          "$/contract": -25.5
+        },
+        "all": {
+          "n": 115,
+          "W": 37,
+          "L": 78,
+          "wr_pct": 32.2,
+          "PF": 0.668,
+          "net_$": -782.89,
+          "$/contract": -6.81
+        },
+        "delta_net_$": 51.0,
+        "delta_$/contract": 0.33,
+        "keep_rate": 0.983
+      },
+      {
+        "threshold": "0.25R",
+        "kept": {
+          "n": 48,
+          "W": 13,
+          "L": 35,
+          "wr_pct": 27.1,
+          "PF": 0.635,
+          "net_$": -517.39,
+          "$/contract": -10.78
+        },
+        "rejected": {
+          "n": 67,
+          "W": 24,
+          "L": 43,
+          "wr_pct": 35.8,
+          "PF": 0.716,
+          "net_$": -265.5,
+          "$/contract": -3.96
+        },
+        "all": {
+          "n": 115,
+          "W": 37,
+          "L": 78,
+          "wr_pct": 32.2,
+          "PF": 0.668,
+          "net_$": -782.89,
+          "$/contract": -6.81
+        },
+        "delta_net_$": 265.5,
+        "delta_$/contract": -3.97,
+        "keep_rate": 0.417
+      },
+      {
+        "threshold": "0.5R",
+        "kept": {
+          "n": 58,
+          "W": 17,
+          "L": 41,
+          "wr_pct": 29.3,
+          "PF": 0.602,
+          "net_$": -637.34,
+          "$/contract": -10.99
+        },
+        "rejected": {
+          "n": 57,
+          "W": 20,
+          "L": 37,
+          "wr_pct": 35.1,
+          "PF": 0.806,
+          "net_$": -145.55,
+          "$/contract": -2.55
+        },
+        "all": {
+          "n": 115,
+          "W": 37,
+          "L": 78,
+          "wr_pct": 32.2,
+          "PF": 0.668,
+          "net_$": -782.89,
+          "$/contract": -6.81
+        },
+        "delta_net_$": 145.55,
+        "delta_$/contract": -4.18,
+        "keep_rate": 0.504
+      },
+      {
+        "threshold": "1.0R",
+        "kept": {
+          "n": 79,
+          "W": 27,
+          "L": 52,
+          "wr_pct": 34.2,
+          "PF": 0.691,
+          "net_$": -601.0,
+          "$/contract": -7.61
+        },
+        "rejected": {
+          "n": 36,
+          "W": 10,
+          "L": 26,
+          "wr_pct": 27.8,
+          "PF": 0.557,
+          "net_$": -181.88,
+          "$/contract": -5.05
+        },
+        "all": {
+          "n": 115,
+          "W": 37,
+          "L": 78,
+          "wr_pct": 32.2,
+          "PF": 0.668,
+          "net_$": -782.89,
+          "$/contract": -6.81
+        },
+        "delta_net_$": 181.89,
+        "delta_$/contract": -0.8,
+        "keep_rate": 0.687
+      }
+    ],
+    "ZF": [
+      {
+        "threshold": "1 ticks",
+        "kept": {
+          "n": 35,
+          "W": 15,
+          "L": 20,
+          "wr_pct": 42.9,
+          "PF": 1.676,
+          "net_$": 507.54,
+          "$/contract": 14.5
+        },
+        "rejected": {
+          "n": 35,
+          "W": 10,
+          "L": 25,
+          "wr_pct": 28.6,
+          "PF": 0.244,
+          "net_$": -1453.09,
+          "$/contract": -41.52
+        },
+        "all": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "delta_net_$": 1453.09,
+        "delta_$/contract": 28.01,
+        "keep_rate": 0.5
+      },
+      {
+        "threshold": "2 ticks",
+        "kept": {
+          "n": 52,
+          "W": 19,
+          "L": 33,
+          "wr_pct": 36.5,
+          "PF": 1.512,
+          "net_$": 468.51,
+          "$/contract": 9.01
+        },
+        "rejected": {
+          "n": 18,
+          "W": 6,
+          "L": 12,
+          "wr_pct": 33.3,
+          "PF": 0.196,
+          "net_$": -1414.06,
+          "$/contract": -78.56
+        },
+        "all": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "delta_net_$": 1414.06,
+        "delta_$/contract": 22.52,
+        "keep_rate": 0.743
+      },
+      {
+        "threshold": "5 ticks",
+        "kept": {
+          "n": 65,
+          "W": 21,
+          "L": 44,
+          "wr_pct": 32.3,
+          "PF": 0.54,
+          "net_$": -1218.99,
+          "$/contract": -18.75
+        },
+        "rejected": {
+          "n": 5,
+          "W": 4,
+          "L": 1,
+          "wr_pct": 80.0,
+          "PF": 12.666,
+          "net_$": 273.44,
+          "$/contract": 54.69
+        },
+        "all": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "delta_net_$": -273.44,
+        "delta_$/contract": -5.24,
+        "keep_rate": 0.929
+      },
+      {
+        "threshold": "10 ticks",
+        "kept": {
+          "n": 68,
+          "W": 23,
+          "L": 45,
+          "wr_pct": 33.8,
+          "PF": 0.567,
+          "net_$": -1156.49,
+          "$/contract": -17.01
+        },
+        "rejected": {
+          "n": 2,
+          "W": 2,
+          "L": 0,
+          "wr_pct": 100.0,
+          "PF": null,
+          "net_$": 210.94,
+          "$/contract": 105.47
+        },
+        "all": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "delta_net_$": -210.94,
+        "delta_$/contract": -3.5,
+        "keep_rate": 0.971
+      },
+      {
+        "threshold": "20 ticks",
+        "kept": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "rejected": {
+          "n": 0
+        },
+        "all": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "delta_net_$": 0.0,
+        "delta_$/contract": 0.0,
+        "keep_rate": 1.0
+      },
+      {
+        "threshold": "50 ticks",
+        "kept": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "rejected": {
+          "n": 0
+        },
+        "all": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "delta_net_$": 0.0,
+        "delta_$/contract": 0.0,
+        "keep_rate": 1.0
+      },
+      {
+        "threshold": "100 ticks",
+        "kept": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "rejected": {
+          "n": 0
+        },
+        "all": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "delta_net_$": 0.0,
+        "delta_$/contract": 0.0,
+        "keep_rate": 1.0
+      },
+      {
+        "threshold": "0.25R",
+        "kept": {
+          "n": 25,
+          "W": 12,
+          "L": 13,
+          "wr_pct": 48.0,
+          "PF": 1.795,
+          "net_$": 546.59,
+          "$/contract": 21.86
+        },
+        "rejected": {
+          "n": 45,
+          "W": 13,
+          "L": 32,
+          "wr_pct": 28.9,
+          "PF": 0.248,
+          "net_$": -1492.14,
+          "$/contract": -33.16
+        },
+        "all": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "delta_net_$": 1492.14,
+        "delta_$/contract": 35.37,
+        "keep_rate": 0.357
+      },
+      {
+        "threshold": "0.5R",
+        "kept": {
+          "n": 29,
+          "W": 14,
+          "L": 15,
+          "wr_pct": 48.3,
+          "PF": 1.699,
+          "net_$": 546.6,
+          "$/contract": 18.85
+        },
+        "rejected": {
+          "n": 41,
+          "W": 11,
+          "L": 30,
+          "wr_pct": 26.8,
+          "PF": 0.211,
+          "net_$": -1492.15,
+          "$/contract": -36.39
+        },
+        "all": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "delta_net_$": 1492.15,
+        "delta_$/contract": 32.36,
+        "keep_rate": 0.414
+      },
+      {
+        "threshold": "1.0R",
+        "kept": {
+          "n": 53,
+          "W": 20,
+          "L": 33,
+          "wr_pct": 37.7,
+          "PF": 0.608,
+          "net_$": -992.44,
+          "$/contract": -18.73
+        },
+        "rejected": {
+          "n": 17,
+          "W": 5,
+          "L": 12,
+          "wr_pct": 29.4,
+          "PF": 1.333,
+          "net_$": 46.89,
+          "$/contract": 2.76
+        },
+        "all": {
+          "n": 70,
+          "W": 25,
+          "L": 45,
+          "wr_pct": 35.7,
+          "PF": 0.646,
+          "net_$": -945.55,
+          "$/contract": -13.51
+        },
+        "delta_net_$": -46.89,
+        "delta_$/contract": -5.22,
+        "keep_rate": 0.757
+      }
+    ],
+    "6J": [
+      {
+        "threshold": "1 ticks",
+        "kept": {
+          "n": 20,
+          "W": 3,
+          "L": 17,
+          "wr_pct": 15.0,
+          "PF": 0.198,
+          "net_$": -431.25,
+          "$/contract": -21.56
+        },
+        "rejected": {
+          "n": 22,
+          "W": 8,
+          "L": 14,
+          "wr_pct": 36.4,
+          "PF": 0.609,
+          "net_$": -212.5,
+          "$/contract": -9.66
+        },
+        "all": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "delta_net_$": 212.5,
+        "delta_$/contract": -6.23,
+        "keep_rate": 0.476
+      },
+      {
+        "threshold": "2 ticks",
+        "kept": {
+          "n": 21,
+          "W": 3,
+          "L": 18,
+          "wr_pct": 14.3,
+          "PF": 0.189,
+          "net_$": -456.25,
+          "$/contract": -21.73
+        },
+        "rejected": {
+          "n": 21,
+          "W": 8,
+          "L": 13,
+          "wr_pct": 38.1,
+          "PF": 0.639,
+          "net_$": -187.5,
+          "$/contract": -8.93
+        },
+        "all": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "delta_net_$": 187.5,
+        "delta_$/contract": -6.4,
+        "keep_rate": 0.5
+      },
+      {
+        "threshold": "5 ticks",
+        "kept": {
+          "n": 33,
+          "W": 8,
+          "L": 25,
+          "wr_pct": 24.2,
+          "PF": 0.434,
+          "net_$": -431.25,
+          "$/contract": -13.07
+        },
+        "rejected": {
+          "n": 9,
+          "W": 3,
+          "L": 6,
+          "wr_pct": 33.3,
+          "PF": 0.333,
+          "net_$": -212.5,
+          "$/contract": -23.61
+        },
+        "all": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "delta_net_$": 212.5,
+        "delta_$/contract": 2.26,
+        "keep_rate": 0.786
+      },
+      {
+        "threshold": "10 ticks",
+        "kept": {
+          "n": 38,
+          "W": 9,
+          "L": 29,
+          "wr_pct": 23.7,
+          "PF": 0.413,
+          "net_$": -525.0,
+          "$/contract": -13.82
+        },
+        "rejected": {
+          "n": 4,
+          "W": 2,
+          "L": 2,
+          "wr_pct": 50.0,
+          "PF": 0.367,
+          "net_$": -118.75,
+          "$/contract": -29.69
+        },
+        "all": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "delta_net_$": 118.75,
+        "delta_$/contract": 1.51,
+        "keep_rate": 0.905
+      },
+      {
+        "threshold": "20 ticks",
+        "kept": {
+          "n": 41,
+          "W": 11,
+          "L": 30,
+          "wr_pct": 26.8,
+          "PF": 0.47,
+          "net_$": -493.75,
+          "$/contract": -12.04
+        },
+        "rejected": {
+          "n": 1,
+          "W": 0,
+          "L": 1,
+          "wr_pct": 0.0,
+          "PF": 0.0,
+          "net_$": -150.0,
+          "$/contract": -150.0
+        },
+        "all": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "delta_net_$": 150.0,
+        "delta_$/contract": 3.29,
+        "keep_rate": 0.976
+      },
+      {
+        "threshold": "50 ticks",
+        "kept": {
+          "n": 41,
+          "W": 11,
+          "L": 30,
+          "wr_pct": 26.8,
+          "PF": 0.47,
+          "net_$": -493.75,
+          "$/contract": -12.04
+        },
+        "rejected": {
+          "n": 1,
+          "W": 0,
+          "L": 1,
+          "wr_pct": 0.0,
+          "PF": 0.0,
+          "net_$": -150.0,
+          "$/contract": -150.0
+        },
+        "all": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "delta_net_$": 150.0,
+        "delta_$/contract": 3.29,
+        "keep_rate": 0.976
+      },
+      {
+        "threshold": "100 ticks",
+        "kept": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "rejected": {
+          "n": 0
+        },
+        "all": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "delta_net_$": 0.0,
+        "delta_$/contract": 0.0,
+        "keep_rate": 1.0
+      },
+      {
+        "threshold": "0.25R",
+        "kept": {
+          "n": 19,
+          "W": 2,
+          "L": 17,
+          "wr_pct": 10.5,
+          "PF": 0.174,
+          "net_$": -443.75,
+          "$/contract": -23.36
+        },
+        "rejected": {
+          "n": 23,
+          "W": 9,
+          "L": 14,
+          "wr_pct": 39.1,
+          "PF": 0.632,
+          "net_$": -200.0,
+          "$/contract": -8.7
+        },
+        "all": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "delta_net_$": 200.0,
+        "delta_$/contract": -8.03,
+        "keep_rate": 0.452
+      },
+      {
+        "threshold": "0.5R",
+        "kept": {
+          "n": 24,
+          "W": 4,
+          "L": 20,
+          "wr_pct": 16.7,
+          "PF": 0.164,
+          "net_$": -575.0,
+          "$/contract": -23.96
+        },
+        "rejected": {
+          "n": 18,
+          "W": 7,
+          "L": 11,
+          "wr_pct": 38.9,
+          "PF": 0.825,
+          "net_$": -68.75,
+          "$/contract": -3.82
+        },
+        "all": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "delta_net_$": 68.75,
+        "delta_$/contract": -8.63,
+        "keep_rate": 0.571
+      },
+      {
+        "threshold": "1.0R",
+        "kept": {
+          "n": 32,
+          "W": 8,
+          "L": 24,
+          "wr_pct": 25.0,
+          "PF": 0.431,
+          "net_$": -437.5,
+          "$/contract": -13.67
+        },
+        "rejected": {
+          "n": 10,
+          "W": 3,
+          "L": 7,
+          "wr_pct": 30.0,
+          "PF": 0.34,
+          "net_$": -206.25,
+          "$/contract": -20.62
+        },
+        "all": {
+          "n": 42,
+          "W": 11,
+          "L": 31,
+          "wr_pct": 26.2,
+          "PF": 0.405,
+          "net_$": -643.75,
+          "$/contract": -15.33
+        },
+        "delta_net_$": 206.25,
+        "delta_$/contract": 1.66,
+        "keep_rate": 0.762
+      }
+    ]
+  },
+  "C_by_family": {
+    "custom_5m": {
+      "n": 293,
+      "W": 96,
+      "L": 197,
+      "wr_pct": 32.8,
+      "PF": 0.61,
+      "net_$": -3285.97,
+      "$/contract": -11.21
+    },
+    "custom_15m": {
+      "n": 179,
+      "W": 67,
+      "L": 112,
+      "wr_pct": 37.4,
+      "PF": 0.899,
+      "net_$": -789.3,
+      "$/contract": -4.41
+    },
+    "custom": {
+      "n": 76,
+      "W": 27,
+      "L": 49,
+      "wr_pct": 35.5,
+      "PF": 0.791,
+      "net_$": -549.17,
+      "$/contract": -7.23
+    },
+    "buffet_zoo": {
+      "n": 73,
+      "W": 37,
+      "L": 36,
+      "wr_pct": 50.7,
+      "PF": 1.216,
+      "net_$": 1336.4,
+      "$/contract": 18.31
+    },
+    "custom_1h": {
+      "n": 48,
+      "W": 17,
+      "L": 31,
+      "wr_pct": 35.4,
+      "PF": 0.743,
+      "net_$": -681.5,
+      "$/contract": -14.2
+    },
+    "judas_1h": {
+      "n": 15,
+      "W": 2,
+      "L": 13,
+      "wr_pct": 13.3,
+      "PF": 0.242,
+      "net_$": -2604.75,
+      "$/contract": -173.65
+    },
+    "custom_5m_mitigation_block": {
+      "n": 11,
+      "W": 3,
+      "L": 8,
+      "wr_pct": 27.3,
+      "PF": 0.775,
+      "net_$": -25.5,
+      "$/contract": -2.32
+    },
+    "custom_1h_crt_midpoint_v1": {
+      "n": 8,
+      "W": 2,
+      "L": 6,
+      "wr_pct": 25.0,
+      "PF": 0.158,
+      "net_$": -576.0,
+      "$/contract": -72.0
+    },
+    "silver_bullet_pdh_pdl_retest_5m_nogate": {
+      "n": 8,
+      "W": 6,
+      "L": 2,
+      "wr_pct": 75.0,
+      "PF": 4.955,
+      "net_$": 261.0,
+      "$/contract": 32.62
+    },
+    "custom_5m_FIB": {
+      "n": 6,
+      "W": 3,
+      "L": 3,
+      "wr_pct": 50.0,
+      "PF": 1.769,
+      "net_$": 100.0,
+      "$/contract": 16.67
+    },
+    "silver_bullet_pdh_pdl_retest_15m": {
+      "n": 5,
+      "W": 2,
+      "L": 3,
+      "wr_pct": 40.0,
+      "PF": 1.098,
+      "net_$": 22.0,
+      "$/contract": 4.4
+    },
+    "sweep_first_ob_midpoint_5m": {
+      "n": 3,
+      "W": 2,
+      "L": 1,
+      "wr_pct": 66.7,
+      "PF": 4.087,
+      "net_$": 71.0,
+      "$/contract": 23.67
+    },
+    "silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset": {
+      "n": 3,
+      "W": 1,
+      "L": 2,
+      "wr_pct": 33.3,
+      "PF": 1.0,
+      "net_$": 0.0,
+      "$/contract": 0.0
+    },
+    "judas_continuation": {
+      "n": 3,
+      "W": 0,
+      "L": 3,
+      "wr_pct": 0.0,
+      "PF": 0.0,
+      "net_$": -57.5,
+      "$/contract": -19.17
+    },
+    "zoo": {
+      "n": 3,
+      "W": 0,
+      "L": 3,
+      "wr_pct": 0.0,
+      "PF": 0.0,
+      "net_$": -439.18,
+      "$/contract": -146.39
+    },
+    "ob_midpoint_reversion_5m": {
+      "n": 2,
+      "W": 1,
+      "L": 1,
+      "wr_pct": 50.0,
+      "PF": 3.643,
+      "net_$": 55.5,
+      "$/contract": 27.75
+    },
+    "custom_5m_london": {
+      "n": 1,
+      "W": 0,
+      "L": 1,
+      "wr_pct": 0.0,
+      "PF": 0.0,
+      "net_$": -31.25,
+      "$/contract": -31.25
+    },
+    "ict_judas_swing_asian_range_5m": {
+      "n": 1,
+      "W": 0,
+      "L": 1,
+      "wr_pct": 0.0,
+      "PF": 0.0,
+      "net_$": -29.0,
+      "$/contract": -29.0
+    },
+    "sfp_liquidity_grab_15m": {
+      "n": 1,
+      "W": 0,
+      "L": 1,
+      "wr_pct": 0.0,
+      "PF": 0.0,
+      "net_$": -23.0,
+      "$/contract": -23.0
+    },
+    "custom_5m_bsl_run_judas": {
+      "n": 1,
+      "W": 0,
+      "L": 1,
+      "wr_pct": 0.0,
+      "PF": 0.0,
+      "net_$": -25.0,
+      "$/contract": -25.0
+    },
+    "ob_midpoint_reversion_15m": {
+      "n": 1,
+      "W": 0,
+      "L": 1,
+      "wr_pct": 0.0,
+      "PF": 0.0,
+      "net_$": -25.0,
+      "$/contract": -25.0
+    },
+    "bsl_run_judas_eq_cluster_5m": {
+      "n": 1,
+      "W": 0,
+      "L": 1,
+      "wr_pct": 0.0,
+      "PF": 0.0,
+      "net_$": -22.0,
+      "$/contract": -22.0
+    },
+    "ict_mitigation_block": {
+      "n": 1,
+      "W": 1,
+      "L": 0,
+      "wr_pct": 100.0,
+      "PF": null,
+      "net_$": 18.75,
+      "$/contract": 18.75
+    },
+    "silver_bullet_pdh_pdl_retest_5m_nogate_4R": {
+      "n": 1,
+      "W": 1,
+      "L": 0,
+      "wr_pct": 100.0,
+      "PF": null,
+      "net_$": 25.0,
+      "$/contract": 25.0
+    },
+    "judas_15m": {
+      "n": 1,
+      "W": 0,
+      "L": 1,
+      "wr_pct": 0.0,
+      "PF": 0.0,
+      "net_$": -279.5,
+      "$/contract": -279.5
+    }
+  },
+  "C_by_engine": {
+    "custom": {
+      "n": 634,
+      "W": 221,
+      "L": 413,
+      "wr_pct": 34.9,
+      "PF": 0.819,
+      "net_$": -3589.44,
+      "$/contract": -5.66
+    },
+    "buffet_zoo": {
+      "n": 77,
+      "W": 37,
+      "L": 40,
+      "wr_pct": 48.1,
+      "PF": 1.091,
+      "net_$": 628.22,
+      "$/contract": 8.16
+    },
+    "judas_native": {
+      "n": 34,
+      "W": 10,
+      "L": 24,
+      "wr_pct": 29.4,
+      "PF": 0.317,
+      "net_$": -4592.75,
+      "$/contract": -135.08
+    }
+  },
+  "C_by_session": {
+    "off-hours(ET 20-23)": {
+      "n": 233,
+      "W": 77,
+      "L": 156,
+      "wr_pct": 33.0,
+      "PF": 0.795,
+      "net_$": -1338.79,
+      "$/contract": -5.75
+    },
+    "overnight(ET 00-03)": {
+      "n": 152,
+      "W": 53,
+      "L": 99,
+      "wr_pct": 34.9,
+      "PF": 0.553,
+      "net_$": -3270.59,
+      "$/contract": -21.52
+    },
+    "pre-London(ET 04-08)": {
+      "n": 147,
+      "W": 56,
+      "L": 91,
+      "wr_pct": 38.1,
+      "PF": 1.03,
+      "net_$": 199.32,
+      "$/contract": 1.36
+    },
+    "London(ET 09-11)": {
+      "n": 91,
+      "W": 33,
+      "L": 58,
+      "wr_pct": 36.3,
+      "PF": 0.776,
+      "net_$": -1166.25,
+      "$/contract": -12.82
+    },
+    "NY-AM(ET 12-15)": {
+      "n": 68,
+      "W": 28,
+      "L": 40,
+      "wr_pct": 41.2,
+      "PF": 0.758,
+      "net_$": -1344.89,
+      "$/contract": -19.78
+    },
+    "NY-PM(ET 16-19)": {
+      "n": 54,
+      "W": 21,
+      "L": 33,
+      "wr_pct": 38.9,
+      "PF": 0.707,
+      "net_$": -632.77,
+      "$/contract": -11.72
+    }
+  },
+  "C_session_order": [
+    "overnight(ET 00-03)",
+    "pre-London(ET 04-08)",
+    "London(ET 09-11)",
+    "NY-AM(ET 12-15)",
+    "NY-PM(ET 16-19)",
+    "off-hours(ET 20-23)",
+    "unknown"
+  ],
+  "C_engine_session_adv_ticks": {
+    "buffet_zoo|London(ET 09-11)": {
+      "n": 15,
+      "mean_adv_ticks": -26.87,
+      "p50": 0.0,
+      "p90": 36.0
+    },
+    "buffet_zoo|NY-AM(ET 12-15)": {
+      "n": 16,
+      "mean_adv_ticks": 1.0,
+      "p50": 6.0,
+      "p90": 23.5
+    },
+    "buffet_zoo|NY-PM(ET 16-19)": {
+      "n": 11,
+      "mean_adv_ticks": -6.55,
+      "p50": 1.0,
+      "p90": 6.0
+    },
+    "buffet_zoo|off-hours(ET 20-23)": {
+      "n": 10,
+      "mean_adv_ticks": -3.6,
+      "p50": 0.0,
+      "p90": 11.3
+    },
+    "buffet_zoo|overnight(ET 00-03)": {
+      "n": 12,
+      "mean_adv_ticks": 3.75,
+      "p50": 0.0,
+      "p90": 11.6
+    },
+    "buffet_zoo|pre-London(ET 04-08)": {
+      "n": 13,
+      "mean_adv_ticks": 1.31,
+      "p50": 4.0,
+      "p90": 14.0
+    },
+    "custom|London(ET 09-11)": {
+      "n": 73,
+      "mean_adv_ticks": 276.48,
+      "p50": 112.0,
+      "p90": 644.6
+    },
+    "custom|NY-AM(ET 12-15)": {
+      "n": 45,
+      "mean_adv_ticks": 63.54,
+      "p50": 10.5,
+      "p90": 136.5
+    },
+    "custom|NY-PM(ET 16-19)": {
+      "n": 43,
+      "mean_adv_ticks": 79.72,
+      "p50": 13.0,
+      "p90": 253.4
+    },
+    "custom|off-hours(ET 20-23)": {
+      "n": 223,
+      "mean_adv_ticks": 57.19,
+      "p50": 7.5,
+      "p90": 133.8
+    },
+    "custom|overnight(ET 00-03)": {
+      "n": 135,
+      "mean_adv_ticks": 48.12,
+      "p50": 11.0,
+      "p90": 138.5
+    },
+    "custom|pre-London(ET 04-08)": {
+      "n": 115,
+      "mean_adv_ticks": 42.39,
+      "p50": 12.0,
+      "p90": 80.6
+    },
+    "judas_native|London(ET 09-11)": {
+      "n": 3,
+      "mean_adv_ticks": 17.0,
+      "p50": -8.0,
+      "p90": 56.0
+    },
+    "judas_native|NY-AM(ET 12-15)": {
+      "n": 7,
+      "mean_adv_ticks": 56.71,
+      "p50": 10.0,
+      "p90": 146.6
+    },
+    "judas_native|overnight(ET 00-03)": {
+      "n": 5,
+      "mean_adv_ticks": -7.2,
+      "p50": -7.0,
+      "p90": -2.8
+    },
+    "judas_native|pre-London(ET 04-08)": {
+      "n": 19,
+      "mean_adv_ticks": 18.0,
+      "p50": 0.0,
+      "p90": 79.8
+    }
+  },
+  "C_latency_rows": 745,
+  "D_budget": {
+    "MGC": {
+      "tick_size": 0.1,
+      "tick_value": 1.0,
+      "n": 306,
+      "p50_div_ticks": 21.5,
+      "p90_div_ticks": 234.5,
+      "p99_div_ticks": 925.3,
+      "max_div_ticks": 1125.0,
+      "p50_div_R": 0.5649,
+      "p90_div_R": 3.9655,
+      "p99_div_R": 14.3525,
+      "current_v1_slippage_ticks": 1.0
+    },
+    "MNQ": {
+      "tick_size": 0.25,
+      "tick_value": 0.5,
+      "n": 212,
+      "p50_div_ticks": 24.0,
+      "p90_div_ticks": 323.4,
+      "p99_div_ticks": 1386.93,
+      "max_div_ticks": 2569.0,
+      "p50_div_R": 0.207,
+      "p90_div_R": 3.2643,
+      "p99_div_R": 12.2366,
+      "current_v1_slippage_ticks": 0.5
+    },
+    "MCL": {
+      "tick_size": 0.01,
+      "tick_value": 1.0,
+      "n": 115,
+      "p50_div_ticks": 7.0,
+      "p90_div_ticks": 44.2667,
+      "p99_div_ticks": 124.8,
+      "max_div_ticks": 591.0,
+      "p50_div_R": 0.4687,
+      "p90_div_R": 3.1125,
+      "p99_div_R": 7.86,
+      "current_v1_slippage_ticks": 1.0
+    },
+    "ZF": {
+      "tick_size": 0.0078125,
+      "tick_value": 7.8125,
+      "n": 70,
+      "p50_div_ticks": 1.1,
+      "p90_div_ticks": 4.55,
+      "p99_div_ticks": 11.74,
+      "max_div_ticks": 14.5,
+      "p50_div_R": 0.747,
+      "p90_div_R": 2.3077,
+      "p99_div_R": 2.3077,
+      "current_v1_slippage_ticks": 1.0
+    },
+    "6J": {
+      "tick_size": 5e-07,
+      "tick_value": 6.25,
+      "n": 42,
+      "p50_div_ticks": 1.75,
+      "p90_div_ticks": 9.33,
+      "p99_div_ticks": 40.035,
+      "max_div_ticks": 55.0,
+      "p50_div_R": 0.3841,
+      "p90_div_R": 2.1383,
+      "p99_div_R": 7.007,
+      "current_v1_slippage_ticks": 1.0
+    }
+  },
+  "B_banned_control": {
+    "DX": {
+      "n": 3,
+      "W": 0,
+      "L": 3,
+      "wr_pct": 0.0,
+      "PF": 0.0,
+      "net_$": -266.07,
+      "$/contract": -88.69
+    },
+    "MET": {
+      "n": 81,
+      "W": 34,
+      "L": 47,
+      "wr_pct": 42.0,
+      "PF": 0.371,
+      "net_$": -39.05,
+      "$/contract": -0.48
+    },
+    "MBT": {
+      "n": 37,
+      "W": 7,
+      "L": 30,
+      "wr_pct": 18.9,
+      "PF": 0.137,
+      "net_$": -1038.9,
+      "$/contract": -28.08
+    }
+  }
+}

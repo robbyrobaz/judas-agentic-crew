@@ -182,8 +182,17 @@ async def backfill_symbol(
     port: int = 4002,
     client_id: int = 4329,
     chunk_days: int | None = None,
+    contract_month: str | None = None,
 ) -> dict[str, Any]:
     """Paginate backwards from now, building the deep archive for one symbol.
+
+    ``contract_month`` (YYYYMM) pins the contract instead of using the
+    volume-based roll.  The volume probe is not deterministic across processes
+    and can select a thin skip-month (ZF picked ZFM7 = 2027-06, which has NO
+    5m history -> HMDS "returned no data"), while the live book trades the
+    front contract (ZFZ6 = 2026-12 per active_contracts.json).  The archive
+    must be on the same instrument the strategies fire on, so callers pass the
+    live contract month explicitly.
 
     Returns a summary dict (total_bars, span_days, first, last, chunks...).
     """
@@ -210,6 +219,16 @@ async def backfill_symbol(
                 ib, bar_cache._CONTRACT_SPECS[symbol.upper()], symbol.upper())
             if err or contract is None:
                 return {"error": f"contract_resolve_failed: {err}"}
+            if contract_month:
+                # Pin the contract the LIVE book trades.
+                spec = bar_cache._CONTRACT_SPECS[symbol.upper()]
+                forced = ib_mod.Future(symbol=spec["ibkr_symbol"],
+                                       exchange=spec["exchange"],
+                                       lastTradeDateOrContractMonth=contract_month)
+                q = await ib.qualifyContractsAsync(forced)
+                if not q or q[0] is None:
+                    return {"error": f"contract_override_failed:{contract_month}"}
+                contract, month = q[0], contract_month
 
             seen: dict[str, dict] = {}
             # Seed from whatever is already archived so a resumed backfill

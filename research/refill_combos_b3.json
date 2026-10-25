@@ -1,0 +1,14 @@
+[
+ [{"file": "research/asian_sweep_continuation_fvg_15m_v1.py", "name": "ASWEEP15"}, "ZF", "15m", {"atr_period": 14, "min_sweep_atr": 0.15, "disp_k": 0.9, "body_ratio_min": 0.50, "confirm_bars": 4, "sweep_lookback": 24, "fvg_expiry": 8, "rr": 2.0, "stop_buf_atr": 0.15, "asia_start_utc": 0, "asia_end_utc": 7, "trade_start_utc": 7, "trade_end_utc": 20, "min_asian_range_atr": 1.0}, 120],
+ [{"file": "research/amd_midpoint_disp_continuation_15m_v1.py", "name": "AMD15"}, "ZF", "15m", {"atr_period": 14, "disp_k": 1.0, "body_ratio_min": 0.55, "min_amp_atr": 0.40, "rr": 2.0, "stop_buf_atr": 0.15, "fvg_expiry": 8, "disp_lookback": 16, "asia_start_utc": 0, "asia_end_utc": 7, "trade_start_utc": 7, "trade_end_utc": 20, "min_asian_range_atr": 1.0}, 120],
+ [{"csid": 332}, "ZF", "15m", {"atr_period": 14, "displacement_k": 1.0, "body_ratio_min": 0.40, "ob_age_max": 30, "rr": 2.0, "stop_buf_atr": 0.20}, 120],
+ [{"csid": 357}, "ZF", "5m", {"atr_period": 14, "disp_k": 1.0, "body_ratio_min": 0.45, "target_r": 2.0, "stop_buf_ticks": 6, "atr_period2": 14}, 120],
+ [{"csid": 345}, "ZF", "5m", {"atr_period": 14, "body_ratio_min": 0.65, "displacement_k": 1.2, "ob_age_max": 16, "rr": 1.5, "stop_buf_atr": 0.25}, 120],
+ [{"csid": 354}, "ZF", "15m", {"target_r": 2.0, "tick": 0.0078125, "stop_buf_ticks": 6, "break_threshold_ticks": 4, "max_retest_bars": 24, "rolling_pdhl_bars": 12}, 120],
+ [{"csid": 346}, "MNQ", "5m", {"atr_period": 14, "body_ratio_min": 0.60, "disp_atr_mult": 1.0, "pullback_pct": 0.50, "target_r": 1.5, "stop_buffer_atr": 0.10, "eq_min_touches": 2, "eq_tol_atr": 0.35, "eq_window": 30, "pivot_len": 2}, 120],
+ [{"csid": 203}, "6J", "15m", {"atr_period": 14, "disp_atr_mult": 1.5, "body_ratio_min": 0.70, "pullback_pct": 0.40, "target_r": 2.0, "stop_buffer_atr": 0.15}, 120],
+ [{"csid": 203}, "6J", "15m", {"atr_period": 14, "disp_atr_mult": 1.2, "body_ratio_min": 0.65, "pullback_pct": 0.50, "target_r": 2.0, "stop_buffer_atr": 0.20}, 120],
+ [{"file": "research/amd_midpoint_disp_continuation_15m_v1.py", "name": "AMD5"}, "MCL", "5m", {"atr_period": 14, "disp_k": 1.0, "body_ratio_min": 0.55, "min_amp_atr": 0.40, "rr": 2.0, "stop_buf_atr": 0.15, "fvg_expiry": 8, "disp_lookback": 16, "asia_start_utc": 0, "asia_end_utc": 7, "trade_start_utc": 7, "trade_end_utc": 20, "min_asian_range_atr": 1.0}, 120],
+ [{"file": "research/asian_sweep_continuation_fvg_15m_v1.py", "name": "ASWEEP5"}, "MCL", "5m", {"atr_period": 14, "min_sweep_atr": 0.15, "disp_k": 0.9, "body_ratio_min": 0.50, "confirm_bars": 4, "sweep_lookback": 24, "fvg_expiry": 8, "rr": 2.0, "stop_buf_atr": 0.15, "asia_start_utc": 0, "asia_end_utc": 7, "trade_start_utc": 7, "trade_end_utc": 20, "min_asian_range_atr": 1.0}, 120],
+ [{"csid": 346}, "6J", "5m", {"atr_period": 14, "body_ratio_min": 0.60, "disp_atr_mult": 1.0, "pullback_pct": 0.50, "target_r": 1.5, "stop_buffer_atr": 0.10, "eq_min_touches": 2, "eq_tol_atr": 0.35, "eq_window": 30, "pivot_len": 2}, 120]
+]

@@ -18,6 +18,13 @@ The ONLY difference between variants is the fill:
           preserved; exits still filled AT stop/target (no gap logic).
   FAIR    entry = close[decision bar]; same distances; gap-aware exits
           (a stop the bar gapped through fills at the open).
+  LIVE    entry = open[bar AFTER the decision bar]; same distances; gap-aware
+          exits.  This is the production semantics: the live path submits a
+          MARKET order at decision time and the fill lands on the next bar's
+          open (finding #9134: "the live path is a MARKET order with
+          fill-anchored brackets").  It exists so the verdict does not
+          depend on the choice of entry model -- if BASE/FAIR/LIVE all say the
+          same thing, the conclusion is about the strategy, not the model.
 
 READ-ONLY w.r.t. registry/account.
 """
@@ -132,7 +139,7 @@ def run_variant(code, bars, params, symbol, dpp, mode, budget_s=UNIT_BUDGET_S,
                 stop_hit = h >= open_t["stop"]
                 tgt_hit = l <= open_t["target"]
             if stop_hit or tgt_hit:
-                if mode == "fair":
+                if mode in ("fair", "live"):
                     if d == "long":
                         if stop_hit and o <= open_t["stop"]:
                             px, reason = o, "stop_gap"
@@ -216,6 +223,12 @@ def run_variant(code, bars, params, symbol, dpp, mode, budget_s=UNIT_BUDGET_S,
             stale_bars.append((i - j) if j is not None else None)
         if mode == "base":
             entry = s_entry
+        elif mode == "live":
+            # Decision is taken on bar i; a live market order fills on bar
+            # i+1's open.  If there is no next bar there is no fill.
+            if i + 1 >= n:
+                continue
+            entry = O[i + 1]
         else:
             entry = C[i]
         sign = 1.0 if d == "long" else -1.0

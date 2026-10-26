@@ -185,6 +185,17 @@ def run_books(code: str, bars, params: dict, symbol: str, qty: int = 1,
         td = abs(s_target - s_entry)
         if sd <= 0 or td <= 0:
             continue
+        # GEOMETRY GUARD: the stop must sit on the losing side of the entry.
+        # Without this, a strategy whose stop is ABOVE the entry for a long
+        # (or BELOW it for a short) is "hit" on the very next bar and the
+        # BASE book books it as a +1R WIN (px - entry > 0).  That is an
+        # accounting artefact, not an edge: it inflated fvg_touch to a fake
+        # base PF of 3.64 (LIVE 1.09).  The house engine books the same trade
+        # as a loss, so the two books disagree -- the honest book must skip
+        # it outright, and so must any strategy we promote.
+        sgn = 1.0 if d == "long" else -1.0
+        if sgn * (s_stop - s_entry) <= 0 or sgn * (s_target - s_entry) <= 0:
+            continue
         n_signals += 1
         rng = max(H[i] - L[i], 1e-12)
         outside += 0 if (L[i] - 1e-9 <= s_entry <= H[i] + 1e-9) else 1

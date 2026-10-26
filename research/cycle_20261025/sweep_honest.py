@@ -24,7 +24,9 @@ CODE = (ROOT / "research" / "cycle_20261025" / "strategies" /
         "market_entry_ict_v1.py").read_text()
 
 PAIRS = [("MGC", "15m"), ("MNQ", "15m"), ("ZF", "15m"),
-         ("MGC", "5m"), ("MNQ", "5m")]
+         ("6J", "15m"), ("MCL", "15m"),
+         ("MGC", "5m"), ("MNQ", "5m"), ("ZF", "5m"),
+         ("6J", "5m"), ("MCL", "5m")]
 
 GRID = []
 

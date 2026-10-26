@@ -185,7 +185,11 @@ def run_books(code: str, bars, params: dict, symbol: str, qty: int = 1,
         td = abs(s_target - s_entry)
         if sd <= 0 or td <= 0:
             continue
-        # GEOMETRY GUARD: the stop must sit on the losing side of the entry.
+        # GEOMETRY GUARD: the stop must sit on the losing side of the entry
+        # and the target on the winning side.
+        #   long  (sgn=+1): stop < entry, target > entry
+        #   short (sgn=-1): stop > entry, target < entry
+        # i.e. sgn*(stop-entry) < 0 and sgn*(target-entry) > 0.
         # Without this, a strategy whose stop is ABOVE the entry for a long
         # (or BELOW it for a short) is "hit" on the very next bar and the
         # BASE book books it as a +1R WIN (px - entry > 0).  That is an
@@ -193,8 +197,13 @@ def run_books(code: str, bars, params: dict, symbol: str, qty: int = 1,
         # base PF of 3.64 (LIVE 1.09).  The house engine books the same trade
         # as a loss, so the two books disagree -- the honest book must skip
         # it outright, and so must any strategy we promote.
+        #
+        # 2026-10-26 FIX: the comparison was INVERTED -- it skipped every
+        # correctly-oriented trade (sgn*(stop-entry) < 0 is the GOOD case but
+        # the old test `<= 0` fired on it) and kept only the broken-geometry
+        # ones it was written to remove.  See finding 9145.
         sgn = 1.0 if d == "long" else -1.0
-        if sgn * (s_stop - s_entry) <= 0 or sgn * (s_target - s_entry) <= 0:
+        if sgn * (s_stop - s_entry) >= 0 or sgn * (s_target - s_entry) <= 0:
             continue
         n_signals += 1
         rng = max(H[i] - L[i], 1e-12)

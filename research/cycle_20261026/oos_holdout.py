@@ -43,7 +43,9 @@ from honest_screen import load_bars, metrics, run_books  # noqa: E402
 
 CODE_PATH = ROOT / "research" / "cycle_20261025" / "strategies" / \
     "market_entry_ict_v1.py"
-CODE = CODE_PATH.read_text()
+# Optional 5th CLI arg: path to an alternative strategy file (relative to ROOT).
+CODE_FILE = Path(sys.argv[5]) if len(sys.argv) > 5 else CODE_PATH
+CODE = CODE_FILE.read_text()
 
 
 def _segment(bars, split_ts, which):

@@ -1,0 +1,4 @@
+[
+ {"lookback": 20, "min_sweep_atr": 0.60, "disp_k": 1.0, "rr": 2.0, "confirm_bars": 6,
+  "body_ratio_min": 0.55, "stop_buf_atr": 0.15, "atr_period": 14}
+]

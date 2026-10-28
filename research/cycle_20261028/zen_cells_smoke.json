@@ -1,0 +1,6 @@
+[
+ {"liq_lb": 20, "pierce_atr": 0.0, "mss_win": 8, "mss_lb": 10, "fvg_min_atr": 0.10, "fvg_expiry": 12, "require_fvg_tap": 1, "max_r": 2.0, "min_r": 0.8, "buf_atr": 0.15, "atr_period": 14},
+ {"liq_lb": 20, "pierce_atr": 0.0, "mss_win": 8, "mss_lb": 10, "fvg_min_atr": 0.10, "fvg_expiry": 12, "require_fvg_tap": 0, "max_r": 2.0, "min_r": 0.8, "buf_atr": 0.15, "atr_period": 14},
+ {"liq_lb": 12, "pierce_atr": 0.0, "mss_win": 6, "mss_lb": 8, "fvg_min_atr": 0.10, "fvg_expiry": 12, "require_fvg_tap": 0, "max_r": 2.0, "min_r": 0.8, "buf_atr": 0.15, "atr_period": 14},
+ {"liq_lb": 30, "pierce_atr": 0.0, "mss_win": 10, "mss_lb": 12, "fvg_min_atr": 0.05, "fvg_expiry": 20, "require_fvg_tap": 0, "max_r": 3.0, "min_r": 0.6, "buf_atr": 0.15, "atr_period": 14}
+]

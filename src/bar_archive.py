@@ -122,10 +122,34 @@ def _empty_df() -> pd.DataFrame:
 
 
 def _write_archive(symbol: str, timeframe: str, df: pd.DataFrame) -> Path:
+    """Write the archive ATOMICALLY.
+
+    The archive is written while other processes (the research screens, the
+    live scanner's research path) may be READING it.  A plain
+    ``df.to_parquet(p)`` truncates the target first, so a concurrent reader can
+    observe a half-written file and die with a parquet decode error -- or, worse,
+    read a silently truncated series.  Write to a temp file in the SAME
+    directory and ``os.replace`` it into place: POSIX rename is atomic, so a
+    reader sees either the old file or the new one, never a partial one.
+    """
+    import os
+    import tempfile
+
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     p = archive_path(symbol, timeframe)
     df = df.sort_values("ts").drop_duplicates(subset=["ts"], keep="last").reset_index(drop=True)
-    df.to_parquet(p, index=False)
+    fd, tmp_name = tempfile.mkstemp(prefix=p.stem + ".", suffix=".tmp", dir=str(p.parent))
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        df.to_parquet(tmp, index=False)
+        os.replace(tmp, p)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:  # pragma: no cover - best effort cleanup
+                pass
     return p
 
 

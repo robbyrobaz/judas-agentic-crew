@@ -313,6 +313,56 @@ def _read_archive(symbol: str, tf: str):
     return bar_archive.read_archive(symbol, tf)
 
 
+# IBKR's TRADES feed emits a bar for every bucket in the requested window,
+# including buckets in which NOTHING traded: OHLC all equal to the previous
+# close and volume == 0.  Those are NOT bars -- they are filler, and the deep
+# archive is mostly filler in its OLD region.
+#
+# Measured on the live archive (research/cycle_20261029b/archive_integrity_probe.py):
+#     MGC_5m   filler 81% of Nov-2025  ->  0% of Sep/Oct-2026
+#     ZF_5m    filler 98% of May-2026   ->  0% of Oct-2026
+#     MCL_15m  filler 95% of Nov-2025   ->  0% of Oct-2026
+# The LIVE cache (last 10-20 D) is 0% filler, because that is the front
+# contract's dense recent tape.
+#
+# Why this matters for HONESTY: a filler bar has zero true range, so ATR
+# computed over a filler-laden series is DEFLATED (measured: MCL_15m -42%,
+# 6J_15m -73%, ZF_5m -39%).  A backtest that thresholds displacement in ATR
+# units therefore measures a SMALLER bar than the market produced, and the
+# live scanner -- which sees only the live cache -- measures the TRUE bar.
+# The strategy is thus tuned against an ATR it will never see live.
+#
+# The fix: drop filler from the ARCHIVE contribution before the union.  The
+# live cache is left untouched so live semantics are identical.
+#
+# NOTE the distinction: a bar with range == 0 but volume > 0 is a REAL
+# single-print trade (one print for the whole bucket -- thin markets do this),
+# and is KEPT.  Only range == 0 AND volume == 0 is filler.
+_FILLER_STATS: dict[str, dict] = {}
+
+
+def _drop_filler_bars(df):
+    """Remove IBKR no-trade filler bars (volume==0 AND high<=low).
+
+    Returns ``(cleaned_df, n_dropped)``.  Never raises: a frame without the
+    expected columns is returned untouched.
+    """
+    if df is None or len(df) == 0:
+        return df, 0
+    try:
+        if "volume" not in df.columns or "high" not in df.columns or "low" not in df.columns:
+            return df, 0
+        vol = df["volume"]
+        rng = df["high"] - df["low"]
+        filler = (vol <= 0) & (rng <= 0)
+        n_filler = int(filler.sum())
+        if n_filler == 0:
+            return df, 0
+        return df.loc[~filler].reset_index(drop=True), n_filler
+    except Exception:  # noqa: BLE001 -- never break a backtest on hygiene
+        return df, 0
+
+
 def _merge_deep_archive(symbol: str, tf: str, live_df):
     """Union the deep paginated archive with the live cache (research path only).
 
@@ -338,6 +388,15 @@ def _merge_deep_archive(symbol: str, tf: str, live_df):
         return live_df
     if arch is None or len(arch) == 0:
         return live_df
+    # Drop IBKR no-trade filler from the ARCHIVE contribution only.  The live
+    # cache is left exactly as IBKR returned it so the live scanner's view and
+    # the research view agree on the recent window.
+    arch, n_filler = _drop_filler_bars(arch)
+    _FILLER_STATS[f"{symbol}:{tf}"] = {
+        "archive_filler_dropped_n": int(n_filler),
+        "archive_filler_dropped_pct": (round(100.0 * n_filler / max(len(arch) + n_filler, 1), 1)
+                                       if (len(arch) + n_filler) else 0.0),
+    }
     if live_df is None or len(live_df) == 0:
         return arch.reset_index(drop=True)
     try:
@@ -585,7 +644,21 @@ def run_custom_backtest_on_bars(
         "cost_model": COST_MODEL_VERSION,
         "error": error,
         **_bar_span_fields(bars),
+        **_filler_fields(sym),
     }
+
+
+def _filler_fields(sym: str) -> dict:
+    """Stamp how much IBKR no-trade filler was removed from the replay.
+
+    A reader comparing this envelope against a pre-fix one can see that the
+    two were measured on DIFFERENT bar series.
+    """
+    out: dict = {}
+    for key, val in _FILLER_STATS.items():
+        if key.split(":", 1)[0] == sym:
+            out.update(val)
+    return out
 
 
 def _bar_span_fields(bars) -> dict:
@@ -597,8 +670,14 @@ def _bar_span_fields(bars) -> dict:
     9105 / 9109 / 9108. PF/WR/E[R] are computed correctly either way; what the
     old stamp hid was the *width* of the fit, so these fields are stamped on
     every envelope and a reader can tell a 13-day fit from a 120-day one.
+
+    `max_bar_gap_min` is new: after IBKR filler bars are dropped the series is
+    TIME-COMPRESSED (quiet buckets vanish), so a bar-count lookback covers
+    more wall-clock time than it used to.  The widest remaining gap is stamped
+    so a reader can see how compressed the replay was.
     """
-    out: dict = {"n_bars": 0, "bars_span_days": 0, "first_bar": None, "last_bar": None}
+    out: dict = {"n_bars": 0, "bars_span_days": 0, "first_bar": None, "last_bar": None,
+                 "max_bar_gap_min": 0.0}
     try:
         if bars is None or len(bars) == 0:
             return out
@@ -615,6 +694,12 @@ def _bar_span_fields(bars) -> dict:
             out["bars_span_days"] = int(span.total_seconds() // 86400)
         except AttributeError:
             out["bars_span_days"] = int(span // 86400)
+        try:
+            d = ts.diff().dt.total_seconds().dropna()
+            if len(d):
+                out["max_bar_gap_min"] = float(d.max() / 60.0)
+        except Exception:  # noqa: BLE001
+            pass
     except Exception as exc:  # noqa: BLE001
         log.debug("bar span unavailable: %s", exc)
     return out

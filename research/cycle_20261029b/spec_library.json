@@ -1,0 +1,42 @@
+[
+ {"csid": 270, "label": "sb_pdh_pdl_5m_nogate_v1", "symbol": "ZF", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid270.py"},
+ {"csid": 403, "label": "sb_pdh_pdl_5m_nogate_v2", "symbol": "ZF", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid403.py"},
+ {"csid": 409, "label": "sb_pdh_pdl_5m_nogate_roll36", "symbol": "ZF", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid409.py"},
+ {"csid": 237, "label": "turtle_soup_15m_ny_only", "symbol": "ZF", "tf": "15m",
+  "code_file": "research/cycle_20261029b/codes/csid237.py"},
+
+ {"csid": 348, "label": "sb_pdh_pdl_5m_nogate_roll24", "symbol": "MGC", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid348.py"},
+ {"csid": 357, "label": "ict_inside_bar_disp_breakout_5m", "symbol": "MGC", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid357.py"},
+ {"csid": 229, "label": "sb_pdh_pdl_1h", "symbol": "MGC", "tf": "1h",
+  "code_file": "research/cycle_20261029b/codes/csid229.py"},
+
+ {"csid": 401, "label": "sb_pdh_pdl_5m_nogate_v2", "symbol": "MNQ", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid401.py"},
+ {"csid": 253, "label": "ict_mitigation_block_5m", "symbol": "MNQ", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid253.py"},
+ {"csid": 295, "label": "ifvg_mid_htf_bias_ny_only_5m", "symbol": "MNQ", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid295.py"},
+ {"csid": 332, "label": "unicorn_fvg_inside_breaker_15m", "symbol": "MNQ", "tf": "15m",
+  "code_file": "research/cycle_20261029b/codes/csid332.py"},
+
+ {"csid": 368, "label": "sb_pdh_pdl_5m_nogate_roll24", "symbol": "MCL", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid368.py"},
+ {"csid": 400, "label": "sb_pdh_pdl_5m_nogate_v2", "symbol": "MCL", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid400.py"},
+ {"csid": 354, "label": "sb_pdh_pdl_15m_50pct", "symbol": "MCL", "tf": "15m",
+  "code_file": "research/cycle_20261029b/codes/csid354.py"},
+
+ {"csid": 333, "label": "ict_mitigation_block_15m", "symbol": "6J", "tf": "15m",
+  "code_file": "research/cycle_20261029b/codes/csid333.py"},
+ {"csid": 203, "label": "atr_disp_continuation_15m_loose", "symbol": "6J", "tf": "15m",
+  "code_file": "research/cycle_20261029b/codes/csid203.py",
+  "params": {"atr_period": 14, "disp_atr_mult": 1.2, "body_ratio_min": 0.65,
+             "pullback_pct": 0.4, "target_r": 1.5, "stop_buffer_atr": 0.15}},
+ {"csid": 262, "label": "atr_disp_continuation_5m_disp13", "symbol": "6J", "tf": "5m",
+  "code_file": "research/cycle_20261029b/codes/csid262.py"}
+]

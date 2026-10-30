@@ -1,0 +1,12 @@
+
+================ sweep_cont_hygiene_5m MGC_5m (1 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+  IS n=37 PF=2.237 $3337 | OOS n=33 PF=1.254 $602 WR=33.3% | ALL n=70 PF=1.778 WR=38.6% DD=$1231
+Traceback (most recent call last):
+  File "/home/rob/judas-agentic-crew/research/cycle_20261029c/analyse.py", line 62, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/rob/judas-agentic-crew/research/cycle_20261029c/analyse.py", line 50, in main
+    print(f"      {tag(r['cell'])}")
+                       ~^^^^^^^^
+KeyError: 'cell'

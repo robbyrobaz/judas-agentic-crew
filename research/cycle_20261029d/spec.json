@@ -1,0 +1,242 @@
+[
+  {
+    "csid": 441,
+    "label": "sweep_cont MGC15m",
+    "symbol": "MGC",
+    "tf": "15m",
+    "code_file": "research/cycle_20261029c/codes/csid441.py",
+    "split_mode": "per_segment",
+    "cells_kind": "sweep"
+  },
+  {
+    "csid": 441,
+    "label": "sweep_cont MCL5m",
+    "symbol": "MCL",
+    "tf": "5m",
+    "code_file": "research/cycle_20261029c/codes/csid441.py",
+    "split_mode": "per_segment",
+    "cells_kind": "sweep"
+  },
+  {
+    "csid": 441,
+    "label": "sweep_cont MCL15m",
+    "symbol": "MCL",
+    "tf": "15m",
+    "code_file": "research/cycle_20261029c/codes/csid441.py",
+    "split_mode": "global_time",
+    "cells_kind": "sweep"
+  },
+  {
+    "csid": 441,
+    "label": "sweep_cont MCL15m",
+    "symbol": "MCL",
+    "tf": "15m",
+    "code_file": "research/cycle_20261029c/codes/csid441.py",
+    "split_mode": "per_segment",
+    "cells_kind": "sweep"
+  },
+  {
+    "csid": 441,
+    "label": "sweep_cont MGC5m",
+    "symbol": "MGC",
+    "tf": "5m",
+    "code_file": "research/cycle_20261029c/codes/csid441.py",
+    "split_mode": "global_time",
+    "cells_kind": "sweep"
+  },
+  {
+    "csid": 441,
+    "label": "sweep_cont ZF15m",
+    "symbol": "ZF",
+    "tf": "15m",
+    "code_file": "research/cycle_20261029c/codes/csid441.py",
+    "split_mode": "global_time",
+    "cells_kind": "sweep"
+  },
+  {
+    "csid": 0,
+    "label": "filters MGC15m",
+    "symbol": "MGC",
+    "tf": "15m",
+    "code_file": "research/cycle_20261028d/strategies/sweep_pool_filters_v2.py",
+    "split_mode": "global_time",
+    "cells_kind": "filters"
+  },
+  {
+    "csid": 0,
+    "label": "filters MGC15m",
+    "symbol": "MGC",
+    "tf": "15m",
+    "code_file": "research/cycle_20261028d/strategies/sweep_pool_filters_v2.py",
+    "split_mode": "per_segment",
+    "cells_kind": "filters"
+  },
+  {
+    "csid": 0,
+    "label": "filters MGC5m",
+    "symbol": "MGC",
+    "tf": "5m",
+    "code_file": "research/cycle_20261028d/strategies/sweep_pool_filters_v2.py",
+    "split_mode": "global_time",
+    "cells_kind": "filters"
+  },
+  {
+    "csid": 0,
+    "label": "filters MGC5m",
+    "symbol": "MGC",
+    "tf": "5m",
+    "code_file": "research/cycle_20261028d/strategies/sweep_pool_filters_v2.py",
+    "split_mode": "per_segment",
+    "cells_kind": "filters"
+  },
+  {
+    "csid": 0,
+    "label": "filters MNQ15m",
+    "symbol": "MNQ",
+    "tf": "15m",
+    "code_file": "research/cycle_20261028d/strategies/sweep_pool_filters_v2.py",
+    "split_mode": "global_time",
+    "cells_kind": "filters"
+  },
+  {
+    "csid": 0,
+    "label": "filters MNQ5m",
+    "symbol": "MNQ",
+    "tf": "5m",
+    "code_file": "research/cycle_20261028d/strategies/sweep_pool_filters_v2.py",
+    "split_mode": "global_time",
+    "cells_kind": "filters"
+  },
+  {
+    "csid": 0,
+    "label": "mss_fvg MGC15m",
+    "symbol": "MGC",
+    "tf": "15m",
+    "code_file": "research/cycle_20261028b/strategies/sweep_mss_fvg_liq_target_v2.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "mss_fvg MNQ15m",
+    "symbol": "MNQ",
+    "tf": "15m",
+    "code_file": "research/cycle_20261028b/strategies/sweep_mss_fvg_liq_target_v2.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "mss_fvg MGC5m",
+    "symbol": "MGC",
+    "tf": "5m",
+    "code_file": "research/cycle_20261028b/strategies/sweep_mss_fvg_liq_target_v2.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "mss_fvg MNQ5m",
+    "symbol": "MNQ",
+    "tf": "5m",
+    "code_file": "research/cycle_20261028b/strategies/sweep_mss_fvg_liq_target_v2.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "mss_fvg MGC1h",
+    "symbol": "MGC",
+    "tf": "1h",
+    "code_file": "research/cycle_20261028b/strategies/sweep_mss_fvg_liq_target_v2.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "mss_fvg MNQ1h",
+    "symbol": "MNQ",
+    "tf": "1h",
+    "code_file": "research/cycle_20261028b/strategies/sweep_mss_fvg_liq_target_v2.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "zen_ifvg MGC15m",
+    "symbol": "MGC",
+    "tf": "15m",
+    "code_file": "research/cycle_20261028/strategies/sweep_ifvg_inversion_zen_v1.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "zen_ifvg MNQ15m",
+    "symbol": "MNQ",
+    "tf": "15m",
+    "code_file": "research/cycle_20261028/strategies/sweep_ifvg_inversion_zen_v1.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "zen_ifvg MGC5m",
+    "symbol": "MGC",
+    "tf": "5m",
+    "code_file": "research/cycle_20261028/strategies/sweep_ifvg_inversion_zen_v1.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "zen_ifvg MNQ5m",
+    "symbol": "MNQ",
+    "tf": "5m",
+    "code_file": "research/cycle_20261028/strategies/sweep_ifvg_inversion_zen_v1.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "zen_ifvg MGC1h",
+    "symbol": "MGC",
+    "tf": "1h",
+    "code_file": "research/cycle_20261028/strategies/sweep_ifvg_inversion_zen_v1.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  },
+  {
+    "csid": 0,
+    "label": "zen_ifvg MNQ1h",
+    "symbol": "MNQ",
+    "tf": "1h",
+    "code_file": "research/cycle_20261028/strategies/sweep_ifvg_inversion_zen_v1.py",
+    "split_mode": "global_time",
+    "cells": [
+      {}
+    ]
+  }
+]

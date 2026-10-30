@@ -1,0 +1,12 @@
+
+================ sweep_cont_hyg_5m MNQ_5m (1 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+Traceback (most recent call last):
+  File "/home/rob/judas-agentic-crew/research/cycle_20261029c/analyse.py", line 62, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/rob/judas-agentic-crew/research/cycle_20261029c/analyse.py", line 57, in main
+    f" | ALL PF={lv.get('pf'):.3f}  {tag(r['cell'])}")
+                                         ~^^^^^^^^
+KeyError: 'cell'

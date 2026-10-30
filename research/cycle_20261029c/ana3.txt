@@ -1,0 +1,91 @@
+
+================ sweep_cont MNQ5m perseg MNQ_5m (81 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+  IS n=116 PF=0.923 $-582 | OOS n=54 PF=1.154 $580 WR=37.0% | ALL n=170 PF=1.000 WR=40.0% DD=$1996
+      lookback=8 min_sweep_atr=0.3 disp_k=0.8 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=62 PF=0.895 $-464 | OOS n=30 PF=1.522 $1202 WR=43.3% | ALL n=92 PF=1.110 WR=41.3% DD=$2176
+      lookback=8 min_sweep_atr=0.45 disp_k=1.0 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=72 PF=0.886 $-571 | OOS n=31 PF=1.445 $1025 WR=41.9% | ALL n=103 PF=1.062 WR=39.8% DD=$1910
+      lookback=8 min_sweep_atr=0.45 disp_k=0.8 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=95 PF=0.861 $-885 | OOS n=45 PF=1.375 $1214 WR=42.2% | ALL n=140 PF=1.034 WR=41.4% DD=$2312
+      lookback=8 min_sweep_atr=0.3 disp_k=1.0 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=50 PF=0.770 $-930 | OOS n=23 PF=1.830 $1486 WR=43.5% | ALL n=73 PF=1.095 WR=38.4% DD=$2535
+      lookback=8 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=68 PF=0.765 $-1047 | OOS n=49 PF=1.455 $1237 WR=57.1% | ALL n=117 PF=1.026 WR=50.4% DD=$2340
+      lookback=8 min_sweep_atr=0.45 disp_k=1.0 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=55 PF=0.743 $-947 | OOS n=34 PF=1.236 $643 WR=41.2% | ALL n=89 PF=0.953 WR=40.4% DD=$2684
+      lookback=12 min_sweep_atr=0.45 disp_k=1.0 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=81 PF=0.737 $-1380 | OOS n=54 PF=1.384 $1117 WR=51.9% | ALL n=135 PF=0.968 WR=47.4% DD=$2479
+      lookback=8 min_sweep_atr=0.45 disp_k=0.8 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=72 PF=0.702 $-1694 | OOS n=34 PF=1.521 $1364 WR=41.2% | ALL n=106 PF=0.960 WR=38.7% DD=$3074
+      lookback=8 min_sweep_atr=0.3 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=45 PF=0.647 $-1232 | OOS n=22 PF=1.336 $515 WR=54.5% | ALL n=67 PF=0.858 WR=43.3% DD=$2425
+      lookback=8 min_sweep_atr=0.6 disp_k=1.0 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=44 PF=0.625 $-1337 | OOS n=23 PF=1.362 $749 WR=39.1% | ALL n=67 PF=0.896 WR=37.3% DD=$3054
+      lookback=12 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=53 PF=0.624 $-1484 | OOS n=38 PF=1.535 $1174 WR=52.6% | ALL n=91 PF=0.950 WR=46.2% DD=$2629
+      lookback=8 min_sweep_atr=0.45 disp_k=1.2 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=54 PF=0.604 $-1603 | OOS n=27 PF=1.175 $318 WR=48.1% | ALL n=81 PF=0.781 WR=39.5% DD=$2848
+      lookback=8 min_sweep_atr=0.6 disp_k=0.8 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=57 PF=0.532 $-1806 | OOS n=45 PF=1.179 $507 WR=55.6% | ALL n=102 PF=0.806 WR=48.0% DD=$3323
+      lookback=12 min_sweep_atr=0.45 disp_k=1.0 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+  fail  IS n=99 PF=0.972 | OOS n=41 PF=0.639 | ALL PF=0.855  lookback=12 min_sweep_atr=0.3 disp_k=0.8 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  PASS  IS n=116 PF=0.923 | OOS n=54 PF=1.154 | ALL PF=1.000  lookback=8 min_sweep_atr=0.3 disp_k=0.8 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=84 PF=0.912 | OOS n=39 PF=0.680 | ALL PF=0.824  lookback=12 min_sweep_atr=0.3 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=88 PF=0.907 | OOS n=47 PF=0.421 | ALL PF=0.706  lookback=20 min_sweep_atr=0.3 disp_k=0.8 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=111 PF=0.901 | OOS n=42 PF=0.865 | ALL PF=0.890  lookback=8 min_sweep_atr=0.3 disp_k=0.8 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+
+================ sweep_cont MNQ15m perseg MNQ_15m (81 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+  IS n=72 PF=1.076 $602 | OOS n=43 PF=1.155 $1001 WR=51.2% | ALL n=115 PF=1.111 WR=42.6% DD=$4915
+      lookback=8 min_sweep_atr=0.3 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=70 PF=0.987 $-103 | OOS n=34 PF=1.295 $1464 WR=52.9% | ALL n=104 PF=1.105 WR=41.3% DD=$4729
+      lookback=12 min_sweep_atr=0.3 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=58 PF=0.907 $-641 | OOS n=26 PF=1.256 $1055 WR=50.0% | ALL n=84 PF=1.037 WR=41.7% DD=$3706
+      lookback=20 min_sweep_atr=0.3 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+  fail  IS n=20 PF=1.643 | OOS n=6 PF=1.302 | ALL PF=1.481  lookback=20 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=31 PF=1.264 | OOS n=11 PF=0.694 | ALL PF=0.997  lookback=8 min_sweep_atr=0.6 disp_k=1.2 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=22 PF=1.208 | OOS n=7 PF=0.791 | ALL PF=1.006  lookback=20 min_sweep_atr=0.6 disp_k=1.2 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=65 PF=1.197 | OOS n=35 PF=0.512 | ALL PF=0.832  lookback=20 min_sweep_atr=0.45 disp_k=0.8 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=23 PF=1.153 | OOS n=10 PF=1.117 | ALL PF=1.137  lookback=8 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+
+================ sweep_cont MNQ1h MNQ_1h (81 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+  IS n=30 PF=1.645 $3668 | OOS n=21 PF=1.508 $1819 WR=61.9% | ALL n=51 PF=1.592 WR=56.9% DD=$2497
+      lookback=12 min_sweep_atr=0.3 disp_k=0.8 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=27 PF=1.416 $2155 | OOS n=22 PF=1.415 $1596 WR=59.1% | ALL n=49 PF=1.416 WR=53.1% DD=$2087
+      lookback=8 min_sweep_atr=0.3 disp_k=1.0 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=36 PF=1.162 $1200 | OOS n=25 PF=1.278 $1144 WR=56.0% | ALL n=61 PF=1.203 WR=49.2% DD=$3606
+      lookback=8 min_sweep_atr=0.3 disp_k=0.8 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+  fail  IS n=6 PF=2.442 | OOS n=6 PF=0.435 | ALL PF=1.354  lookback=8 min_sweep_atr=0.6 disp_k=1.2 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=6 PF=2.442 | OOS n=4 PF=0.090 | ALL PF=1.167  lookback=12 min_sweep_atr=0.6 disp_k=1.2 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=9 PF=1.741 | OOS n=5 PF=0.169 | ALL PF=1.052  lookback=12 min_sweep_atr=0.6 disp_k=0.8 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=24 PF=1.723 | OOS n=19 PF=1.626 | ALL PF=1.682  lookback=12 min_sweep_atr=0.3 disp_k=1.0 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  PASS  IS n=30 PF=1.645 | OOS n=21 PF=1.508 | ALL PF=1.592  lookback=12 min_sweep_atr=0.3 disp_k=0.8 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+
+================ sweep_cont ZF5m perseg ZF_5m (81 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+  fail  IS n=10 PF=1.161 | OOS n=8 PF=0.387 | ALL PF=0.689  lookback=8 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=40 PF=1.143 | OOS n=26 PF=0.445 | ALL PF=0.730  lookback=12 min_sweep_atr=0.3 disp_k=1.2 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=8 PF=1.129 | OOS n=7 PF=0.461 | ALL PF=0.708  lookback=20 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=42 PF=1.099 | OOS n=28 PF=0.565 | ALL PF=0.803  lookback=8 min_sweep_atr=0.3 disp_k=1.2 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=23 PF=1.002 | OOS n=18 PF=0.698 | ALL PF=0.833  lookback=12 min_sweep_atr=0.45 disp_k=1.2 rr=1.0 confirm_bars=6 body_ratio_min=0.55
+
+================ sweep_cont MGC5m perseg MGC_5m (81 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+  IS n=28 PF=2.414 $3189 | OOS n=24 PF=1.173 $334 WR=29.2% | ALL n=52 PF=1.841 WR=36.5% DD=$1033
+      lookback=20 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=38 PF=2.162 $3243 | OOS n=32 PF=1.307 $696 WR=34.4% | ALL n=70 PF=1.778 WR=38.6% DD=$1231
+      lookback=20 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=47 PF=1.623 $2184 | OOS n=39 PF=1.256 $689 WR=35.9% | ALL n=86 PF=1.464 WR=34.9% DD=$1628
+      lookback=12 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+  PASS  IS n=28 PF=2.414 | OOS n=24 PF=1.173 | ALL PF=1.841  lookback=20 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  PASS  IS n=38 PF=2.162 | OOS n=32 PF=1.307 | ALL PF=1.778  lookback=20 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=29 PF=2.117 | OOS n=25 PF=0.879 | ALL PF=1.506  lookback=20 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=47 PF=2.110 | OOS n=39 PF=1.142 | ALL PF=1.663  lookback=20 min_sweep_atr=0.6 disp_k=0.8 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=38 PF=1.946 | OOS n=30 PF=0.826 | ALL PF=1.391  lookback=12 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55

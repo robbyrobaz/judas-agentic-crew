@@ -412,6 +412,27 @@ def _merge_deep_archive(symbol: str, tf: str, live_df):
 _STALE_GAP_S = 90.0
 
 
+# Entry-resolution modes for the custom backtest engine.
+#
+#   production        -- the entry decided on the close of bar T fills at the
+#                        OPEN of bar T+1. This is what the runtime actually
+#                        does (MKT parent order), so it is the ONLY mode that
+#                        produces promotion-grade evidence.
+#   production_close  -- same, but filled at the decision bar's own close
+#                        (the optimistic bound for a market order sent the
+#                        instant the bar closes).
+#   legacy            -- the OLD retro-fill model: the entry is credited at
+#                        the strategy's derived price on the decision bar.
+#                        Kept for A/B comparison only; NOT admissible.
+_FILL_MODES = ("production", "production_close", "legacy")
+
+_FILL_MODEL_LABEL = {
+    "production": "production_market_next_bar_open",
+    "production_close": "production_market_decision_close",
+    "legacy": "legacy_retro_derived_entry",
+}
+
+
 def _stale_gap_seconds(decision_ts, signal_ts) -> float | None:
     """Seconds by which ``signal_ts`` PREDATES ``decision_ts``.
 
@@ -460,6 +481,7 @@ def run_custom_backtest_on_bars(
     symbol: str = "MGC",
     qty: int = 1,
     timeout_s: int = 60,
+    fill_mode: str = "production",
 ) -> dict:
     """Replay ``bars`` through ``evaluate(bars, params)`` and aggregate.
 
@@ -467,8 +489,48 @@ def run_custom_backtest_on_bars(
     If a non-None signal dict is returned with direction/entry/stop/target,
     we simulate a one-shot trade — first subsequent bar that hits stop or
     target settles the trade. No re-entries until the trade closes.
+
+    FILL MODES (finding 9164 / 07f3a4c2 -- the retro-fill defect)
+    -------------------------------------------------------------
+    ``production`` (DEFAULT)
+        Mirrors what the runtime ACTUALLY does with a custom-engine fire.
+        ``portfolio_runtime._build_bracket_orders`` places a **MarketOrder**
+        parent with a LIMIT take-profit at ``target`` and a STOP stop-loss at
+        ``stop``.  The strategy's derived ``entry`` price is NOT the fill
+        price -- production ignores it.  So:
+
+          * a decision taken on the close of bar T is filled at the OPEN of
+            bar T+1 (the first price the market offers after the decision);
+          * a stop already breached at that open fills at the OPEN (a
+            stop-MARKET order triggers into the gap), not at the stop level;
+          * when one bar spans both the stop and the target the STOP wins
+            (adverse-first: the intrabar path is unknown);
+          * the distance between the achievable fill and the entry the
+            strategy ASKED for is measured and stamped
+            (``entry_slip_ticks_mean``) -- the number the retro-fill model
+            silently hid.
+
+    ``production_close``
+        Same, but the fill is the decision bar's own close (the optimistic
+        bound: a market order sent the instant the bar closes fills at
+        roughly that print).
+
+    ``legacy``
+        The OLD retro-fill model: the entry is credited at the strategy's
+        derived price on the decision bar.  Kept ONLY for A/B comparison of
+        historical envelopes; it is NOT admissible promotion evidence.
+
+    Every envelope stamps ``fill_mode`` / ``fill_model`` / ``promotion_grade``
+    so a promotion-grade run can never silently use the retro-fill path.
     """
     started = time.time()
+    fill_mode = str(fill_mode or "production").strip().lower()
+    if fill_mode not in _FILL_MODES:
+        return {"error": f"unknown fill_mode: {fill_mode!r} "
+                         f"(expected one of {list(_FILL_MODES)})",
+                "n_signals": 0, "n_wins": 0, "n_losses": 0, "total_pnl": 0.0,
+                "pf": 0.0, "expectancy_r": 0.0, "max_drawdown": 0.0,
+                "fill_mode": fill_mode}
     try:
         import pandas as pd
     except Exception as exc:  # noqa: BLE001
@@ -515,39 +577,112 @@ def run_custom_backtest_on_bars(
     # A measurement that cannot be taken must never read as a clean result
     # (see _stale_gap_seconds below). Counted and stamped separately.
     stale_measure_fail_n = 0
+    # --- PRODUCTION-FILL bookkeeping (finding 9164) -----------------------
+    # n_entries_filled   : decisions that produced a real market fill.
+    # n_entries_unfilled : decisions with no later bar to fill on.
+    # entry_slip_ticks   : SIGNED distance between the ACHIEVABLE fill and the
+    #                      entry the strategy ASKED for, in ticks. Positive
+    #                      == the market made us pay worse than the strategy
+    #                      wanted. Under the retro-fill model this was
+    #                      structurally zero and therefore invisible.
+    n_entries_filled = 0
+    n_entries_unfilled = 0
+    entry_slip_ticks_sum = 0.0
+    entry_slip_ticks_abs_sum = 0.0
+    n_entry_slip_samples = 0
+    fair_fill = fill_mode in ("production", "production_close")
+    tick_size = float(spec["tick"])
+
+    def _resolve_exit(trade: dict, bar, fair: bool):
+        """Return ``(points, reason)`` when the trade closes on ``bar``.
+
+        ``None`` means the trade is still open.
+
+        ``fair=True`` applies PRODUCTION semantics:
+          * a stop already breached at the bar's OPEN fills at the OPEN (a
+            stop-MARKET order triggers into the gap) -- without this, a long
+            whose stop sits above the open books a phantom PROFIT on a stop;
+          * adverse-first: a bar spanning both the stop and the target books
+            the STOP, because the intrabar path is unknown.
+        """
+        direction = trade["direction"]
+        entry = float(trade["entry"])
+        stop = float(trade["stop"])
+        target = float(trade["target"])
+        o = float(bar["open"])
+        h = float(bar["high"])
+        l = float(bar["low"])
+        if direction == "long":
+            if fair and o <= stop:
+                return (o - entry), "stop"
+            if l <= stop:
+                return (stop - entry), "stop"
+            if h >= target:
+                return (target - entry), "target"
+        else:
+            if fair and o >= stop:
+                return (entry - o), "stop"
+            if h >= stop:
+                return (entry - stop), "stop"
+            if l <= target:
+                return (entry - target), "target"
+        return None
 
     try:
         def _run_loop():
             nonlocal n_signals, wins, losses, open_trade, stale_fill_n
-            nonlocal stale_measure_fail_n
+            nonlocal stale_measure_fail_n, n_entries_filled, n_entries_unfilled
+            nonlocal entry_slip_ticks_sum, entry_slip_ticks_abs_sum
+            nonlocal n_entry_slip_samples
             n = len(bars)
+            # A decision that has been taken but not yet filled (fair modes).
+            pending: dict | None = None
             # cap iterations to bound runtime
             for i in range(2, n):
                 if time.time() - started > timeout_s:
                     raise _StrategyTimeout(f"backtest exceeded {timeout_s}s")
                 slice_df = bars.iloc[: i + 1]
-                # Resolve open trade first
+                bar = bars.iloc[i]
+
+                # ---- 1) FILL a pending decision (fair modes only) ----------
+                if pending is not None:
+                    if fill_mode == "production_close":
+                        fill_price = float(bars.iloc[pending["decision_index"]]["close"])
+                    else:
+                        fill_price = float(bar["open"])
+                    want = pending.get("want_entry")
+                    if want is not None and tick_size > 0:
+                        sign = 1.0 if pending["direction"] == "long" else -1.0
+                        slip_ticks = (fill_price - want) * sign / tick_size
+                        entry_slip_ticks_sum += slip_ticks
+                        entry_slip_ticks_abs_sum += abs(slip_ticks)
+                        n_entry_slip_samples += 1
+                    open_trade = {
+                        "direction": pending["direction"],
+                        "entry": fill_price,
+                        "stop": pending["stop"],
+                        "target": pending["target"],
+                    }
+                    pending = None
+                    n_entries_filled += 1
+
+                # ---- 2) RESOLVE the open trade against this bar -------------
                 if open_trade is not None:
-                    bar = bars.iloc[i]
-                    hit_stop = (
-                        (open_trade["direction"] == "long" and float(bar["low"]) <= open_trade["stop"]) or
-                        (open_trade["direction"] == "short" and float(bar["high"]) >= open_trade["stop"])
-                    )
-                    hit_target = (
-                        (open_trade["direction"] == "long" and float(bar["high"]) >= open_trade["target"]) or
-                        (open_trade["direction"] == "short" and float(bar["low"]) <= open_trade["target"])
-                    )
-                    if hit_stop or hit_target:
-                        entry = open_trade["entry"]
-                        risk = abs(entry - open_trade["stop"]) or 1.0
-                        target_won = hit_target and not hit_stop
-                        points = (abs(open_trade["target"] - entry) if target_won
-                                  else -abs(entry - open_trade["stop"]))
+                    res = _resolve_exit(open_trade, bar, fair=fair_fill)
+                    if res is not None:
+                        points, reason = res
+                        entry = float(open_trade["entry"])
+                        risk = abs(entry - float(open_trade["stop"])) or 1.0
+                        if not fair_fill:
+                            # legacy: reproduce the historical point formula exactly
+                            target_won = reason == "target"
+                            points = (abs(float(open_trade["target"]) - entry) if target_won
+                                      else -abs(entry - float(open_trade["stop"])))
                         gross_pnl = points * dollars_per_point * trade_qty
                         pnl = apply_costs_to_trade(
                             symbol=sym,
                             gross_pnl=gross_pnl,
-                            exit_reason="target" if target_won else "stop",
+                            exit_reason="target" if reason == "target" else "stop",
                             qty=trade_qty,
                         )
                         if pnl > 0:
@@ -558,11 +693,9 @@ def run_custom_backtest_on_bars(
                         risk_dollars = risk * dollars_per_point * trade_qty
                         rs.append(float(pnl / risk_dollars) if risk_dollars else 0.0)
                         open_trade = None
-                        continue
-
-                if open_trade is not None:
                     continue
 
+                # ---- 3) LOOK for a new decision on this bar -----------------
                 try:
                     sig = fn(slice_df, p)
                 except Exception:
@@ -573,10 +706,16 @@ def run_custom_backtest_on_bars(
                 if direction not in ("long", "short"):
                     continue
                 try:
-                    entry = float(sig["entry"])
                     stop = float(sig["stop"])
                     target = float(sig["target"])
                 except (KeyError, TypeError, ValueError):
+                    continue
+                try:
+                    entry = float(sig["entry"])
+                except (KeyError, TypeError, ValueError):
+                    entry = None
+                if entry is None and not fair_fill:
+                    # legacy path needs the derived entry as the fill price
                     continue
                 n_signals += 1
                 # RETRO-FILL DIAGNOSTIC. The engine only ever hands evaluate()
@@ -591,12 +730,25 @@ def run_custom_backtest_on_bars(
                         stale_measure_fail_n += 1
                     elif _gap > _STALE_GAP_S:
                         stale_fill_n += 1
-                open_trade = {
-                    "direction": direction,
-                    "entry": entry,
-                    "stop": stop,
-                    "target": target,
-                }
+                if fair_fill:
+                    pending = {
+                        "direction": direction,
+                        "stop": stop,
+                        "target": target,
+                        "want_entry": entry,
+                        "decision_index": i,
+                    }
+                else:
+                    open_trade = {
+                        "direction": direction,
+                        "entry": entry,
+                        "stop": stop,
+                        "target": target,
+                    }
+                    n_entries_filled += 1
+            if pending is not None:
+                # decided on the final bar -- there is no later bar to fill on
+                n_entries_unfilled += 1
 
         _run_with_timeout(_run_loop, timeout_s)
     except _StrategyTimeout as exc:
@@ -630,6 +782,23 @@ def run_custom_backtest_on_bars(
         "stale_measure_fail_n": int(stale_measure_fail_n),
         "backtest_fill_valid": bool(stale_fill_n == 0
                                     and stale_measure_fail_n == 0),
+        # --- fill-model stamp (finding 9164) ---------------------------
+        # Which entry-resolution model produced THIS envelope. A promotion-
+        # grade run is one whose fill_mode is a production_* mode AND whose
+        # strategy referenced no stale bar.
+        "fill_mode": fill_mode,
+        "fill_model": _FILL_MODEL_LABEL.get(fill_mode, fill_mode),
+        "promotion_grade": bool(fair_fill and stale_fill_n == 0
+                                and stale_measure_fail_n == 0),
+        "n_entries_filled": int(n_entries_filled),
+        "n_entries_unfilled": int(n_entries_unfilled),
+        # Signed distance between the achievable fill and the entry the
+        # strategy asked for, in ticks. Positive == we paid worse than the
+        # strategy wanted. Zero by construction under the retro-fill model.
+        "entry_slip_ticks_mean": (round(entry_slip_ticks_sum / n_entry_slip_samples, 3)
+                                  if n_entry_slip_samples else None),
+        "entry_slip_ticks_abs_mean": (round(entry_slip_ticks_abs_sum / n_entry_slip_samples, 3)
+                                      if n_entry_slip_samples else None),
         "n_wins": int(wins),
         "n_losses": int(losses),
         "total_pnl": total_pnl,
@@ -716,6 +885,7 @@ def run_custom_backtest(
     timeframe: str = "1h",
     params: dict | None = None,
     qty: int = 1,
+    fill_mode: str = "production",
 ) -> dict:
     """High-level entry point used by the PM agent tool.
 
@@ -723,6 +893,11 @@ def run_custom_backtest(
     native bars at ``timeframe`` (5m/15m/1h) — the detectors are
     timeframe-agnostic, so this lets the researcher backtest faster
     timeframes natively instead of resampling 1h.
+
+    ``fill_mode`` selects the entry-resolution model — see
+    ``run_custom_backtest_on_bars``. Default ``production`` (fill at the
+    open of the bar after the decision), which is the only mode that yields
+    promotion-grade evidence.
     """
     if bars is None:
         bars = _fetch_synthetic_or_live_bars(symbol, days, timeframe)
@@ -731,10 +906,11 @@ def run_custom_backtest(
             "n_signals": 0, "n_wins": 0, "n_losses": 0, "total_pnl": 0.0,
             "pf": 0.0, "expectancy_r": 0.0, "max_drawdown": 0.0,
             "error": "no bars available",
+            "fill_mode": fill_mode,
         }
     return run_custom_backtest_on_bars(
         code=code, bars=bars, params=params, symbol=symbol, qty=qty,
-        timeout_s=timeout_s,
+        timeout_s=timeout_s, fill_mode=fill_mode,
     )
 
 

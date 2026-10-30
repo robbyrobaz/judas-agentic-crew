@@ -1,0 +1,92 @@
+"""Silver Bullet 15m with REAL 50% premium/discount FVG filter (iTradez ICT rule).
+
+Architecture: same PDH sweep + retest + MSS + FVG entry as CSID 297.
+DIFFERENCE: after MSS, compute 50% midpoint of impulsive leg [sweep_low -> MSS_high]
+for longs (or [MSS_low -> sweep_high] for shorts). Only enter LONG if FVG midpoint
+is below 50% midpoint (discount zone). Only enter SHORT if FVG midpoint is above
+50% midpoint (premium zone).
+
+Real filter logic — not a label.
+"""
+import numpy as np
+import pandas as pd
+
+def evaluate(bars, params):
+    if bars.empty or len(bars) < 320:
+        return None
+    target_r = float(params.get("target_r", 2.0))
+    tick = float(params.get("tick", 0.10))
+    stop_buf = float(params.get("stop_buf_ticks", 6)) * tick
+    break_thr = float(params.get("break_threshold_ticks", 4)) * tick
+    max_retest = int(params.get("max_retest_bars", 16))
+    rolling_window = int(params.get("rolling_pdhl_bars", 24))
+    use_pd_filter = bool(params.get("premium_discount_filter", False))
+
+    h = bars["high"].values.astype(float)
+    l = bars["low"].values.astype(float)
+    c = bars["close"].values.astype(float)
+    o = bars["open"].values.astype(float)
+    n = len(bars)
+    ts_v = bars["ts"].values
+    pdh_series = pd.Series(h).rolling(rolling_window, min_periods=12).max().shift(1).values
+    pdl_series = pd.Series(l).rolling(rolling_window, min_periods=12).min().shift(1).values
+
+    last = n - 1
+    if last < 5:
+        return None
+    if np.isnan(pdh_series[last]) or np.isnan(pdl_series[last]):
+        return None
+
+    # ===== LONG: sweep PDH, retest, MSS bullish, FVG in DISCOUNT (lower 50%) =====
+    if h[last] >= pdh_series[last] + break_thr:
+        for j in range(max(0, last - max_retest), last):
+            if c[j] < pdh_series[j] and l[j] >= pdl_series[j]:
+                for k in range(j + 1, last):
+                    if l[k] > h[k - 2]:  # bullish displacement
+                            impulsive_high = h[k]
+                            impulsive_low = min(l[j], l[last])
+                            if impulsive_high <= impulsive_low:
+                                return None
+                            fvg_mid = (h[k-2] + l[k]) / 2.0
+                            midpoint = (impulsive_high + impulsive_low) / 2.0
+                            if use_pd_filter and fvg_mid >= midpoint:
+                                # FVG in premium — reject this setup, fall through to short check
+                                return None
+                            entry_idx = k + 1
+                            if entry_idx < n:
+                                entry = o[entry_idx]
+                                stop = impulsive_low - stop_buf
+                                risk = entry - stop
+                                if risk >= 0.5 * tick:
+                                    target = entry + risk * target_r
+                                    return {"ts": ts_v[entry_idx], "direction": "long",
+                                            "entry": entry, "stop": stop, "target": target}
+                break
+
+    # ===== SHORT: sweep PDL, retest, MSS bearish, FVG in PREMIUM (upper 50%) =====
+    if l[last] <= pdl_series[last] - break_thr:
+        for j in range(max(0, last - max_retest), last):
+            if c[j] > pdl_series[j] and h[j] <= pdh_series[j]:
+                for k in range(j + 1, last):
+                    if h[k] < l[k - 2]:  # bearish displacement
+                            impulsive_high = max(h[j], h[last])
+                            impulsive_low = l[k]
+                            if impulsive_high <= impulsive_low:
+                                return None
+                            fvg_mid = (l[k-2] + h[k]) / 2.0
+                            midpoint = (impulsive_high + impulsive_low) / 2.0
+                            if use_pd_filter and fvg_mid <= midpoint:
+                                # FVG in discount — reject this setup
+                                return None
+                            entry_idx = k + 1
+                            if entry_idx < n:
+                                entry = o[entry_idx]
+                                stop = impulsive_high + stop_buf
+                                risk = stop - entry
+                                if risk >= 0.5 * tick:
+                                    target = entry - risk * target_r
+                                    return {"ts": ts_v[entry_idx], "direction": "short",
+                                            "entry": entry, "stop": stop, "target": target}
+                break
+
+    return None

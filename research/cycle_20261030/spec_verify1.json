@@ -1,0 +1,14 @@
+[
+ {"label": "sweep_cont_me_15m_mgc_lb8_v1",
+  "code_file": "research/cycle_20261030/strategies/sweep_cont_me_15m_mgc_lb8_v1.py",
+  "symbol": "MGC", "tf": "15m", "qty": 1,
+  "params": {"lookback": 8, "min_sweep_atr": 0.45, "disp_k": 1.0, "rr": 1.5,
+             "confirm_bars": 6, "body_ratio_min": 0.55, "stop_buf_atr": 0.15,
+             "atr_period": 14}},
+ {"label": "sweep_cont_me_1h_mnq_lb12_v1",
+  "code_file": "research/cycle_20261030/strategies/sweep_cont_me_1h_mnq_lb12_v1.py",
+  "symbol": "MNQ", "tf": "1h", "qty": 1,
+  "params": {"lookback": 12, "min_sweep_atr": 0.30, "disp_k": 0.8, "rr": 1.0,
+             "confirm_bars": 6, "body_ratio_min": 0.55, "stop_buf_atr": 0.15,
+             "atr_period": 14}}
+]

@@ -1,0 +1,41 @@
+[
+ {
+  "csid": 441,
+  "label": "sweep_cont MNQ5m perseg",
+  "symbol": "MNQ",
+  "tf": "5m",
+  "code_file": "research/cycle_20261029c/codes/csid441.py",
+  "split_mode": "per_segment"
+ },
+ {
+  "csid": 441,
+  "label": "sweep_cont MNQ15m perseg",
+  "symbol": "MNQ",
+  "tf": "15m",
+  "code_file": "research/cycle_20261029c/codes/csid441.py",
+  "split_mode": "per_segment"
+ },
+ {
+  "csid": 441,
+  "label": "sweep_cont MNQ1h",
+  "symbol": "MNQ",
+  "tf": "1h",
+  "code_file": "research/cycle_20261029c/codes/csid441.py"
+ },
+ {
+  "csid": 441,
+  "label": "sweep_cont ZF5m perseg",
+  "symbol": "ZF",
+  "tf": "5m",
+  "code_file": "research/cycle_20261029c/codes/csid441.py",
+  "split_mode": "per_segment"
+ },
+ {
+  "csid": 441,
+  "label": "sweep_cont MGC5m perseg",
+  "symbol": "MGC",
+  "tf": "5m",
+  "code_file": "research/cycle_20261029c/codes/csid441.py",
+  "split_mode": "per_segment"
+ }
+]

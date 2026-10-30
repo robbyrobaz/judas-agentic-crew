@@ -1,0 +1,101 @@
+
+================ eqpool_mit50 MNQ5m MNQ_5m (64 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+  IS n=16 PF=1.219 $504 | OOS n=60 PF=1.244 $1356 WR=40.0% | ALL n=76 PF=1.237 WR=42.1% DD=$1227
+      pool_mode=equal mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=16 PF=1.185 $371 | OOS n=64 PF=1.272 $1582 WR=40.6% | ALL n=80 PF=1.250 WR=43.8% DD=$1130
+      pool_mode=equal mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=23 PF=1.177 $514 | OOS n=50 PF=1.156 $813 WR=40.0% | ALL n=73 PF=1.163 WR=39.7% DD=$1322
+      pool_mode=equal mit50=0 lookback=20 cluster_age=60 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=21 PF=1.168 $246 | OOS n=42 PF=1.165 $626 WR=40.5% | ALL n=63 PF=1.166 WR=39.7% DD=$2423
+      pool_mode=rolling mit50=1 lookback=8 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=24 PF=1.162 $477 | OOS n=69 PF=1.199 $1253 WR=42.0% | ALL n=93 PF=1.187 WR=40.9% DD=$1360
+      pool_mode=equal mit50=0 lookback=20 cluster_age=60 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=15 PF=1.114 $262 | OOS n=41 PF=1.260 $1175 WR=39.0% | ALL n=56 PF=1.210 WR=41.1% DD=$974
+      pool_mode=equal mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=17 PF=1.076 $198 | OOS n=63 PF=1.196 $1156 WR=41.3% | ALL n=80 PF=1.159 WR=42.5% DD=$1272
+      pool_mode=equal mit50=1 lookback=20 cluster_age=60 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=23 PF=1.038 $110 | OOS n=53 PF=1.250 $1340 WR=37.7% | ALL n=76 PF=1.176 WR=38.2% DD=$1361
+      pool_mode=equal mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=25 PF=1.031 $54 | OOS n=52 PF=1.216 $901 WR=42.3% | ALL n=77 PF=1.161 WR=41.6% DD=$1977
+      pool_mode=rolling mit50=1 lookback=8 cluster_age=40 min_sweep_atr=0.45 disp_k=1.0 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=17 PF=0.997 $-4 | OOS n=22 PF=1.169 $416 WR=31.8% | ALL n=39 PF=1.108 WR=35.9% DD=$1984
+      pool_mode=rolling mit50=1 lookback=8 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=27 PF=0.988 $-35 | OOS n=73 PF=1.303 $1920 WR=41.1% | ALL n=100 PF=1.203 WR=41.0% DD=$1635
+      pool_mode=equal mit50=0 lookback=20 cluster_age=60 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=24 PF=0.955 $-131 | OOS n=60 PF=1.411 $2182 WR=46.7% | ALL n=84 PF=1.249 WR=45.2% DD=$1392
+      pool_mode=equal mit50=0 lookback=20 cluster_age=60 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=20 PF=0.899 $-268 | OOS n=67 PF=1.233 $1464 WR=40.3% | ALL n=87 PF=1.134 WR=41.4% DD=$1189
+      pool_mode=equal mit50=1 lookback=20 cluster_age=60 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=23 PF=0.898 $-318 | OOS n=66 PF=1.238 $1422 WR=40.9% | ALL n=89 PF=1.121 WR=39.3% DD=$1360
+      pool_mode=equal mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=24 PF=0.851 $-431 | OOS n=69 PF=1.345 $2030 WR=40.6% | ALL n=93 PF=1.182 WR=40.9% DD=$1518
+      pool_mode=equal mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=21 PF=0.831 $-522 | OOS n=46 PF=1.289 $1363 WR=41.3% | ALL n=67 PF=1.108 WR=38.8% DD=$1322
+      pool_mode=equal mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=15 PF=0.831 $-390 | OOS n=51 PF=1.267 $1354 WR=41.2% | ALL n=66 PF=1.131 WR=42.4% DD=$1069
+      pool_mode=equal mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=17 PF=0.803 $-514 | OOS n=55 PF=1.301 $1618 WR=41.8% | ALL n=72 PF=1.138 WR=43.1% DD=$1367
+      pool_mode=equal mit50=1 lookback=20 cluster_age=60 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=22 PF=0.692 $-953 | OOS n=55 PF=1.361 $1803 WR=45.5% | ALL n=77 PF=1.105 WR=42.9% DD=$1392
+      pool_mode=equal mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+  fail  IS n=19 PF=1.561 | OOS n=69 PF=0.965 | ALL PF=1.102  pool_mode=equal mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.45 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=16 PF=1.369 | OOS n=48 PF=1.144 | ALL PF=1.209  pool_mode=equal mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=26 PF=1.356 | OOS n=56 PF=1.064 | ALL PF=1.160  pool_mode=equal mit50=0 lookback=20 cluster_age=60 min_sweep_atr=0.45 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=29 PF=1.305 | OOS n=81 PF=0.959 | ALL PF=1.056  pool_mode=equal mit50=0 lookback=20 cluster_age=60 min_sweep_atr=0.45 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=22 PF=1.266 | OOS n=73 PF=0.881 | ALL PF=0.980  pool_mode=equal mit50=1 lookback=20 cluster_age=60 min_sweep_atr=0.45 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+
+================ eqpool_mit50 MNQ15m MNQ_15m (64 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+  IS n=43 PF=0.848 $-1634 | OOS n=29 PF=1.170 $905 WR=27.6% | ALL n=72 PF=0.955 WR=31.9% DD=$6051
+      pool_mode=equal mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.45 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+  fail  IS n=18 PF=2.009 | OOS n=6 PF=1.097 | ALL PF=1.821  pool_mode=rolling mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=20 PF=1.558 | OOS n=6 PF=1.097 | ALL PF=1.481  pool_mode=rolling mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=17 PF=1.555 | OOS n=6 PF=1.464 | ALL PF=1.539  pool_mode=rolling mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=22 PF=1.302 | OOS n=11 PF=0.737 | ALL PF=1.137  pool_mode=rolling mit50=0 lookback=8 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=20 PF=1.250 | OOS n=10 PF=1.068 | ALL PF=1.206  pool_mode=rolling mit50=1 lookback=8 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+
+================ eqpool_mit50 MGC5m MGC_5m (64 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+  IS n=27 PF=2.520 $3284 | OOS n=22 PF=1.200 $354 WR=27.3% | ALL n=49 PF=1.926 WR=36.7% DD=$1033
+      pool_mode=rolling mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=36 PF=2.293 $3403 | OOS n=31 PF=1.293 $640 WR=32.3% | ALL n=67 PF=1.839 WR=38.8% DD=$1231
+      pool_mode=rolling mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=37 PF=2.237 $3337 | OOS n=33 PF=1.254 $602 WR=33.3% | ALL n=70 PF=1.778 WR=38.6% DD=$1231
+      pool_mode=rolling mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+  fail  IS n=27 PF=2.520 | OOS n=25 PF=1.118 | ALL PF=1.841  pool_mode=rolling mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  PASS  IS n=27 PF=2.520 | OOS n=22 PF=1.200 | ALL PF=1.926  pool_mode=rolling mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  PASS  IS n=36 PF=2.293 | OOS n=31 PF=1.293 | ALL PF=1.839  pool_mode=rolling mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  PASS  IS n=37 PF=2.237 | OOS n=33 PF=1.254 | ALL PF=1.778  pool_mode=rolling mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.0 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=28 PF=2.218 | OOS n=26 PF=0.840 | ALL PF=1.506  pool_mode=rolling mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+
+================ eqpool_mit50 MGC15m MGC_15m (64 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+  IS n=35 PF=1.830 $2973 | OOS n=28 PF=1.540 $1253 WR=53.6% | ALL n=63 PF=1.716 WR=52.4% DD=$1305
+      pool_mode=rolling mit50=0 lookback=8 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=40 PF=1.803 $3272 | OOS n=34 PF=1.603 $1681 WR=52.9% | ALL n=74 PF=1.722 WR=51.4% DD=$2029
+      pool_mode=rolling mit50=0 lookback=8 cluster_age=40 min_sweep_atr=0.45 disp_k=1.0 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=26 PF=1.716 $2594 | OOS n=21 PF=1.373 $790 WR=42.9% | ALL n=47 PF=1.589 WR=40.4% DD=$2077
+      pool_mode=rolling mit50=1 lookback=8 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  IS n=34 PF=1.475 $1938 | OOS n=28 PF=1.699 $1585 WR=53.6% | ALL n=62 PF=1.555 WR=46.8% DD=$2723
+      pool_mode=rolling mit50=1 lookback=8 cluster_age=40 min_sweep_atr=0.45 disp_k=1.0 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  IS n=29 PF=1.457 $1639 | OOS n=22 PF=1.731 $1248 WR=54.5% | ALL n=51 PF=1.546 WR=47.1% DD=$1856
+      pool_mode=rolling mit50=1 lookback=8 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+  fail  IS n=32 PF=2.352 | OOS n=32 PF=0.562 | ALL PF=1.246  pool_mode=equal mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=27 PF=2.206 | OOS n=31 PF=0.441 | ALL PF=1.110  pool_mode=equal mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=37 PF=2.013 | OOS n=37 PF=0.568 | ALL PF=1.128  pool_mode=equal mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=31 PF=1.960 | OOS n=26 PF=1.033 | ALL PF=1.553  pool_mode=rolling mit50=0 lookback=8 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=2.0 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=44 PF=1.938 | OOS n=36 PF=0.568 | ALL PF=1.164  pool_mode=equal mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+
+================ eqpool_mit50 ZF5m ZF_5m (64 cells)
+-- PASSERS (OOS n>=20 and OOS PF>1.15) --
+-- IS-RANKED TOP 5 (the cell a blind protocol would pick) --
+  fail  IS n=14 PF=2.690 | OOS n=11 PF=0.498 | ALL PF=1.020  pool_mode=rolling mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=16 PF=2.403 | OOS n=16 PF=0.589 | ALL PF=1.008  pool_mode=rolling mit50=1 lookback=20 cluster_age=40 min_sweep_atr=0.45 disp_k=1.0 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=14 PF=2.363 | OOS n=11 PF=0.591 | ALL PF=1.340  pool_mode=equal mit50=1 lookback=20 cluster_age=60 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=15 PF=2.128 | OOS n=13 PF=0.416 | ALL PF=1.068  pool_mode=equal mit50=0 lookback=20 cluster_age=60 min_sweep_atr=0.6 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55
+  fail  IS n=15 PF=1.793 | OOS n=11 PF=0.498 | ALL PF=0.939  pool_mode=rolling mit50=0 lookback=20 cluster_age=40 min_sweep_atr=0.45 disp_k=1.2 rr=1.5 confirm_bars=6 body_ratio_min=0.55

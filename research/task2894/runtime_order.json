@@ -1,0 +1,1308 @@
+{
+ "order": [
+  {
+   "id": 4903,
+   "symbol": "6J",
+   "family": "asian_range_sweep_mitigation_block_5m_rr",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4956,
+   "symbol": "6J",
+   "family": "bsl_run_judas_eq_cluster_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4870,
+   "symbol": "6J",
+   "family": "bsl_run_judas_eq_cluster_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4642,
+   "symbol": "6J",
+   "family": "custom_15m",
+   "version": 2,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4619,
+   "symbol": "6J",
+   "family": "custom_5m",
+   "version": 3,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4617,
+   "symbol": "6J",
+   "family": "custom_5m",
+   "version": 2,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4849,
+   "symbol": "6J",
+   "family": "ict_inside_bar_disp_breakout",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4881,
+   "symbol": "6J",
+   "family": "ict_inside_bar_disp_breakout_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4873,
+   "symbol": "6J",
+   "family": "ict_inside_bar_disp_breakout_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4850,
+   "symbol": "6J",
+   "family": "ict_inside_bar_disp_breakout_tight",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4749,
+   "symbol": "6J",
+   "family": "ict_mitigation_block",
+   "version": 2,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4869,
+   "symbol": "6J",
+   "family": "ict_mitigation_block_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4953,
+   "symbol": "6J",
+   "family": "ict_mitigation_block_5m_6j",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4888,
+   "symbol": "6J",
+   "family": "ict_mitigation_block_5m_csid333",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4941,
+   "symbol": "6J",
+   "family": "ict_mitigation_block_london_sb_5m_6j_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4916,
+   "symbol": "6J",
+   "family": "ifvg_midpoint_reversion_htf_bias_1h",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4944,
+   "symbol": "6J",
+   "family": "sfp_liquidity_grab_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4938,
+   "symbol": "6J",
+   "family": "silver_bullet_pdh_pdl_retest_1h",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4851,
+   "symbol": "6J",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_loosened",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4973,
+   "symbol": "6J",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_roll24_6j",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4927,
+   "symbol": "6J",
+   "family": "turtle_soup_session_sweep_5m_sweep_filter",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4900,
+   "symbol": "MCL",
+   "family": "asian_range_sweep_mitigation_block_15m_opposite",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4958,
+   "symbol": "MCL",
+   "family": "atr_disp_continuation_15m_longonly_diff",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4971,
+   "symbol": "MCL",
+   "family": "atr_disp_continuation_15m_loosened",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4984,
+   "symbol": "MCL",
+   "family": "crt_3candle_sweep_continuation_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4992,
+   "symbol": "MCL",
+   "family": "custom",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4621,
+   "symbol": "MCL",
+   "family": "custom_5m",
+   "version": 2,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4836,
+   "symbol": "MCL",
+   "family": "frankfurt_silver_bullet_15m_v1",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4854,
+   "symbol": "MCL",
+   "family": "htf_1h_disp_5m_fvg_pullback",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4842,
+   "symbol": "MCL",
+   "family": "ict_inside_bar_disp_breakout",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4871,
+   "symbol": "MCL",
+   "family": "ict_inside_bar_disp_breakout_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4841,
+   "symbol": "MCL",
+   "family": "ict_inside_bar_disp_breakout_tight",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4891,
+   "symbol": "MCL",
+   "family": "ict_mitigation_block_1h",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4845,
+   "symbol": "MCL",
+   "family": "ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4983,
+   "symbol": "MCL",
+   "family": "ict_swing_reclaim_continuation",
+   "version": 2,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4982,
+   "symbol": "MCL",
+   "family": "ict_swing_reclaim_continuation",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4937,
+   "symbol": "MCL",
+   "family": "ifvg_midpoint_reversion_htf_bias_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4837,
+   "symbol": "MCL",
+   "family": "ifvg_midpoint_reversion_htf_bias_ny_only_5m_v3",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4933,
+   "symbol": "MCL",
+   "family": "judas_continuation_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4969,
+   "symbol": "MCL",
+   "family": "judas_continuation_15m_body80",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4893,
+   "symbol": "MCL",
+   "family": "ny_am_pdh_pdl_silver_bullet_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4939,
+   "symbol": "MCL",
+   "family": "ob_midpoint_reversion_5m_htf_bias_long",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4908,
+   "symbol": "MCL",
+   "family": "ob_midpoint_reversion_htf_bias_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4909,
+   "symbol": "MCL",
+   "family": "ob_midpoint_reversion_htf_bias_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4879,
+   "symbol": "MCL",
+   "family": "propulsion_block_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4986,
+   "symbol": "MCL",
+   "family": "session_disp_fvg_pullback_15m_london_sb_v1",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4976,
+   "symbol": "MCL",
+   "family": "session_disp_fvg_pullback_15m_v1",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4980,
+   "symbol": "MCL",
+   "family": "session_disp_fvg_pullback_5m_ny_sb_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4839,
+   "symbol": "MCL",
+   "family": "silver_bullet_pdh_pdl_retest",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4860,
+   "symbol": "MCL",
+   "family": "silver_bullet_pdh_pdl_retest_15m_50pct",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4681,
+   "symbol": "MCL",
+   "family": "silver_bullet_pdh_pdl_retest_15m_roll24_cross_asset",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4955,
+   "symbol": "MCL",
+   "family": "silver_bullet_pdh_pdl_retest_15m_roll96",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4834,
+   "symbol": "MCL",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_roll12",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4874,
+   "symbol": "MCL",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_roll24",
+   "version": 2,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4948,
+   "symbol": "MCL",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_v2_mcl",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4862,
+   "symbol": "MCL",
+   "family": "silver_bullet_pdh_pdl_retest_5m_roll12",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4858,
+   "symbol": "MCL",
+   "family": "silver_bullet_pdh_pdl_retest_5m_roll24",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4965,
+   "symbol": "MCL",
+   "family": "sniper_chain_v2",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4929,
+   "symbol": "MCL",
+   "family": "turtle_soup_session_sweep_15m_sweep_filter",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4865,
+   "symbol": "MCL",
+   "family": "turtle_soup_session_sweep_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4924,
+   "symbol": "MCL",
+   "family": "turtle_soup_session_sweep_5m_sweep_filter",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4880,
+   "symbol": "MCL",
+   "family": "unicorn_model_fvg_inside_breaker_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4901,
+   "symbol": "MGC",
+   "family": "asian_range_sweep_mitigation_block_15m_opposite",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4894,
+   "symbol": "MGC",
+   "family": "asian_range_sweep_mitigation_block_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4902,
+   "symbol": "MGC",
+   "family": "asian_range_sweep_mitigation_block_5m_rr",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4922,
+   "symbol": "MGC",
+   "family": "bsl_run_judas_eq_cluster",
+   "version": 5,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4921,
+   "symbol": "MGC",
+   "family": "bsl_run_judas_eq_cluster",
+   "version": 4,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4882,
+   "symbol": "MGC",
+   "family": "bsl_run_judas_eq_cluster",
+   "version": 3,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4886,
+   "symbol": "MGC",
+   "family": "bsl_run_judas_eq_cluster_15m_csid280",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4993,
+   "symbol": "MGC",
+   "family": "custom",
+   "version": 2,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4702,
+   "symbol": "MGC",
+   "family": "custom_5m",
+   "version": 5,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4697,
+   "symbol": "MGC",
+   "family": "custom_5m",
+   "version": 4,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4833,
+   "symbol": "MGC",
+   "family": "frankfurt_silver_bullet_15m_v1",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4852,
+   "symbol": "MGC",
+   "family": "htf_1h_disp_5m_fvg_pullback",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4876,
+   "symbol": "MGC",
+   "family": "ict_inside_bar_disp_breakout_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4861,
+   "symbol": "MGC",
+   "family": "ict_inside_bar_disp_breakout_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4954,
+   "symbol": "MGC",
+   "family": "ict_mitigation_block_5m_mgc_fresh",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4963,
+   "symbol": "MGC",
+   "family": "ifvg_midpoint_reversion_htf_bias_1h_v1",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4917,
+   "symbol": "MGC",
+   "family": "judas_continuation_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4856,
+   "symbol": "MGC",
+   "family": "ny_am_intra_judas_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4997,
+   "symbol": "MGC",
+   "family": "ny_am_judas_ifvg_midpoint_reversion_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4995,
+   "symbol": "MGC",
+   "family": "ny_am_judas_ifvg_midpoint_reversion_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4931,
+   "symbol": "MGC",
+   "family": "ob_midpoint_reversion_5m_loose",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4907,
+   "symbol": "MGC",
+   "family": "ob_midpoint_reversion_htf_bias_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4830,
+   "symbol": "MGC",
+   "family": "propulsion_block_5m_octant_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4974,
+   "symbol": "MGC",
+   "family": "session_disp_fvg_pullback_15m_v1",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4985,
+   "symbol": "MGC",
+   "family": "session_disp_fvg_pullback_5m_london_sb_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4978,
+   "symbol": "MGC",
+   "family": "session_disp_fvg_pullback_5m_ny_sb_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4942,
+   "symbol": "MGC",
+   "family": "sfp_liquidity_grab_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4828,
+   "symbol": "MGC",
+   "family": "silver_bullet_pdh_pdl_retest_15m_50pct_filter_roll48",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4848,
+   "symbol": "MGC",
+   "family": "silver_bullet_pdh_pdl_retest_15m_roll96",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4832,
+   "symbol": "MGC",
+   "family": "silver_bullet_pdh_pdl_retest_15m_v4_roll24",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4959,
+   "symbol": "MGC",
+   "family": "silver_bullet_pdh_pdl_retest_1h_mgc_loose_v1",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4962,
+   "symbol": "MGC",
+   "family": "silver_bullet_pdh_pdl_retest_1h_mgc_loose_v2",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4966,
+   "symbol": "MGC",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_roll24_tight",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4950,
+   "symbol": "MGC",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_v2_mgc",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4857,
+   "symbol": "MGC",
+   "family": "silver_bullet_pdh_pdl_retest_5m_roll24",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4972,
+   "symbol": "MGC",
+   "family": "sniper_chain_v2",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4998,
+   "symbol": "MGC",
+   "family": "sweep_cont_market_entry_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4999,
+   "symbol": "MGC",
+   "family": "sweep_cont_market_entry_5m_hygiene_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4910,
+   "symbol": "MGC",
+   "family": "sweep_first_ob_midpoint_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4662,
+   "symbol": "MGC",
+   "family": "sweep_first_ob_midpoint_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4928,
+   "symbol": "MGC",
+   "family": "turtle_soup_session_sweep_15m_sweep_filter",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4925,
+   "symbol": "MGC",
+   "family": "turtle_soup_session_sweep_5m_sweep_filter",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4899,
+   "symbol": "MNQ",
+   "family": "asian_range_sweep_mitigation_block_15m_opposite",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4898,
+   "symbol": "MNQ",
+   "family": "asian_range_sweep_mitigation_block_5m_rr",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4957,
+   "symbol": "MNQ",
+   "family": "atr_disp_continuation_15m_longonly_diff",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4970,
+   "symbol": "MNQ",
+   "family": "atr_disp_continuation_15m_loosened",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4923,
+   "symbol": "MNQ",
+   "family": "bsl_run_judas_eq_cluster",
+   "version": 3,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4920,
+   "symbol": "MNQ",
+   "family": "bsl_run_judas_eq_cluster",
+   "version": 2,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4883,
+   "symbol": "MNQ",
+   "family": "bsl_run_judas_eq_cluster",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4919,
+   "symbol": "MNQ",
+   "family": "bsl_run_judas_eq_cluster_15m_csid280_v1",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4940,
+   "symbol": "MNQ",
+   "family": "buffet_zoo_rsi_mean_reversion_1h_regime_filtered",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4994,
+   "symbol": "MNQ",
+   "family": "custom",
+   "version": 3,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4701,
+   "symbol": "MNQ",
+   "family": "custom_15m",
+   "version": 13,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4599,
+   "symbol": "MNQ",
+   "family": "custom_15m",
+   "version": 8,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4840,
+   "symbol": "MNQ",
+   "family": "frankfurt_silver_bullet_15m_widened_v1",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4853,
+   "symbol": "MNQ",
+   "family": "htf_1h_disp_5m_fvg_pullback",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4877,
+   "symbol": "MNQ",
+   "family": "ict_inside_bar_disp_breakout_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4872,
+   "symbol": "MNQ",
+   "family": "ict_inside_bar_disp_breakout_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4914,
+   "symbol": "MNQ",
+   "family": "ict_mitigation_block_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4867,
+   "symbol": "MNQ",
+   "family": "ict_mitigation_block_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4844,
+   "symbol": "MNQ",
+   "family": "ict_silver_bullet_5step_sweep_fvg_midpoint_5m_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4884,
+   "symbol": "MNQ",
+   "family": "ifvg_midpoint_reversion_htf_bias_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4913,
+   "symbol": "MNQ",
+   "family": "ifvg_midpoint_reversion_htf_bias_1h",
+   "version": 2,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4887,
+   "symbol": "MNQ",
+   "family": "ifvg_midpoint_reversion_htf_bias_1h",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4866,
+   "symbol": "MNQ",
+   "family": "ifvg_midpoint_reversion_htf_bias_ny_only_5m_v2_FIXED",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4863,
+   "symbol": "MNQ",
+   "family": "judas_continuation_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4968,
+   "symbol": "MNQ",
+   "family": "judas_continuation_15m_body80",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4996,
+   "symbol": "MNQ",
+   "family": "ny_am_judas_ifvg_midpoint_reversion_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4896,
+   "symbol": "MNQ",
+   "family": "ny_am_pdh_pdl_silver_bullet_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4930,
+   "symbol": "MNQ",
+   "family": "ob_midpoint_reversion_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4906,
+   "symbol": "MNQ",
+   "family": "ob_midpoint_reversion_htf_bias_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4912,
+   "symbol": "MNQ",
+   "family": "ob_midpoint_reversion_htf_bias_5m",
+   "version": 2,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4946,
+   "symbol": "MNQ",
+   "family": "propulsion_block_15m_halfrange_v2",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4975,
+   "symbol": "MNQ",
+   "family": "session_disp_fvg_pullback_15m_v1",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4979,
+   "symbol": "MNQ",
+   "family": "session_disp_fvg_pullback_5m_ny_sb_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4943,
+   "symbol": "MNQ",
+   "family": "sfp_liquidity_grab_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4846,
+   "symbol": "MNQ",
+   "family": "silver_bullet_pdh_pdl_retest_15m_nogate",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4831,
+   "symbol": "MNQ",
+   "family": "silver_bullet_pdh_pdl_retest_15m_roll24_v1",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4678,
+   "symbol": "MNQ",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4745,
+   "symbol": "MNQ",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_4R",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4875,
+   "symbol": "MNQ",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_roll24",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4949,
+   "symbol": "MNQ",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_v2_mnq",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4847,
+   "symbol": "MNQ",
+   "family": "silver_bullet_pdh_pdl_retest_5m_roll24",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4926,
+   "symbol": "MNQ",
+   "family": "turtle_soup_session_sweep_5m_sweep_filter",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4932,
+   "symbol": "MNQ",
+   "family": "unicorn_model_fvg_inside_breaker_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4897,
+   "symbol": "ZF",
+   "family": "asian_range_sweep_mitigation_block_15m_opposite",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4889,
+   "symbol": "ZF",
+   "family": "bsl_run_judas_eq_cluster_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4878,
+   "symbol": "ZF",
+   "family": "ict_inside_bar_disp_breakout_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4892,
+   "symbol": "ZF",
+   "family": "ict_mitigation_block_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4964,
+   "symbol": "ZF",
+   "family": "ifvg_midpoint_reversion_htf_bias_1h_v1",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4838,
+   "symbol": "ZF",
+   "family": "ifvg_midpoint_reversion_htf_bias_ny_only_5m_v2",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4918,
+   "symbol": "ZF",
+   "family": "judas_continuation_15m",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4977,
+   "symbol": "ZF",
+   "family": "session_disp_fvg_pullback_15m_v1",
+   "version": 1,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4945,
+   "symbol": "ZF",
+   "family": "sfp_liquidity_grab_15m",
+   "version": 2,
+   "tf": "15m",
+   "engine": "custom"
+  },
+  {
+   "id": 4987,
+   "symbol": "ZF",
+   "family": "silver_bullet_pdh_pdl_retest_1h_nogate_roll4_v1",
+   "version": 1,
+   "tf": "1h",
+   "engine": "custom"
+  },
+  {
+   "id": 4855,
+   "symbol": "ZF",
+   "family": "silver_bullet_pdh_pdl_retest_5m",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4961,
+   "symbol": "ZF",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_roll24_zf_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4960,
+   "symbol": "ZF",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_roll36_zf_v1",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4988,
+   "symbol": "ZF",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_v2",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4951,
+   "symbol": "ZF",
+   "family": "silver_bullet_pdh_pdl_retest_5m_nogate_v2_zf",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  },
+  {
+   "id": 4868,
+   "symbol": "ZF",
+   "family": "silver_bullet_pdh_pdl_retest_5m_roll12_nogate",
+   "version": 1,
+   "tf": "5m",
+   "engine": "custom"
+  }
+ ]
+}

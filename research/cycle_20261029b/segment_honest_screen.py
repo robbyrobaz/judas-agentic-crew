@@ -105,11 +105,28 @@ def is_oos_boundary(segs):
 
 
 def screen(code: str, symbol: str, tf: str, params: dict, qty: int = 1,
-           mask: str = "fixed", min_seg: int = MIN_SEG, budget_s: float = 240.0):
+           mask: str = "fixed", min_seg: int = MIN_SEG, budget_s: float = 240.0,
+           split_mode: str = "global_time"):
+    """Screen one config.
+
+    split_mode:
+      "global_time"  -- one boundary at 60% of the global clean SPAN (the
+                        original protocol).  On a PATCHY archive this can leave
+                        the IS window with almost no bars (MNQ 5m: 1,594 IS
+                        bars vs an 8,196-bar segment that is almost all OOS).
+      "per_segment"  -- every segment is split 60/40 on its OWN bar index, so
+                        each segment contributes to BOTH windows.  The OOS
+                        trades of a segment are still strictly later than that
+                        segment's IS trades, so the admission test remains a
+                        forward-in-time test; the difference is that a cell is
+                        no longer judged on a 5-day sample because the archive
+                        happens to be thin at the start.
+    """
     segs = segments(symbol, tf, mask=mask, min_seg=min_seg)
     if not segs:
         return {"error": "no segments", "symbol": symbol, "tf": tf, "mask": mask}
     boundary = is_oos_boundary(segs)
+    per_seg_bounds = [int(len(s) * IS_FRAC) for s in segs]
 
     live_all, base_all, fair_all = [], [], []
     meta = {}
@@ -126,12 +143,19 @@ def screen(code: str, symbol: str, tf: str, params: dict, qty: int = 1,
             for t in tr:
                 eb = t["entry_bar"]
                 t["seg"] = si
+                t["bar_idx"] = int(eb)
                 t["ts"] = str(seg["ts"].iloc[min(eb, len(seg) - 1)])
         live_all += lv
         base_all += b
         fair_all += fa
 
     def split(trades):
+        if split_mode == "per_segment":
+            is_t = [t for t in trades
+                    if t.get("bar_idx", 0) <= per_seg_bounds[t["seg"]]]
+            oos_t = [t for t in trades
+                     if t.get("bar_idx", 0) > per_seg_bounds[t["seg"]]]
+            return is_t, oos_t
         is_t = [t for t in trades
                 if boundary is None or pd.Timestamp(t["ts"]) <= boundary]
         oos_t = [t for t in trades
@@ -143,7 +167,7 @@ def screen(code: str, symbol: str, tf: str, params: dict, qty: int = 1,
     fi, fo = split(fair_all)
 
     return {
-        "symbol": symbol, "tf": tf, "mask": mask,
+        "symbol": symbol, "tf": tf, "mask": mask, "split_mode": split_mode,
         "n_segments": len(segs),
         "segment_bars": [int(len(s)) for s in segs],
         "seg_first": str(segs[0]["ts"].iloc[0]), "seg_last": str(segs[-1]["ts"].iloc[-1]),

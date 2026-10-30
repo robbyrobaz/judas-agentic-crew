@@ -1,0 +1,6 @@
+[
+ {"csid": 441, "label": "sweep_cont MNQ5m", "symbol": "MNQ", "tf": "5m", "code_file": "research/cycle_20261029c/codes/csid441.py"},
+ {"csid": 441, "label": "sweep_cont MNQ15m", "symbol": "MNQ", "tf": "15m", "code_file": "research/cycle_20261029c/codes/csid441.py"},
+ {"csid": 441, "label": "sweep_cont MGC15m", "symbol": "MGC", "tf": "15m", "code_file": "research/cycle_20261029c/codes/csid441.py"},
+ {"csid": 441, "label": "sweep_cont MCL5m", "symbol": "MCL", "tf": "5m", "code_file": "research/cycle_20261029c/codes/csid441.py"}
+]

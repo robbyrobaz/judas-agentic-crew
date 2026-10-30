@@ -1,0 +1,184 @@
+[
+ {
+  "code_file": "research/cycle_20261029c/codes/csid439.py",
+  "symbol": "MGC",
+  "tf": "15m",
+  "split": "global_time",
+  "cell": {
+   "confirm_bars": 6,
+   "body_ratio_min": 0.55,
+   "stop_buf_atr": 0.15,
+   "atr_period": 14,
+   "lookback": 8,
+   "min_sweep_atr": 0.45,
+   "disp_k": 0.8,
+   "rr": 1.5
+  },
+  "live": {
+   "n": 84,
+   "pf": 1.541,
+   "wr_pct": 46.4,
+   "e_r": 0.161,
+   "total_usd": 4197.53,
+   "max_dd": 2006.85,
+   "usd_per_trade": 49.97,
+   "avg_bars_held": 24.5,
+   "n_stop_gap": 0
+  },
+  "live_IS": {
+   "n": 44,
+   "pf": 1.876,
+   "wr_pct": 50.0,
+   "e_r": 0.25,
+   "total_usd": 3616.11,
+   "max_dd": 1430.04,
+   "usd_per_trade": 82.18,
+   "avg_bars_held": 31.9,
+   "n_stop_gap": 0
+  },
+  "live_OOS": {
+   "n": 40,
+   "pf": 1.16,
+   "wr_pct": 42.5,
+   "e_r": 0.062,
+   "total_usd": 581.42,
+   "max_dd": 1287.12,
+   "usd_per_trade": 14.54,
+   "avg_bars_held": 16.4,
+   "n_stop_gap": 0
+  },
+  "lure": false,
+  "n_cells": 8,
+  "span_days": 107.3,
+  "usd_per_day": 39.13,
+  "trades_per_week": 5.48,
+  "seg_first": "2026-07-10 20:30:00+00:00",
+  "seg_last": "2026-10-26 03:15:00+00:00",
+  "n_segments": 2,
+  "segment_bars": [
+   327,
+   6369
+  ]
+ },
+ {
+  "code_file": "research/cycle_20261029c/codes/csid440.py",
+  "symbol": "MGC",
+  "tf": "15m",
+  "split": "global_time",
+  "cell": {
+   "confirm_bars": 6,
+   "body_ratio_min": 0.55,
+   "stop_buf_atr": 0.15,
+   "atr_period": 14,
+   "lookback": 8,
+   "min_sweep_atr": 0.45,
+   "disp_k": 0.8,
+   "rr": 1.5
+  },
+  "live": {
+   "n": 84,
+   "pf": 1.541,
+   "wr_pct": 46.4,
+   "e_r": 0.161,
+   "total_usd": 4197.53,
+   "max_dd": 2006.85,
+   "usd_per_trade": 49.97,
+   "avg_bars_held": 24.5,
+   "n_stop_gap": 0
+  },
+  "live_IS": {
+   "n": 44,
+   "pf": 1.876,
+   "wr_pct": 50.0,
+   "e_r": 0.25,
+   "total_usd": 3616.11,
+   "max_dd": 1430.04,
+   "usd_per_trade": 82.18,
+   "avg_bars_held": 31.9,
+   "n_stop_gap": 0
+  },
+  "live_OOS": {
+   "n": 40,
+   "pf": 1.16,
+   "wr_pct": 42.5,
+   "e_r": 0.062,
+   "total_usd": 581.42,
+   "max_dd": 1287.12,
+   "usd_per_trade": 14.54,
+   "avg_bars_held": 16.4,
+   "n_stop_gap": 0
+  },
+  "lure": false,
+  "n_cells": 8,
+  "span_days": 107.3,
+  "usd_per_day": 39.13,
+  "trades_per_week": 5.48,
+  "seg_first": "2026-07-10 20:30:00+00:00",
+  "seg_last": "2026-10-26 03:15:00+00:00",
+  "n_segments": 2,
+  "segment_bars": [
+   327,
+   6369
+  ]
+ },
+ {
+  "code_file": null,
+  "symbol": "MGC",
+  "tf": "5m",
+  "split": "per_segment",
+  "cell": {
+   "lookback": 20,
+   "min_sweep_atr": 0.6,
+   "disp_k": 1.2,
+   "rr": 2.0,
+   "confirm_bars": 6,
+   "body_ratio_min": 0.55,
+   "stop_buf_atr": 0.15,
+   "atr_period": 14
+  },
+  "live": {
+   "n": 52,
+   "pf": 1.841,
+   "wr_pct": 36.5,
+   "e_r": 0.096,
+   "total_usd": 3523.04,
+   "max_dd": 1033.01,
+   "usd_per_trade": 67.75,
+   "avg_bars_held": 92.5,
+   "n_stop_gap": 0
+  },
+  "live_IS": {
+   "n": 28,
+   "pf": 2.414,
+   "wr_pct": 42.9,
+   "e_r": 0.286,
+   "total_usd": 3189.37,
+   "max_dd": 1033.01,
+   "usd_per_trade": 113.91,
+   "avg_bars_held": 128.8,
+   "n_stop_gap": 0
+  },
+  "live_OOS": {
+   "n": 24,
+   "pf": 1.173,
+   "wr_pct": 29.2,
+   "e_r": -0.125,
+   "total_usd": 333.66,
+   "max_dd": 799.56,
+   "usd_per_trade": 13.9,
+   "avg_bars_held": 50.2,
+   "n_stop_gap": 0
+  },
+  "lure": false,
+  "n_cells": 81,
+  "span_days": 95.4,
+  "usd_per_day": 36.93,
+  "trades_per_week": 3.82,
+  "seg_first": "2026-07-24 17:50:00+00:00",
+  "seg_last": "2026-10-28 03:25:00+00:00",
+  "n_segments": 1,
+  "segment_bars": [
+   18566
+  ]
+ }
+]

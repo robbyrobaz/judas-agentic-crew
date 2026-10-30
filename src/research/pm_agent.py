@@ -1137,7 +1137,8 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
     def run_custom_backtest_tool(*, code: str, symbol: str, days: int = 90,
                                  timeframe: str = "1h",
                                  params: dict | None = None,
-                                 qty: int = 1) -> dict:
+                                 qty: int = 1,
+                                 fill_mode: str = "production") -> dict:
         sym = str(symbol).upper()
         if sym not in _VALID_SYMBOLS:
             return {"ok": False, "error": f"unknown symbol: {sym}"}
@@ -1149,6 +1150,7 @@ def _make_tools(*, db_path: str) -> dict[str, Callable[..., Any]]:
             metrics = csr.run_custom_backtest(
                 code=code, symbol=sym, days=int(days), db_path=db_path,
                 timeframe=str(timeframe), params=params, qty=int(qty),
+                fill_mode=str(fill_mode or "production"),
             )
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": f"backtest failed: {type(exc).__name__}: {exc}"}
@@ -1798,7 +1800,12 @@ def _tool_schemas() -> list[dict]:
                     "Run a sandboxed backtest of agent-authored Python "
                     "strategy code (must define evaluate(bars, params)). "
                     "Set timeframe to '5m', '15m', or '1h' to backtest natively "
-                    "on that bar size — use this to research faster-timeframe edges."
+                    "on that bar size — use this to research faster-timeframe edges. "
+                    "fill_mode='production' (default) resolves the entry at the "
+                    "OPEN of the bar after the decision, which is what the live "
+                    "runtime's market order actually gets; 'legacy' credits the "
+                    "entry at the strategy's derived price on the decision bar "
+                    "(retro-fill) and is NOT admissible promotion evidence."
                 ),
                 "parameters": {
                     "type": "object",
@@ -1807,6 +1814,11 @@ def _tool_schemas() -> list[dict]:
                         "symbol": {"type": "string", "enum": sym_enum},
                         "days": {"type": "integer", "default": 90},
                         "timeframe": {"type": "string", "enum": ["5m", "15m", "1h"], "default": "1h"},
+                        "fill_mode": {
+                            "type": "string",
+                            "enum": ["production", "production_close", "legacy"],
+                            "default": "production",
+                        },
                     },
                     "required": ["code", "symbol"],
                 },

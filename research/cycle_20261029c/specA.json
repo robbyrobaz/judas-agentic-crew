@@ -1,0 +1,6 @@
+[
+ {"csid": 441, "label": "sweep_cont_hygiene_5m", "symbol": "MGC", "tf": "5m", "code_file": "research/cycle_20261029c/codes/csid441.py"},
+ {"csid": 441, "label": "sweep_cont_hygiene_5m", "symbol": "MNQ", "tf": "5m", "code_file": "research/cycle_20261029c/codes/csid441.py"},
+ {"csid": 401, "label": "sb_5m_nogate_v2", "symbol": "MNQ", "tf": "5m", "code_file": "research/cycle_20261029c/codes/csid401.py"},
+ {"csid": 438, "label": "ny_am_judas_ifvg_15m", "symbol": "MGC", "tf": "15m", "code_file": "research/cycle_20261029c/codes/csid438.py"}
+]

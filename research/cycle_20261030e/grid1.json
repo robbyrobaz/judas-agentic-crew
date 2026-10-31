@@ -1,0 +1,75 @@
+{
+ "train_frac": 0.55,
+ "cells": [
+  {"file": "research/cycle_20261030e/me_sweep_cont_v2.py", "symbol": "MGC", "timeframe": "15m", "days": 120,
+   "variants": [
+     ["m439", {"lookback": 12, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["m441", {"lookback": 20, "min_sweep_atr": 0.6, "rr": 2.0}],
+     ["lb20ms03", {"lookback": 20, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["lb30ms045", {"lookback": 30, "min_sweep_atr": 0.45, "rr": 1.5}]
+   ]},
+  {"file": "research/cycle_20261030e/me_sweep_cont_v2.py", "symbol": "MGC", "timeframe": "5m", "days": 120,
+   "variants": [
+     ["m439", {"lookback": 12, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["m441", {"lookback": 20, "min_sweep_atr": 0.6, "rr": 2.0}],
+     ["lb20ms03", {"lookback": 20, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["lb30ms045", {"lookback": 30, "min_sweep_atr": 0.45, "rr": 1.5}]
+   ]},
+  {"file": "research/cycle_20261030e/me_sweep_cont_v2.py", "symbol": "MNQ", "timeframe": "15m", "days": 120,
+   "variants": [
+     ["m439", {"lookback": 12, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["m441", {"lookback": 20, "min_sweep_atr": 0.6, "rr": 2.0}],
+     ["lb20ms03", {"lookback": 20, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["lb30ms045", {"lookback": 30, "min_sweep_atr": 0.45, "rr": 1.5}]
+   ]},
+  {"file": "research/cycle_20261030e/me_sweep_cont_v2.py", "symbol": "MNQ", "timeframe": "5m", "days": 120,
+   "variants": [
+     ["m439", {"lookback": 12, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["m441", {"lookback": 20, "min_sweep_atr": 0.6, "rr": 2.0}],
+     ["lb20ms03", {"lookback": 20, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["lb30ms045", {"lookback": 30, "min_sweep_atr": 0.45, "rr": 1.5}]
+   ]},
+  {"file": "research/cycle_20261030e/me_sweep_cont_v2.py", "symbol": "ZF", "timeframe": "15m", "days": 120,
+   "variants": [
+     ["m439", {"lookback": 12, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["m441", {"lookback": 20, "min_sweep_atr": 0.6, "rr": 2.0}],
+     ["lb20ms03", {"lookback": 20, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["lb30ms045", {"lookback": 30, "min_sweep_atr": 0.45, "rr": 1.5}]
+   ]},
+  {"file": "research/cycle_20261030e/me_sweep_cont_v2.py", "symbol": "ZF", "timeframe": "5m", "days": 120,
+   "variants": [
+     ["m439", {"lookback": 12, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["m441", {"lookback": 20, "min_sweep_atr": 0.6, "rr": 2.0}],
+     ["lb20ms03", {"lookback": 20, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["lb30ms045", {"lookback": 30, "min_sweep_atr": 0.45, "rr": 1.5}]
+   ]},
+  {"file": "research/cycle_20261030e/me_sweep_cont_v2.py", "symbol": "MCL", "timeframe": "15m", "days": 120,
+   "variants": [
+     ["m439", {"lookback": 12, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["m441", {"lookback": 20, "min_sweep_atr": 0.6, "rr": 2.0}],
+     ["lb20ms03", {"lookback": 20, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["lb30ms045", {"lookback": 30, "min_sweep_atr": 0.45, "rr": 1.5}]
+   ]},
+  {"file": "research/cycle_20261030e/me_sweep_cont_v2.py", "symbol": "MCL", "timeframe": "5m", "days": 120,
+   "variants": [
+     ["m439", {"lookback": 12, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["m441", {"lookback": 20, "min_sweep_atr": 0.6, "rr": 2.0}],
+     ["lb20ms03", {"lookback": 20, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["lb30ms045", {"lookback": 30, "min_sweep_atr": 0.45, "rr": 1.5}]
+   ]},
+  {"file": "research/cycle_20261030e/me_sweep_cont_v2.py", "symbol": "6J", "timeframe": "15m", "days": 120,
+   "variants": [
+     ["m439", {"lookback": 12, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["m441", {"lookback": 20, "min_sweep_atr": 0.6, "rr": 2.0}],
+     ["lb20ms03", {"lookback": 20, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["lb30ms045", {"lookback": 30, "min_sweep_atr": 0.45, "rr": 1.5}]
+   ]},
+  {"file": "research/cycle_20261030e/me_sweep_cont_v2.py", "symbol": "6J", "timeframe": "5m", "days": 120,
+   "variants": [
+     ["m439", {"lookback": 12, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["m441", {"lookback": 20, "min_sweep_atr": 0.6, "rr": 2.0}],
+     ["lb20ms03", {"lookback": 20, "min_sweep_atr": 0.3, "rr": 1.5}],
+     ["lb30ms045", {"lookback": 30, "min_sweep_atr": 0.45, "rr": 1.5}]
+   ]}
+ ]
+}

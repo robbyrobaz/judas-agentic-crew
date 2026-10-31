@@ -1,0 +1,24 @@
+[
+ {
+  "csid": "research/cycle_20261030c/dol_draw_target_v1.py",
+  "name": "dol_draw_target_v1.py",
+  "symbol": "MGC",
+  "timeframe": "5m",
+  "days_req": 20,
+  "n_trades": 0,
+  "n_sig": 0,
+  "pf": 0.0,
+  "pnl": 0.0,
+  "er": 0.0,
+  "dd": 0.0,
+  "wr": 0.0,
+  "span_d": 28,
+  "nbars": 5760,
+  "grade": true,
+  "stale": 0,
+  "slip": null,
+  "cost": "v1_realistic_micros",
+  "err": null,
+  "secs": 19.5
+ }
+]

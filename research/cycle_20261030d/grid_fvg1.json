@@ -1,0 +1,15 @@
+{"train_frac": 0.55,
+ "cells": [
+  {"file": "research/cycle_20261030d/fvg_tap_rej_market_v1.py", "symbol": "MNQ", "timeframe": "15m", "days": 180,
+   "variants": [["base", {}], ["bias20", {"bias_bars": 20}], ["bias40", {"bias_bars": 40}],
+                ["bias20_tR3", {"bias_bars": 20, "target_r": 3.0}], ["bias20_tR15", {"bias_bars": 20, "target_r": 1.5}],
+                ["bias20_fvg40", {"bias_bars": 20, "min_fvg_atr": 0.4}]]},
+  {"file": "research/cycle_20261030d/fvg_tap_rej_market_v1.py", "symbol": "MGC", "timeframe": "15m", "days": 180,
+   "variants": [["base", {}], ["bias20", {"bias_bars": 20}], ["bias40", {"bias_bars": 40}],
+                ["bias20_tR3", {"bias_bars": 20, "target_r": 3.0}], ["bias20_tR15", {"bias_bars": 20, "target_r": 1.5}],
+                ["bias20_fvg40", {"bias_bars": 20, "min_fvg_atr": 0.4}]]},
+  {"file": "research/cycle_20261030d/fvg_tap_rej_market_v1.py", "symbol": "MGC", "timeframe": "5m", "days": 120,
+   "variants": [["base", {}], ["bias20", {"bias_bars": 20}], ["bias40", {"bias_bars": 40}],
+                ["bias20_tR3", {"bias_bars": 20, "target_r": 3.0}], ["bias20_tR15", {"bias_bars": 20, "target_r": 1.5}],
+                ["bias20_fvg40", {"bias_bars": 20, "min_fvg_atr": 0.4}]]}
+ ]}
